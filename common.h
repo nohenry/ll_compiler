@@ -12,8 +12,9 @@ typedef struct {
 	size_t len;
 } String_View;
 
+#define str_lit(str) ((String_View) { (str), (sizeof(str)-1)/sizeof((str)[0]) })
 
-#define LL_DEFAULT_MAP_ENTRY_COUNT (255u)
+#define LL_DEFAULT_MAP_ENTRY_COUNT (256u)
 
 typedef struct string_intern_map_entry {
 	String_View value;
@@ -24,6 +25,15 @@ typedef struct {
     Arena arena, tmp_arena;
 	String_Intern_Map_Entry* string_interns[LL_DEFAULT_MAP_ENTRY_COUNT];
 } Compiler_Context;
+
+extern String_View LL_KEYWORD_CONST;
+extern String_View LL_KEYWORD_IF;
+extern String_View LL_KEYWORD_FOR;
+extern String_View LL_KEYWORD_WHILE;
+extern String_View LL_KEYWORD_ELSE;
+extern String_View LL_KEYWORD_DO;
+extern String_View LL_KEYWORD_MATCH;
+extern String_View LL_KEYWORD_STRUCT;
 
 #define max(a, b) ({		 \
 		__typeof__ (a) _a = (a); \
@@ -44,10 +54,7 @@ typedef struct {
 })
 
 #define FMT_SV_FMT "%.*s"
-#define FMT_SV_ARG(sv) (sv).len, (sv).ptr
-
-bool string_view_eql(String_View a, String_View b);
-String_View ll_intern_string(Compiler_Context* cc, String_View str);
+#define FMT_SV_ARG(sv) ((int)(sv).len), (sv).ptr
 
 #define MAP_GET(map, key, allocator, hash_fn, eql_fn, seed) ({                     \
 		size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \
@@ -109,4 +116,8 @@ String_View ll_intern_string(Compiler_Context* cc, String_View str);
 #define STBDS_ROTATE_RIGHT(val, n)  (((val) >> (n)) | ((val) << (STBDS_SIZE_T_BITS - (n))))
 
 size_t stbds_hash_string(String_View str, size_t seed);
+
+bool string_view_eql(String_View a, String_View b);
+Compiler_Context ll_compiler_context_create();
+String_View ll_intern_string(Compiler_Context* cc, String_View str);
 

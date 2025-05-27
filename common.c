@@ -23,6 +23,28 @@ bool string_view_eql(String_View a, String_View b) {
 	return strncmp(a.ptr, b.ptr, min(a.len, b.len)) == 0;
 }
 
+String_View LL_KEYWORD_CONST;
+String_View LL_KEYWORD_IF;
+String_View LL_KEYWORD_FOR;
+String_View LL_KEYWORD_WHILE;
+String_View LL_KEYWORD_ELSE;
+String_View LL_KEYWORD_DO;
+String_View LL_KEYWORD_MATCH;
+String_View LL_KEYWORD_STRUCT;
+
+Compiler_Context ll_compiler_context_create() {
+	Compiler_Context result = { 0 };
+	LL_KEYWORD_CONST = ll_intern_string(&result, str_lit("const"));
+	LL_KEYWORD_IF = ll_intern_string(&result, str_lit("if"));
+	LL_KEYWORD_FOR = ll_intern_string(&result, str_lit("for"));
+	LL_KEYWORD_WHILE = ll_intern_string(&result, str_lit("while"));
+	LL_KEYWORD_ELSE = ll_intern_string(&result, str_lit("else"));
+	LL_KEYWORD_DO = ll_intern_string(&result, str_lit("do"));
+	LL_KEYWORD_MATCH = ll_intern_string(&result, str_lit("match"));
+	LL_KEYWORD_STRUCT = ll_intern_string(&result, str_lit("struct"));
+	return result;
+}
+
 String_View ll_intern_string(Compiler_Context* cc, String_View str) {
     String_View* s = MAP_GET_OR_PUT(cc->string_interns, str, str, MAP_DEFAULT);
 	return *s;
