@@ -41,5 +41,7 @@ typedef struct {
 } LL_Lexer;
 
 bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
+void lexer_consume(Compiler_Context *cc, LL_Lexer* lexer);
 bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
+void lexer_print_token_raw(LL_Lexer* lexer, LL_Token* token);
 void lexer_print_token(LL_Lexer* lexer, LL_Token* token);

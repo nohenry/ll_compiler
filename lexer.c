@@ -26,9 +26,14 @@ bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
 	}
 }
 
+void lexer_consume(Compiler_Context *cc, LL_Lexer* lexer) {
+    lexer->has_peeked_token = false;
+}
+
 bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
 	if (lexer->has_peeked_token) {
 		memcpy(out, &lexer->peeked_token, sizeof(*out));
+        lexer->has_peeked_token = false;
 		return true;
 	} 
 
@@ -173,12 +178,10 @@ DONE_NUMBER:
     return false;
 }
 
-void lexer_print_token(LL_Lexer* lexer, LL_Token* token) {
-    printf("Token: ");
+void lexer_print_token_raw(LL_Lexer* lexer, LL_Token* token) {
     switch (token->kind) {
     case LL_TOKEN_KIND_IDENT:
         printf(FMT_SV_FMT, FMT_SV_ARG(token->str));
-		printf(" %p", token->str.ptr);
         break;
     case LL_TOKEN_KIND_BUILTIN:
         printf(FMT_SV_FMT, FMT_SV_ARG(token->str));
@@ -203,5 +206,10 @@ void lexer_print_token(LL_Lexer* lexer, LL_Token* token) {
         printf("%c", (char)token->kind);
         break;
     }
+}
+
+void lexer_print_token(LL_Lexer* lexer, LL_Token* token) {
+    printf("Token: ");
+    lexer_print_token_raw(lexer, token);
     printf("\n");
 }
