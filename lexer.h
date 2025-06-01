@@ -9,6 +9,7 @@ typedef enum {
 	LL_TOKEN_KIND_IDENT = 256,
 	LL_TOKEN_KIND_BUILTIN,
 	LL_TOKEN_KIND_INT,
+	LL_TOKEN_KIND_STRING,
 
 	/* assigns */
     LL_TOKEN_KIND_ASSIGN_PLUS,
@@ -19,6 +20,7 @@ typedef enum {
 
 	/* comparison */
     LL_TOKEN_KIND_EQUALS,
+	LL_TOKEN_KIND_NEQUALS,
     LL_TOKEN_KIND_LTE,
     LL_TOKEN_KIND_GTE,
 
@@ -43,5 +45,6 @@ typedef struct {
 bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
 void lexer_consume(Compiler_Context *cc, LL_Lexer* lexer);
 bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
-void lexer_print_token_raw(LL_Lexer* lexer, LL_Token* token);
-void lexer_print_token(LL_Lexer* lexer, LL_Token* token);
+void lexer_print_token_raw(LL_Token* token);
+void lexer_print_token_raw_to_fd(LL_Token* token, FILE* fd);
+void lexer_print_token(LL_Token* token);

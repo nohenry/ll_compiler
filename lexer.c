@@ -22,7 +22,9 @@ bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
 		memcpy(out, &lexer->peeked_token, sizeof(*out));
 		return true;
 	} else {
-		return lexer_next_token(cc, lexer, out);
+		lexer->has_peeked_token = lexer_next_token(cc, lexer, out);
+		memcpy(&lexer->peeked_token, out, sizeof(*out));
+		return lexer->has_peeked_token;
 	}
 }
 
@@ -43,6 +45,19 @@ bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
         case ' ':
             lexer->pos++;
             continue;
+		case '/':
+			if (lexer->pos + 1 < lexer->source.len && lexer->source.ptr[lexer->pos + 1] == '/') {
+				lexer->pos += 2;
+
+				while (lexer->pos < lexer->source.len) switch (lexer->source.ptr[lexer->pos]) {
+				case '\n': goto DONE_LINE_COMMENT;
+				default: lexer->pos++; continue;
+				}
+			} else {
+				goto DONE_PHANTOM;
+			}
+DONE_LINE_COMMENT:
+			continue;
         default: goto DONE_PHANTOM;
     }
 DONE_PHANTOM:
@@ -149,6 +164,21 @@ DONE_NUMBER:
             out->i64 = integral;
             return true;
         }
+		case '"':
+			lexer->pos++;
+
+			out->kind = LL_TOKEN_KIND_STRING;
+            out->str.ptr = lexer->source.ptr + lexer->pos;
+            out->str.len = 0;
+
+            while (lexer->pos < lexer->source.len && lexer->source.ptr[lexer->pos] != '"') {
+				lexer->pos++;
+				out->str.len++;
+			}
+			lexer->pos++; // for closing quote
+
+			return true;
+
         case '(':
         case ')':
         case '{':
@@ -158,12 +188,14 @@ DONE_NUMBER:
         case ':':
         case ';':
         case ',':
+        case '&':
             out->kind = (LL_Token_Kind)lexer->source.ptr[lexer->pos++];
             return true;
 
 		case '<': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_LTE); return true;
 		case '>': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_GTE); return true;
 
+		case '!': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_NEQUALS); return true;
 		case '=': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_EQUALS); return true;
 		case '+': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_PLUS); return true;
 		case '-': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_MINUS); return true;
@@ -178,38 +210,47 @@ DONE_NUMBER:
     return false;
 }
 
-void lexer_print_token_raw(LL_Lexer* lexer, LL_Token* token) {
+void lexer_print_token_raw(LL_Token* token) {
+	lexer_print_token_raw_to_fd(token, stdout);
+}
+
+
+void lexer_print_token_raw_to_fd(LL_Token* token, FILE* fd) {
     switch (token->kind) {
     case LL_TOKEN_KIND_IDENT:
-        printf(FMT_SV_FMT, FMT_SV_ARG(token->str));
+        fprintf(fd, FMT_SV_FMT, FMT_SV_ARG(token->str));
         break;
     case LL_TOKEN_KIND_BUILTIN:
-        printf(FMT_SV_FMT, FMT_SV_ARG(token->str));
+        fprintf(fd, FMT_SV_FMT, FMT_SV_ARG(token->str));
         break;
     case LL_TOKEN_KIND_INT:
-        printf("%ld", token->i64);
+        fprintf(fd, "%ld", token->i64);
+        break;
+    case LL_TOKEN_KIND_STRING:
+        fprintf(fd, FMT_SV_FMT, FMT_SV_ARG(token->str));
         break;
 
-    case LL_TOKEN_KIND_ASSIGN_PLUS: printf("+="); break;
-    case LL_TOKEN_KIND_ASSIGN_MINUS: printf("-="); break;
-    case LL_TOKEN_KIND_ASSIGN_TIMES: printf("*="); break;
-    case LL_TOKEN_KIND_ASSIGN_DIVIDE: printf("/="); break;
-    case LL_TOKEN_KIND_ASSIGN_PERCENT: printf("%%="); break;
+    case LL_TOKEN_KIND_ASSIGN_PLUS: fprintf(fd, "+="); break;
+    case LL_TOKEN_KIND_ASSIGN_MINUS: fprintf(fd, "-="); break;
+    case LL_TOKEN_KIND_ASSIGN_TIMES: fprintf(fd, "*="); break;
+    case LL_TOKEN_KIND_ASSIGN_DIVIDE: fprintf(fd, "/="); break;
+    case LL_TOKEN_KIND_ASSIGN_PERCENT: fprintf(fd, "%%="); break;
 
-    case LL_TOKEN_KIND_EQUALS: printf("=="); break;
-    case LL_TOKEN_KIND_LTE: printf("<="); break;
-    case LL_TOKEN_KIND_GTE: printf(">="); break;
+    case LL_TOKEN_KIND_EQUALS: fprintf(fd, "=="); break;
+    case LL_TOKEN_KIND_NEQUALS: fprintf(fd, "=="); break;
+    case LL_TOKEN_KIND_LTE: fprintf(fd, "<="); break;
+    case LL_TOKEN_KIND_GTE: fprintf(fd, ">="); break;
 
-    case LL_TOKEN_KIND_RANGE: printf(".."); break;
+    case LL_TOKEN_KIND_RANGE: fprintf(fd, ".."); break;
     
     default:
-        printf("%c", (char)token->kind);
+        fprintf(fd, "%c", (char)token->kind);
         break;
     }
 }
 
-void lexer_print_token(LL_Lexer* lexer, LL_Token* token) {
+void lexer_print_token(LL_Token* token) {
     printf("Token: ");
-    lexer_print_token_raw(lexer, token);
+    lexer_print_token_raw(token);
     printf("\n");
 }

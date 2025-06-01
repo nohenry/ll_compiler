@@ -42,7 +42,6 @@ LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename) {
         default : v.base.kind = _kind                    \
     )
 
-#include "math.h"
 static Ast_Base* create_node(Compiler_Context* cc, LL_Parser* parser, Ast_Base* node, size_t size) {
     return arena_memdup(&cc->arena, node, size);
 }
@@ -50,9 +49,9 @@ static Ast_Base* create_node(Compiler_Context* cc, LL_Parser* parser, Ast_Base* 
 static void unexpected_token(Compiler_Context* cc, LL_Parser* parser, char* file, int line) {
     LL_Token tok;
     PEEK(&tok);
-    fprintf(stderr, "%s line %d:\x1b[31;1merror\x1b[0m\x1b[1m: unexpected token '", file, line);
-    lexer_print_token_raw(&parser->lexer, &tok);
-    fprintf(stderr, "'\x1b[0m\n");
+    fprintf(stderr, "%s line %d: \x1b[31;1merror\x1b[0m\x1b[1m: unexpected token '", file, line);
+    lexer_print_token_raw_to_fd(&tok, stderr);
+    fprintf(stderr, "' (%d)\x1b[0m\n", tok.kind);
 }
 
 static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind kind, LL_Token* out, char* file, int line) {
@@ -69,13 +68,239 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
     }
 }
 
-void parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
-	LL_Token token;
-	PEEK(&token);
+Ast_Base* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
+	Ast_Base* b = parser_parse_statement(cc, parser);
+	print_node(b, 0);
+	return b;
 }
 
-Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int last_precedence) {
-    Ast_Base* left = parser_parse_primary(cc, parser);
+Ast_Base* parser_parse_statement(Compiler_Context* cc, LL_Parser* parser) {
+	Ast_Base* result;
+	LL_Token token;
+	PEEK(&token);
+
+	switch (token.kind) {
+		case '{':
+			result = (Ast_Base*)parser_parse_block(cc, parser);
+			break;
+		default:
+			result = parser_parse_expression(cc, parser, 0, true);
+
+			PEEK(&token);
+			if (token.kind == LL_TOKEN_KIND_IDENT)
+				result = parser_parse_declaration(cc, parser, result);
+			else
+				EXPECT(';', &token);
+
+			break;
+	}
+	return result;
+}
+
+Ast_Block* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
+	LL_Token token;
+	CONSUME();
+	PEEK(&token);
+	Ast_Block block = { .base.kind = AST_KIND_BLOCK };
+
+	while (token.kind != '}') {
+		arena_da_append(&cc->arena, &block, parser_parse_statement(cc, parser));
+		PEEK(&token);
+	}
+
+	CONSUME();
+	return arena_memdup(&cc->arena, &block, sizeof(block));
+}
+
+Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
+	LL_Token token;
+	Ast_Base* type = parser_parse_expression(cc, parser, 0, true);
+
+	if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
+	Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str }));
+
+	return (Ast_Parameter) {
+		.base.kind = AST_KIND_PARAMETER,
+		.type = type,
+		.ident = ident,
+	};
+}
+
+Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_Base* type) {
+	LL_Token token;
+	if (!type) {
+		type = parser_parse_expression(cc, parser, 0, true);
+	}
+
+	if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return NULL;
+	Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str }));
+
+	bool fn = false;
+	Ast_Parameter_List parameters = { 0 };
+	Ast_Base* body_or_init;
+
+	PEEK(&token);
+	switch (token.kind) {
+		case '(':
+			fn = true;
+			CONSUME();
+
+			PEEK(&token);
+			while (token.kind != ')') {
+				Ast_Parameter parameter = parser_parse_parameter(cc, parser);
+				arena_da_append(&cc->arena, &parameters, parameter);
+				PEEK(&token);
+
+				if (token.kind != ')') {
+					EXPECT(',', &token);
+					PEEK(&token);
+					continue;
+				}
+			}
+
+			CONSUME();
+
+			PEEK(&token);
+			if (token.kind == '{') {
+				body_or_init = (Ast_Base*)parser_parse_block(cc, parser);
+			} else {
+				EXPECT(';', &token);
+				body_or_init = NULL;
+			}
+
+			break;
+		case '=':
+			CONSUME();
+			body_or_init = parser_parse_expression(cc, parser, 0, false);
+			EXPECT(';', &token);
+			break;
+		default:
+			body_or_init = NULL;
+			EXPECT(';', &token);
+			break;
+	}
+
+	if (fn) {
+		return CREATE_NODE(AST_KIND_FUNCTION_DECLARATION, ((Ast_Function_Declaration){
+			.return_type = type,
+			.ident = ident,
+			.parameters = parameters,
+			.body = body_or_init,
+		}));
+	} else {
+		return CREATE_NODE(AST_KIND_VARIABLE_DECLARATION, ((Ast_Variable_Declaration){
+			.type = type,
+			.ident = ident,
+			.initializer = body_or_init,
+		}));
+	}
+}
+
+int get_binary_precedence(LL_Token token, bool from_statement) {
+	switch (token.kind) {
+		case '=':
+		case LL_TOKEN_KIND_ASSIGN_PLUS:
+		case LL_TOKEN_KIND_ASSIGN_MINUS:
+		case LL_TOKEN_KIND_ASSIGN_TIMES:
+		case LL_TOKEN_KIND_ASSIGN_DIVIDE:
+		case LL_TOKEN_KIND_ASSIGN_PERCENT:
+			return 20;
+		case '|': return 60;
+		case '^': return 70;
+		case '&': return 80;
+		case LL_TOKEN_KIND_EQUALS:
+		case LL_TOKEN_KIND_NEQUALS:
+			return from_statement ? 0 : 90;
+		case '<':
+		case '>':
+		case LL_TOKEN_KIND_LTE:
+		case LL_TOKEN_KIND_GTE:
+			return from_statement ? 0 : 100;
+		case '+':
+		case '-':
+			return from_statement ? 0 : 120;
+		case '*':
+		case '/':
+		case '%':
+			return from_statement ? 0 : 130;
+		default: return 0;
+	}
+}
+
+int get_postfix_precedence(LL_Token token) {
+	switch (token.kind) {
+		case '*':
+			return 150;
+		default: return 0;
+	}
+}
+
+Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int last_precedence, bool from_statement) {
+	LL_Token token;
+	Ast_Base *left, *right;
+	PEEK(&token);
+	switch (token.kind) {
+	case '-':
+		CONSUME();
+		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '-', .right = parser_parse_expression(cc, parser, 140, false) }));
+		break;
+	case '*':
+		CONSUME();
+		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '*', .right = parser_parse_expression(cc, parser, 140, false) }));
+		break;
+	case '&':
+		CONSUME();
+		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '&', .right = parser_parse_expression(cc, parser, 140, false) }));
+		break;
+	default:
+		left = parser_parse_primary(cc, parser);
+		break;
+	}
+	
+	PEEK(&token);
+	switch (token.kind) {
+		case '(': {
+			CONSUME();
+
+			Ast_List arguments = { 0 };
+			PEEK(&token);
+			while (token.kind != ')') {
+				arena_da_append(&cc->arena, &arguments, parser_parse_expression(cc, parser, 0, false));
+
+				PEEK(&token);
+				if (token.kind != ')') {
+					EXPECT(',', &token);
+					PEEK(&token);
+					continue;
+				}
+			}
+
+			CONSUME();
+
+			left = CREATE_NODE(AST_KIND_INVOKE, ((Ast_Invoke){ .expr = left, .arguments = arguments }));
+
+			break;
+		}
+		case '*': {
+			if (!from_statement) break;
+			CONSUME();
+			
+			left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
+
+			break;
+		}
+		default: break;
+	}
+
+	while (PEEK(&token)) {
+		int precedence = get_binary_precedence(token, from_statement);
+		if (precedence == 0 || precedence < last_precedence) break;
+		CONSUME();
+
+		right = parser_parse_expression(cc, parser, precedence, false);
+        left = CREATE_NODE(AST_KIND_BINARY_OP, ((Ast_Operation){ .left = left, .right = right, .op = token.kind }));
+	}
+
     return left;
 }
 
@@ -87,12 +312,23 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
     switch (pk.kind) {
     case '(':
         CONSUME();
-        result = parser_parse_expression(cc, parser, 0);
+        result = parser_parse_expression(cc, parser, 0, false);
         EXPECT(')', NULL);
         break;
     
     case LL_TOKEN_KIND_INT:
-        result = CREATE_NODE(AST_KIND_LITERAL_INT, ((Ast_Literal){ .i64 = 0 }));
+        result = CREATE_NODE(AST_KIND_LITERAL_INT, ((Ast_Literal){ .i64 = pk.i64 }));
+		CONSUME();
+        break;
+
+    case LL_TOKEN_KIND_STRING:
+        result = CREATE_NODE(AST_KIND_LITERAL_STRING, ((Ast_Literal){ .str = pk.str }));
+		CONSUME();
+        break;
+
+    case LL_TOKEN_KIND_IDENT:
+        result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = pk.str }));
+		CONSUME();
         break;
 
     default:
@@ -101,4 +337,93 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
     }
 
     return result;
+}
+
+const char* get_node_kind(Ast_Base* node) {
+	switch (node->kind) {
+		case AST_KIND_LITERAL_INT: return "Int_Literal";
+		case AST_KIND_LITERAL_STRING: return "String_Literal";
+		case AST_KIND_IDENT: return "Identifier";
+		case AST_KIND_BINARY_OP: return "Binary_Operator";
+		case AST_KIND_PRE_OP: return "Prefix_Operator";
+		case AST_KIND_INVOKE: return "Invoke";
+		case AST_KIND_BLOCK: return "Block";
+		case AST_KIND_VARIABLE_DECLARATION: return "Variable_Declaration";
+		case AST_KIND_FUNCTION_DECLARATION: return "Function_Declaration";
+		case AST_KIND_PARAMETER: return "Parameter";
+		case AST_KIND_TYPE_POINTER: return "Pointer";
+	}
+}
+
+void print_node_value(Ast_Base* node) {
+	switch (node->kind) {
+		case AST_KIND_LITERAL_INT: printf("%ld", AST_AS(node, Ast_Literal)->i64); break;
+		case AST_KIND_LITERAL_STRING: printf(FMT_SV_FMT, FMT_SV_ARG(AST_AS(node, Ast_Literal)->str)); break;
+		case AST_KIND_IDENT: printf(FMT_SV_FMT, FMT_SV_ARG(AST_AS(node, Ast_Ident)->str)); break;
+		case AST_KIND_BINARY_OP: lexer_print_token_raw(&AST_AS(node, Ast_Operation)->op); break;
+		case AST_KIND_PRE_OP: lexer_print_token_raw(&AST_AS(node, Ast_Operation)->op); break;
+		case AST_KIND_INVOKE: break;
+		case AST_KIND_BLOCK: break;
+		case AST_KIND_VARIABLE_DECLARATION: break;
+		case AST_KIND_FUNCTION_DECLARATION: break;
+		case AST_KIND_PARAMETER: break;
+		case AST_KIND_TYPE_POINTER: break;
+	}
+}
+
+void print_node(Ast_Base* node, int indent) {
+	int i;
+	for (i = 0; i < indent; ++i) {
+		printf("  ");
+	}
+	printf("%s ", get_node_kind(node));
+	print_node_value(node);
+	printf("\n");
+	switch (node->kind) {
+		case AST_KIND_BINARY_OP: 
+			print_node(AST_AS(node, Ast_Operation)->left, indent + 1);
+			print_node(AST_AS(node, Ast_Operation)->right, indent + 1);
+			break;
+		case AST_KIND_PRE_OP: 
+			print_node(AST_AS(node, Ast_Operation)->right, indent + 1);
+			break;
+
+		case AST_KIND_INVOKE: 
+			print_node(AST_AS(node, Ast_Invoke)->expr, indent + 1);
+			for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
+				print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->arguments.items[i], indent + 1);
+			}
+			break;
+
+		case AST_KIND_VARIABLE_DECLARATION:
+			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->type, indent + 1);
+			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1);
+			if (AST_AS(node, Ast_Variable_Declaration)->initializer) print_node(AST_AS(node, Ast_Variable_Declaration)->initializer, indent + 1);
+			break;
+
+		case AST_KIND_FUNCTION_DECLARATION:
+			print_node(AST_AS(node, Ast_Function_Declaration)->return_type, indent + 1);
+			print_node((Ast_Base*)AST_AS(node, Ast_Function_Declaration)->ident, indent + 1);
+			for (i = 0; i < AST_AS(node, Ast_Function_Declaration)->parameters.count; ++i) {
+				print_node((Ast_Base*)&AST_AS(node, Ast_Function_Declaration)->parameters.items[i], indent + 1);
+			}
+			if (AST_AS(node, Ast_Function_Declaration)->body) print_node(AST_AS(node, Ast_Function_Declaration)->body, indent + 1);
+			break;
+
+		case AST_KIND_PARAMETER:
+			print_node(AST_AS(node, Ast_Variable_Declaration)->type, indent + 1);
+			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1);
+			break;
+
+		case AST_KIND_TYPE_POINTER:
+			print_node(AST_AS(node, Ast_Type_Pointer)->element, indent + 1);
+			break;
+
+		case AST_KIND_BLOCK:
+			for (i = 0; i < AST_AS(node, Ast_Block)->count; ++i) {
+				print_node(AST_AS(node, Ast_Block)->items[i], indent + 1);
+			}
+
+		default: break;
+	}
 }

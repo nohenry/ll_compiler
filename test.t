@@ -1,21 +1,17 @@
-89 45 0x45
-def foo(int a) int
-	return a * 2
-end
-
-foo 45
-
-def search(#block block)
-	items = [1, 2, 3, 4]
-	i = 0
-	while i < items.len
-		return true if block(items[i])
-	end
-	return false
-end
-
-found = search do
-	it == 23
-end
-
+{
+	int a = 23;
+	int* pa = &a;
+	int8 b = *pa;
+	// int* a;
+	// int[10] array;
+	// int[:] slice;
+	// int[:uint8] slice_with_sized_length_after;
+	// int[int32:] slice_with_sized_length_before;
+	// int64 length = 120;
+	// int[length:] slice_with_variable_specified_sized_length_before;
+	
+	int b(int h, int k) {
+		int c = h;
+	}
+}
 
