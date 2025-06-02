@@ -21,6 +21,7 @@ typedef struct scope_map {
 	LL_Scope_Kind kind;
 	struct scope_map* parent;
 	Ast_Ident* ident;
+	Ast_Base* decl;
 	LL_Scope_Map_Entry* children[LL_DEFAULT_MAP_ENTRY_COUNT];
 } LL_Scope;
 
@@ -28,6 +29,7 @@ typedef struct {
 	LL_Scope_Kind kind;
 	struct scope_map* parent;
 	Ast_Ident* ident;
+	Ast_Base* decl;
 } LL_Scope_Simple;
 
 typedef enum {
@@ -63,6 +65,7 @@ typedef struct {
 	LL_Type* return_type;
 	size_t parameter_count;
 	LL_Type** parameters;
+	bool is_variadic;
 } LL_Type_Function;
 
 typedef struct ll_type_intern_map_entry {
@@ -86,7 +89,7 @@ typedef struct ll_typer {
 
 LL_Type* ll_intern_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 size_t ll_type_hash(LL_Type* type, size_t seed);
-LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* return_type, LL_Type** parameter_types, size_t parameter_count);
+LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* return_type, LL_Type** parameter_types, size_t parameter_count, bool is_variadic);
 
 LL_Typer ll_typer_create(Compiler_Context* cc);
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Ast_Base* node);

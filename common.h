@@ -40,6 +40,7 @@ extern String_View LL_KEYWORD_ELSE;
 extern String_View LL_KEYWORD_DO;
 extern String_View LL_KEYWORD_MATCH;
 extern String_View LL_KEYWORD_STRUCT;
+extern String_View LL_KEYWORD_EXTERN;
 
 extern String_View LL_KEYWORD_UINT8;
 extern String_View LL_KEYWORD_UINT16;
@@ -56,6 +57,7 @@ extern String_View LL_KEYWORD_FLOAT32;
 extern String_View LL_KEYWORD_FLOAT64;
 extern String_View LL_KEYWORD_FLOAT;
 extern String_View LL_KEYWORD_STRING;
+extern String_View LL_KEYWORD_VOID;
 
 #define max(a, b) ({		 \
 		__typeof__ (a) _a = (a); \
@@ -77,6 +79,8 @@ extern String_View LL_KEYWORD_STRING;
 
 #define FMT_SV_FMT "%.*s"
 #define FMT_SV_ARG(sv) ((int)(sv).len), (sv).ptr
+
+#define arena_sb_append_strview(a, da, sv) arena_da_append_many(a, da, sv.ptr, sv.len)
 
 #define LEN(array) (sizeof(array) / sizeof((array)[0]))
 

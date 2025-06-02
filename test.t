@@ -1,5 +1,6 @@
-{
+void main() {
 	int a = 23;
+	int d = 56;
 	int* pa = &a;
 	int8 b = *pa;
 	// int* a;
@@ -10,8 +11,12 @@
 	// int64 length = 120;
 	// int[length:] slice_with_variable_specified_sized_length_before;
 	
+	extern int printf(string fmt, ..args);
 	int b(int h, int k) {
-		int c = h;
+		// int c = h;
 	}
+
+	int bb = printf("hello", 1, 2, 3);
+	int aa = b(123, 1);
 }
 

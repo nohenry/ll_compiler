@@ -92,6 +92,7 @@ String_View LL_KEYWORD_ELSE;
 String_View LL_KEYWORD_DO;
 String_View LL_KEYWORD_MATCH;
 String_View LL_KEYWORD_STRUCT;
+String_View LL_KEYWORD_EXTERN;
 
 String_View LL_KEYWORD_UINT;
 String_View LL_KEYWORD_UINT8;
@@ -108,6 +109,7 @@ String_View LL_KEYWORD_FLOAT32;
 String_View LL_KEYWORD_FLOAT64;
 String_View LL_KEYWORD_FLOAT;
 String_View LL_KEYWORD_STRING;
+String_View LL_KEYWORD_VOID;
 
 Compiler_Context ll_compiler_context_create() {
 	Compiler_Context result = { 0 };
@@ -119,6 +121,7 @@ Compiler_Context ll_compiler_context_create() {
 	LL_KEYWORD_DO = ll_intern_string(&result, str_lit("do"));
 	LL_KEYWORD_MATCH = ll_intern_string(&result, str_lit("match"));
 	LL_KEYWORD_STRUCT = ll_intern_string(&result, str_lit("struct"));
+	LL_KEYWORD_EXTERN = ll_intern_string(&result, str_lit("extern"));
 
 	LL_KEYWORD_UINT = ll_intern_string(&result, str_lit("uint"));
 	LL_KEYWORD_UINT8 = ll_intern_string(&result, str_lit("uint8"));
@@ -135,6 +138,7 @@ Compiler_Context ll_compiler_context_create() {
 	LL_KEYWORD_FLOAT64 = ll_intern_string(&result, str_lit("float64"));
 	LL_KEYWORD_FLOAT = ll_intern_string(&result, str_lit("float"));
 	LL_KEYWORD_STRING = ll_intern_string(&result, str_lit("string"));
+	LL_KEYWORD_VOID = ll_intern_string(&result, str_lit("void"));
 
 	return result;
 }

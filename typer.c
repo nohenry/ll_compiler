@@ -137,12 +137,13 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
 	return res;
 }
 
-LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* return_type, LL_Type** parameter_types, size_t parameter_count) {
+LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* return_type, LL_Type** parameter_types, size_t parameter_count, bool is_variadic) {
 	LL_Type_Function fn_type = {
 		.base = { .kind = LL_TYPE_FUNCTION },
 		.return_type = return_type,
 		.parameter_count = parameter_count,
 		.parameters = parameter_types,
+		.is_variadic = is_variadic,
 	};
 
 	LL_Type* res;
@@ -151,6 +152,7 @@ LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* re
 	if (t) {
 		res = *t;
 	} else {
+		fn_type.parameters = arena_memdup(&cc->arena, fn_type.parameters, sizeof(*fn_type.parameters) * fn_type.parameter_count);
 		res = arena_memdup(&cc->arena, &fn_type, sizeof(fn_type));
 		MAP_PUT(typer->interned_types, res, res, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
 	}
@@ -168,10 +170,18 @@ LL_Type* ll_typer_implicit_cast_tofrom(Compiler_Context* cc, LL_Typer* typer, LL
 	} else if (from == typer->ty_anyint) {
 		if (to->kind == LL_TYPE_FLOAT) return to;
 	} else if (to->kind == LL_TYPE_INT) {
+		if (from->kind == LL_TYPE_INT) return to;
+		else if (from->kind == LL_TYPE_UINT) return to;
+		else if (from->kind == LL_TYPE_FLOAT) return to;
+	} else if (to->kind == LL_TYPE_UINT) {
+		if (from->kind == LL_TYPE_INT) return to;
+		else if (from->kind == LL_TYPE_UINT) return to;
+		else if (from->kind == LL_TYPE_FLOAT) return to;
+	} else if (from->kind == LL_TYPE_INT) {
 		if (to->kind == LL_TYPE_INT) return to;
 		else if (to->kind == LL_TYPE_UINT) return to;
 		else if (to->kind == LL_TYPE_FLOAT) return to;
-	} else if (to->kind == LL_TYPE_UINT) {
+	} else if (from->kind == LL_TYPE_UINT) {
 		if (to->kind == LL_TYPE_INT) return to;
 		else if (to->kind == LL_TYPE_UINT) return to;
 		else if (to->kind == LL_TYPE_FLOAT) return to;
@@ -231,6 +241,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 		LL_Scope_Simple* var_scope = arena_alloc(&cc->arena, sizeof(LL_Scope_Simple));
 		var_scope->kind = LL_SCOPE_KIND_LOCAL;
 		var_scope->ident = var_decl->ident;
+		var_scope->decl = (Ast_Base*)var_decl;
 		ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope);
 
 		if (var_decl->initializer) {
@@ -257,21 +268,36 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 		LL_Scope* fn_scope = arena_alloc(&cc->arena, sizeof(LL_Scope));
 		fn_scope->kind = LL_SCOPE_KIND_FUNCTION;
 		fn_scope->ident = fn_decl->ident;
+		fn_scope->decl = (Ast_Base*)fn_decl;
 		memset(&fn_scope->children, 0, sizeof(fn_scope->children));
 
 		ll_typer_scope_put(cc, typer, fn_scope);
-
+		bool did_variadic = false;
 
 		typer->current_scope = fn_scope;
 		if (fn_decl->parameters.count) {
 			types = alloca(sizeof(*types) * fn_decl->parameters.count);
 			for (i = 0; i < fn_decl->parameters.count; ++i) {
-				types[i] = ll_typer_get_type_from_typename(cc, typer, fn_decl->parameters.items[i].type);
+				if (did_variadic) {
+					fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: No parameters can be after variadic parameter\n");
+					break;
+				}
+				if (fn_decl->parameters.items[i].flags & LL_PARAMETER_FLAG_VARIADIC) {
+					if (fn_decl->parameters.items[i].type) {
+						fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: Typed variadic parameter not supported yet\n");
+					}
+					did_variadic = true;
+					types[i] = NULL;
+				} else {
+					types[i] = ll_typer_get_type_from_typename(cc, typer, fn_decl->parameters.items[i].type);
+				}
 				fn_decl->parameters.items[i].ident->base.type = types[i];
+				fn_decl->parameters.items[i].ir_index = i;
 					
 				LL_Scope_Simple* param_scope = arena_alloc(&cc->arena, sizeof(LL_Scope_Simple));
 				param_scope->kind = LL_SCOPE_KIND_PARAMETER;
 				param_scope->ident = fn_decl->parameters.items[i].ident;
+				param_scope->decl = (Ast_Base*)&fn_decl->parameters.items[i];
 
 				ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope);
 			}
@@ -279,12 +305,17 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
 		LL_Type* return_type = ll_typer_get_type_from_typename(cc, typer, fn_decl->return_type);
 
-		LL_Type* fn_type = ll_typer_get_fn_type(cc, typer, return_type, types, fn_decl->parameters.count);
+		LL_Type* fn_type = ll_typer_get_fn_type(cc, typer, return_type, types, fn_decl->parameters.count, did_variadic);
 		stmt->type = fn_type;
 		fn_decl->ident->base.type = fn_type;
 
 
-		if (fn_decl->body) ll_typer_type_statement(cc, typer, fn_decl->body);
+		if (fn_decl->body) {
+			if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
+				fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: Extern function shouldn't have a body\n");
+			}
+			ll_typer_type_statement(cc, typer, fn_decl->body);
+		}
 		typer->current_scope = fn_scope->parent;
 
 		break;
@@ -369,6 +400,44 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		
 		break;
 	}
+	case AST_KIND_INVOKE: {
+		int pi, di;
+		Ast_Invoke* inv = AST_AS(expr, Ast_Invoke);
+		LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, inv->expr);
+		if (fn_type->base.kind != LL_TYPE_FUNCTION) {
+			fprintf(stderr, "\x1b[31;1mTODO:\x1b[0m expression is not callable\n");
+			return NULL;
+		}
+
+		for (pi = 0, di = 0; pi < inv->arguments.count && (fn_type->is_variadic || di < fn_type->parameter_count); ++pi, ++di) {
+			LL_Type* provided_type = ll_typer_type_expression(cc, typer, inv->arguments.items[pi]);
+			if (fn_type->is_variadic && di >= fn_type->parameter_count - 1) {
+				continue;
+			}
+
+			LL_Type* declared_type = fn_type->parameters[di];
+
+			if (!ll_typer_implicit_cast_tofrom(cc, typer, provided_type, declared_type)) {
+				fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: provided argument type does not match declared type of function! Expected ");
+				ll_print_type_raw(declared_type, stderr);
+				fprintf(stderr, " but got ");
+				ll_print_type_raw(provided_type, stderr);
+				fprintf(stderr, "\n");
+			}
+		}
+
+		size_t expected_arg_count = fn_type->is_variadic ? (fn_type->parameter_count - 1) : fn_type->parameter_count;
+
+		if (pi < inv->arguments.count) {
+			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: expected only %zu arguments but got %zu\n", expected_arg_count, inv->arguments.count);
+		}
+		if (di < expected_arg_count) {
+			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: expected %zu arguments but only got %zu\n", expected_arg_count, inv->arguments.count);
+		}
+
+		result = fn_type->return_type;
+		break;
+	}
 	default: fprintf(stderr, "\x1b[31;1mTODO:\x1b[0m type expression %d\n", expr->kind);
 	}
 
@@ -400,9 +469,9 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT.ptr) return typer->ty_float32;
 		} else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_STRING.ptr) {
 			return typer->ty_string;
+		} else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_VOID.ptr) {
+			return typer->ty_void;
 		}
-
-		printf("badresult " FMT_SV_FMT " \n", FMT_SV_ARG(AST_AS(typename, Ast_Ident)->str));
 
 		// TODO: search identifier in symbol table
 		
@@ -458,29 +527,19 @@ void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope) 
 	size_t hash = stbds_hash_string(scope->ident->str, MAP_DEFAULT_SEED) % LEN(typer->current_scope->children);
 	LL_Scope_Map_Entry* current = typer->current_scope->children[hash];
 
-	printf("scope put " FMT_SV_FMT "\n", FMT_SV_ARG(scope->ident->str));
 	LL_Scope_Map_Entry* new_entry = arena_alloc(&cc->arena, sizeof(*new_entry));
 	new_entry->scope = scope;
 	new_entry->next = current;
 
 	typer->current_scope->children[hash] = new_entry;
 	scope->parent = typer->current_scope;
-
-
-	/* while (current) { */
-	/* 	if (string_view_eql(current->ident->str, scope->ident->str)) break; */
-	/* 	current = current->next; */
-	/* } */
-
 }
 
 LL_Scope* ll_scope_get(LL_Scope* scope, String_View symbol_name) {
 	size_t hash = stbds_hash_string(symbol_name, MAP_DEFAULT_SEED) % LEN(scope->children);
 	LL_Scope_Map_Entry* current = scope->children[hash];
-	printf("scope get " FMT_SV_FMT "\n", FMT_SV_ARG(symbol_name));
 
 	while (current) {
-		printf("check " FMT_SV_FMT " " FMT_SV_FMT "\n", FMT_SV_ARG(symbol_name), FMT_SV_ARG(current->scope->ident->str));
 		if (string_view_eql(current->scope->ident->str, symbol_name)) break;
 		current = current->next;
 	}

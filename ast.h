@@ -22,6 +22,15 @@ typedef enum {
     AST_KIND_TYPE_POINTER,
 } Ast_Kind;
 
+typedef enum {
+	LL_STORAGE_CLASS_EXTERN = (1 << 0),
+	LL_STORAGE_CLASS_STATIC = (1 << 1),
+} LL_Storage_Class;
+
+typedef enum {
+	LL_PARAMETER_FLAG_VARIADIC = (1 << 0),
+} LL_Parameter_Flags;
+
 struct ll_type;
 
 typedef struct {
@@ -45,6 +54,8 @@ typedef struct {
 	Ast_Base base;
 	Ast_Base* type;
 	Ast_Ident* ident;
+	LL_Parameter_Flags flags;
+	uint32_t ir_index;
 } Ast_Parameter;
 
 typedef struct {
@@ -87,6 +98,8 @@ typedef struct {
 	Ast_Base* type;
 	Ast_Ident* ident;
 	Ast_Base* initializer optional;
+	LL_Storage_Class storage_class;
+	uint32_t ir_index;
 } Ast_Variable_Declaration;
 
 typedef struct {
@@ -95,6 +108,8 @@ typedef struct {
 	Ast_Ident* ident;
 	Ast_Parameter_List parameters;
 	Ast_Base* body optional;
+	LL_Storage_Class storage_class;
+	uint32_t ir_index;
 } Ast_Function_Declaration;
 
 typedef struct {

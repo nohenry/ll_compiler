@@ -77,18 +77,35 @@ Ast_Base* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
 Ast_Base* parser_parse_statement(Compiler_Context* cc, LL_Parser* parser) {
 	Ast_Base* result;
 	LL_Token token;
+	LL_Storage_Class storage_class = 0;
 	PEEK(&token);
 
+START_SWITCH:
 	switch (token.kind) {
 		case '{':
 			result = (Ast_Base*)parser_parse_block(cc, parser);
 			break;
+		case LL_TOKEN_KIND_IDENT:
+			while (PEEK(&token) && token.kind == LL_TOKEN_KIND_IDENT) {
+				if (token.str.ptr == LL_KEYWORD_EXTERN.ptr) {
+					storage_class |= LL_STORAGE_CLASS_EXTERN;
+				} else {
+					goto HANDLE_IDENT;
+				}
+				CONSUME();
+				PEEK(&token);
+			}
+
+			goto START_SWITCH;
+
+			break;
 		default:
+HANDLE_IDENT:
 			result = parser_parse_expression(cc, parser, 0, true);
 
 			PEEK(&token);
 			if (token.kind == LL_TOKEN_KIND_IDENT)
-				result = parser_parse_declaration(cc, parser, result);
+				result = parser_parse_declaration(cc, parser, result, storage_class);
 			else
 				EXPECT(';', &token);
 
@@ -114,7 +131,17 @@ Ast_Block* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
 
 Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
 	LL_Token token;
-	Ast_Base* type = parser_parse_expression(cc, parser, 0, true);
+	PEEK(&token);
+	Ast_Base* type;
+	LL_Parameter_Flags flags = 0;
+
+	if (token.kind == LL_TOKEN_KIND_RANGE) {
+		CONSUME();
+		type = NULL;
+		flags |= LL_PARAMETER_FLAG_VARIADIC;	
+	} else {
+		type = parser_parse_expression(cc, parser, 0, true);
+	}
 
 	if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
 	Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str }));
@@ -123,10 +150,11 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
 		.base.kind = AST_KIND_PARAMETER,
 		.type = type,
 		.ident = ident,
+		.flags = flags,
 	};
 }
 
-Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_Base* type) {
+Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_Base* type, LL_Storage_Class storage_class) {
 	LL_Token token;
 	if (!type) {
 		type = parser_parse_expression(cc, parser, 0, true);
@@ -186,12 +214,14 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 			.ident = ident,
 			.parameters = parameters,
 			.body = body_or_init,
+			.storage_class = storage_class,
 		}));
 	} else {
 		return CREATE_NODE(AST_KIND_VARIABLE_DECLARATION, ((Ast_Variable_Declaration){
 			.type = type,
 			.ident = ident,
 			.initializer = body_or_init,
+			.storage_class = storage_class,
 		}));
 	}
 }
@@ -339,6 +369,11 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
     return result;
 }
 
+void print_storage_class(LL_Storage_Class storage_class) {
+	if (storage_class & LL_STORAGE_CLASS_EXTERN) printf("extern ");
+	if (storage_class & LL_STORAGE_CLASS_STATIC) printf("static ");
+}
+
 const char* get_node_kind(Ast_Base* node) {
 	switch (node->kind) {
 		case AST_KIND_LITERAL_INT: return "Int_Literal";
@@ -364,8 +399,8 @@ void print_node_value(Ast_Base* node) {
 		case AST_KIND_PRE_OP: lexer_print_token_raw(&AST_AS(node, Ast_Operation)->op); break;
 		case AST_KIND_INVOKE: break;
 		case AST_KIND_BLOCK: break;
-		case AST_KIND_VARIABLE_DECLARATION: break;
-		case AST_KIND_FUNCTION_DECLARATION: break;
+		case AST_KIND_VARIABLE_DECLARATION: print_storage_class(AST_AS(node, Ast_Variable_Declaration)->storage_class); break;
+		case AST_KIND_FUNCTION_DECLARATION: print_storage_class(AST_AS(node, Ast_Function_Declaration)->storage_class); break;
 		case AST_KIND_PARAMETER: break;
 		case AST_KIND_TYPE_POINTER: break;
 	}
@@ -411,7 +446,8 @@ void print_node(Ast_Base* node, int indent) {
 			break;
 
 		case AST_KIND_PARAMETER:
-			print_node(AST_AS(node, Ast_Variable_Declaration)->type, indent + 1);
+			if (AST_AS(node, Ast_Variable_Declaration)->type)
+				print_node(AST_AS(node, Ast_Variable_Declaration)->type, indent + 1);
 			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1);
 			break;
 

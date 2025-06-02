@@ -84,6 +84,7 @@ void arena_reset(Arena *a);
 void arena_rewind(Arena *a, Arena_Mark m);
 void arena_free(Arena *a);
 void arena_trim(Arena *a);
+size_t arena_strlen(const char *s);
 
 #ifndef ARENA_DA_INIT_CAP
 #define ARENA_DA_INIT_CAP 256
@@ -126,6 +127,22 @@ void arena_trim(Arena *a);
         (da)->count += (new_items_count);                                                             \
     } while (0)
 
+#define arena_da_reserve(a, da, new_count)                                       \
+    do {                                                                                              \
+        if ((new_count) > (da)->capacity) {                                       \
+            size_t new_capacity = (da)->capacity;                                                     \
+            if (new_capacity == 0) new_capacity = ARENA_DA_INIT_CAP;                                  \
+            while ((new_count) > new_capacity) new_capacity *= 2;                 \
+            (da)->items = cast_ptr((da)->items)arena_realloc(                                         \
+                (a), (da)->items,                                                                     \
+                (da)->capacity*sizeof(*(da)->items),                                                  \
+                new_capacity*sizeof(*(da)->items));                                                   \
+            (da)->capacity = new_capacity;                                                            \
+        }                                                                                             \
+        (da)->count = (new_count);                                                             \
+    } while (0)
+
+
 // Append a sized buffer to a string builder
 #define arena_sb_append_buf arena_da_append_many
 
@@ -140,6 +157,22 @@ void arena_trim(Arena *a);
 // Append a single NULL character at the end of a string builder. So then you can
 // use it a NULL-terminated C string
 #define arena_sb_append_null(a, sb) arena_da_append(a, sb, 0)
+
+#define arena_sb_sprintf(a, sb, fmt, ...)																 \
+	do { 								 																 \
+		int count = snprintf((sb)->items + (sb)->count, (sb)->capacity - (sb)->count, fmt, __VA_ARGS__); \
+		if (count + 1 > (sb)->capacity - (sb)->count) {													 \
+            size_t new_capacity = (sb)->capacity;                                                     	 \
+            if (new_capacity == 0) new_capacity = ARENA_DA_INIT_CAP;                                  	 \
+            while (((sb)->count + count + 1) > new_capacity) new_capacity *= 2;                 	 \
+            (sb)->items = cast_ptr((sb)->items)arena_realloc(                                 			 \
+                (a), (sb)->items,                                                             			 \
+                (sb)->capacity*sizeof(*(sb)->items),                                          			 \
+                new_capacity*sizeof(*(sb)->items));                                           			 \
+			count = snprintf((sb)->items + (sb)->count, (sb)->capacity - (sb)->count, fmt, __VA_ARGS__); \
+		} \
+		(sb)->count += count; \
+	} while (0)
 
 #endif // ARENA_H_
 
