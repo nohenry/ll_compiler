@@ -12,15 +12,25 @@ main:                                   # @main
 	.cfi_offset rbp, -16
 	mov	rbp, rsp
 	.cfi_def_cfa_register rbp
-	sub	rsp, 16
+	sal ax, 1
+	rol ax, 1
+
+	mov	byte ptr [rbp], 0x7
+	mov	word ptr [rbp], 0x7
+	mov	dword ptr [rbp], 0x7
+	mov	qword ptr [rbp], 0x7
+	mov	byte ptr [r8], 0x7
+	mov	word ptr [r8], 0x7
+	mov	dword ptr [r8], 0x7
+	mov	qword ptr [r8], 0x7
+
 	mov	dword ptr [rbp - 4], 0
 	mov	dword ptr [rbp - 8], edi
 	mov	qword ptr [rbp - 16], rsi
-	lea	rdi, [rip + .L.str]
-	mov	al, 0
-	call	printf@PLT
+	mov	dword ptr [rbp - 20], 12
+	mov	eax, dword ptr [rbp - 20]
+	mov	dword ptr [rbp - 24], eax
 	xor	eax, eax
-	add	rsp, 16
 	pop	rbp
 	.cfi_def_cfa rsp, 8
 	ret
@@ -28,13 +38,5 @@ main:                                   # @main
 	.size	main, .Lfunc_end0-main
 	.cfi_endproc
                                         # -- End function
-	.type	.L.str,@object                  # @.str
-	.section	.rodata.str1.1,"aMS",@progbits,1
-.L.str:
-	.asciz	"Hello\n"
-	.size	.L.str, 7
-
-	.ident	"Ubuntu clang version 14.0.0-1ubuntu1.1"
+	.ident	"clang version 14.0.6"
 	.section	".note.GNU-stack","",@progbits
-	.addrsig
-	.addrsig_sym printf

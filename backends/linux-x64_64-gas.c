@@ -33,10 +33,6 @@ static Layout get_layout(LL_Type* ty) {
 	}
 }
 
-uint64_t align_forward(uint64_t offset, uint64_t alignment) {
-      return ((offset + alignment - 1) & (~(alignment - 1)));
-}
-
 static void write_operand(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand operand) {
 	switch (operand & LL_IR_OPERAND_TYPE_MASK) {
 	case LL_IR_OPERAND_IMMEDIATE_BIT: arena_sb_sprintf(&cc->arena, &b->output, "%d", operand & LL_IR_OPERAND_VALUE_MASK); break;
