@@ -60,7 +60,11 @@ void linux_x86_64_elf_append_op_segment_u64(Compiler_Context* cc, Linux_x86_64_E
 #define X86_64_OPCODE(count, bytes) ((uint32_t)((count << 24u) | bytes & 0xFFFFFFu))
 #define X86_64_OPCODE_MOV X86_64_OPCODE(1, 0xC7)
 
-#define X86_64_OPERAND_MI(opcode, size, base, offset, immediate) linux_x86_64_elf_operand_mi(cc, b, opcode, X86_MEMORY_WIDTH_ ## size, X86_OPERAND_REGISTER_ ## base, offset, immediate)
+#define X86_64_OPERAND_MI_MEM(opcode, size, base, offset, immediate) linux_x86_64_elf_operand_mi(cc, b, opcode, X86_MEMORY_WIDTH_ ## size, X86_OPERAND_REGISTER_ ## base, offset, immediate, 0)
+#define X86_64_OPERAND_MI_MEM_EXT(opcode, ext, size, base, offset, immediate) linux_x86_64_elf_operand_mi(cc, b, opcode, X86_MEMORY_WIDTH_ ## size, X86_OPERAND_REGISTER_ ## base, offset, immediate, ext)
+#define X86_64_OPERAND_MI_REG(opcode, size, base, offset, immediate) linux_x86_64_elf_operand_mi(cc, b, opcode, X86_MEMORY_WIDTH_ ## size, X86_OPERAND_REGISTER_ ## base, offset, immediate, 0)
+#define X86_64_OPERAND_MI_REG_EXT(opcode, ext, size, base, offset, immediate) linux_x86_64_elf_operand_mi(cc, b, opcode, X86_MEMORY_WIDTH_ ## size, X86_OPERAND_REGISTER_ ## base, offset, immediate, ext)
+
 #define X86_64_OPERAND_ZO(opcode)
 
 typedef enum {
@@ -89,7 +93,7 @@ typedef enum {
 	X86_MEMORY_WIDTH_qword,
 } X86_Memory_Width;
 
-void linux_x86_64_elf_operand_mi(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, uint32_t opcode, X86_Memory_Width width, X86_Operand_Register base, int64_t offset, int64_t immediate) {
+void linux_x86_64_elf_operand_mi(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, uint32_t opcode, X86_Memory_Width width, X86_Operand_Register base, int64_t offset, int64_t immediate, uint8_t ext) {
 	uint8_t mod;
 	if (offset >= INT8_MIN && offset <= INT8_MAX) mod = 1;
 	else if (offset >= INT32_MIN && offset <= INT32_MAX) mod = 2;
@@ -142,25 +146,6 @@ void linux_x86_64_elf_operand_mi(Compiler_Context* cc, Linux_x86_64_Elf_Backend*
 	case X86_MEMORY_WIDTH_dword: X86_64_APPEND_OP_SEGMENT(PUN((int32_t)immediate, uint32_t)); break;
 	case X86_MEMORY_WIDTH_qword: X86_64_APPEND_OP_SEGMENT(PUN((int32_t)immediate, uint32_t)); break;
 	}
-
-	/* switch (base) { */
-	/* 	case X86_OPERAND_REGISTER_rax: rm = 0; b = 0; break; */
-	/* 	case X86_OPERAND_REGISTER_rbx: rm = 3; b = 0; break; */
-	/* 	case X86_OPERAND_REGISTER_rcx: rm = 1; b = 0; break; */
-	/* 	case X86_OPERAND_REGISTER_rdx: rm = 2; b = 0; break; */
-	/* 	case X86_OPERAND_REGISTER_rsp: rm = 4; b = 0; break; */
-	/* 	case X86_OPERAND_REGISTER_rbp: rm = 5; b = 0; break; */
-	/* 	case X86_OPERAND_REGISTER_rsi: rm = 6; b = 0; break; */
-	/* 	case X86_OPERAND_REGISTER_rdi: rm = 7; b = 0; break; */
-	/* 	case X86_OPERAND_REGISTER_r8:  rm = 0; b = 1; break; */
-	/* 	case X86_OPERAND_REGISTER_r9:  rm = 3; b = 1; break; */
-	/* 	case X86_OPERAND_REGISTER_r10: rm = 1; b = 1; break; */
-	/* 	case X86_OPERAND_REGISTER_r11: rm = 2; b = 1; break; */
-	/* 	case X86_OPERAND_REGISTER_r12: rm = 4; b = 1; break; */
-	/* 	case X86_OPERAND_REGISTER_r13: rm = 5; b = 1; break; */
-	/* 	case X86_OPERAND_REGISTER_r14: rm = 6; b = 1; break; */
-	/* 	case X86_OPERAND_REGISTER_r15: rm = 7; b = 1; break; */
-	/* } */
 }
 
 static Linux_x86_64_Elf_Layout linux_x86_64_elf_get_layout(LL_Type* ty) {
@@ -246,9 +231,26 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 		case LL_IR_OPCODE_RET: break;
 		case LL_IR_OPCODE_STORE:
 							   printf("here\n");
-			X86_64_OPERAND_MI(X86_64_OPCODE_MOV, qword, rbp, -0x10, 100);
-			X86_64_OPERAND_MI(X86_64_OPCODE_MOV, word, rbp, 0xA0, 100);
-			X86_64_OPERAND_MI(X86_64_OPCODE_MOV, dword, rbp, -0x90, 100);
+			X86_64_OPERAND_MI_MEM(X86_64_OPCODE_MOV, qword, rbp, -0x10, 100);
+
+			
+			X86_64_APPEND_OP_SEGMENT((uint8_t)0x48u);
+			X86_64_APPEND_OP_SEGMENT((uint8_t)0xb8u);
+			X86_64_APPEND_OP_SEGMENT(PUN((int64_t)0x04u, uint64_t));
+
+			X86_64_APPEND_OP_SEGMENT((uint8_t)0xb8u);
+			/* X86_64_APPEND_OP_SEGMENT((uint8_t)0xc0u); */
+			X86_64_APPEND_OP_SEGMENT(PUN((int32_t)0x04u, uint32_t));
+
+			X86_64_APPEND_OP_SEGMENT((uint8_t)0xc7u);
+			X86_64_APPEND_OP_SEGMENT((uint8_t)0xc3u);
+			X86_64_APPEND_OP_SEGMENT(PUN((int32_t)0x04u, uint32_t));
+
+			/* c7 c0 04 00 00 00 */
+			/* 48 c7 c0 04 00 00 00 */
+
+			/* X86_64_OPERAND_MI_MEM(X86_64_OPCODE_MOV, word, rbp, 0xA0, 100); */
+			/* X86_64_OPERAND_MI_MEM(X86_64_OPCODE_MOV, dword, rbp, -0x90, 100); */
 			/* X86_64_OPERAND_MI(X86_64_OPCODE_MOV, byte, rbp, 0x10, 100); */
 			/* arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "mov "); */
 			/* write_operand(cc, b, bir, operands[0]); */

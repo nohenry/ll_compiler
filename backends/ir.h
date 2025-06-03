@@ -42,6 +42,7 @@ typedef enum {
 	LL_IR_OPCODE_STORE,
 	LL_IR_OPCODE_LOAD,
 	LL_IR_OPCODE_INVOKE,
+	LL_IR_OPCODE_LEA,
 } LL_Ir_Opcode;
 
 typedef struct {

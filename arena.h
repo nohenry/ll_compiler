@@ -169,6 +169,7 @@ size_t arena_strlen(const char *s);
                 (a), (sb)->items,                                                             			 \
                 (sb)->capacity*sizeof(*(sb)->items),                                          			 \
                 new_capacity*sizeof(*(sb)->items));                                           			 \
+            (sb)->capacity = new_capacity;                                                            \
 			count = snprintf((sb)->items + (sb)->count, (sb)->capacity - (sb)->count, fmt, __VA_ARGS__); \
 		} \
 		(sb)->count += count; \

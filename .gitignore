@@ -1,2 +1,8 @@
-main
+./main
+*.o
+./out.bin
+./out.s
+./test.s
+
 tags
+

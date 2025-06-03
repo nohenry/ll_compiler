@@ -48,6 +48,7 @@ static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* 
 		case LL_IR_OPCODE_RET: printf(INDENT "ret"); break;
 		case LL_IR_OPCODE_STORE: printf(INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); i += 2; break;
 		case LL_IR_OPCODE_LOAD: printf(INDENT "load " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); i += 2; break;
+		case LL_IR_OPCODE_LEA: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); i += 2; break;
 		case LL_IR_OPCODE_INVOKE: {
 			uint32_t count = operands[2];
 			printf(INDENT OPERAND_FMT " = call " OPERAND_FMT " ", OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[0]));
@@ -172,11 +173,15 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 			break;
 		}
 		case '*': {
-			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, true);
+			if (!lvalue) {
+				result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, result);
+			}
 			break;
 		}
 		case '&': {
 			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, true);
+			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
 			break;
 		}
 		default: break;

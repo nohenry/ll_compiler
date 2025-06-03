@@ -37,20 +37,21 @@ static void write_operand(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL_
 	switch (operand & LL_IR_OPERAND_TYPE_MASK) {
 	case LL_IR_OPERAND_IMMEDIATE_BIT: arena_sb_sprintf(&cc->arena, &b->output, "%d", operand & LL_IR_OPERAND_VALUE_MASK); break;
 	case LL_IR_OPERAND_REGISTER_BIT: {
-		/* LL_Type* type = b->fn->registers.items[operand & LL_IR_OPERAND_VALUE_MASK].type; */
-		/* switch (type->kind) { */
-		/* case LL_TYPE_INT: */
-		/* case LL_TYPE_UINT: */
-		/* 	switch (type->width) { */
-		/* 	case 8: arena_sb_append_cstr(&cc->arena, &b->output, "al"); break; */
-		/* 	case 16: arena_sb_append_cstr(&cc->arena, &b->output, "ax"); break; */
-		/* 	case 32: arena_sb_append_cstr(&cc->arena, &b->output, "eax"); break; */
-		/* 	case 64: arena_sb_append_cstr(&cc->arena, &b->output, "rax"); break; */
-		/* 	default: assert(false); */
-		/* 	} */
-		/* 	break; */
-		/* default: assert(false); */
-		/* } */
+		LL_Type* type = b->fn->registers.items[operand & LL_IR_OPERAND_VALUE_MASK].type;
+		switch (type->kind) {
+		case LL_TYPE_INT:
+		case LL_TYPE_UINT:
+			switch (type->width) {
+			case 8: arena_sb_append_cstr(&cc->arena, &b->output, "al"); break;
+			case 16: arena_sb_append_cstr(&cc->arena, &b->output, "ax"); break;
+			case 32: arena_sb_append_cstr(&cc->arena, &b->output, "eax"); break;
+			case 64: arena_sb_append_cstr(&cc->arena, &b->output, "rax"); break;
+			default: assert(false);
+			}
+			break;
+		case LL_TYPE_POINTER: arena_sb_append_cstr(&cc->arena, &b->output, "rax"); break;
+		default: assert(false);
+		}
 		break;
 	}
 	case LL_IR_OPERAND_LOCAL_BIT: {
@@ -119,6 +120,11 @@ static void generate_block(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL
 			i += 3 + count;
 		   	break;
 		}
+		case LL_IR_OPCODE_LEA:
+			arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "lea rax, ");
+			write_operand(cc, b, bir, operands[1]);
+			arena_sb_append_cstr(&cc->arena, &b->output, "\n");
+			break;
 		}
 	}
 }
