@@ -112,17 +112,78 @@ typedef enum {
 /* 31    24 23    16 15     8 7      0 */
 /* 00000000 00000000 00000000 00000000 */
 
-#define mod_rm(r) ((((uint32_t)OPERANDS_TYPE_modrm) << 5) | ((uint32_t)r) & 0x1F)
-#define mod_reg(r) ((((uint32_t)OPERANDS_TYPE_modreg) << 5) | ((uint32_t)r) & 0x1F)
+#define mod_rm(r) ((((uint32_t)OPERANDS_TYPE_modrm) << 5) | ((uint32_t)r) & 0xF)
+#define mod_reg(r) ((((uint32_t)OPERANDS_TYPE_modreg) << 5) | ((uint32_t)r) & 0xF)
 #define add_to_opcode (((uint32_t)OPERANDS_TYPE_add_to_opcode) << 5)
 #define imm (((uint32_t)OPERANDS_TYPE_imm) << 5)
 
 enum {
-	OPCODE_MOVE,
+	OPCODE_ADD,
+	OPCODE_ADC,
+	OPCODE_AND,
+	OPCODE_CMC,
+	OPCODE_CMP,
+	OPCODE_CMPSB,
+	OPCODE_CMPSW,
+	OPCODE_CMPSD,
+	OPCODE_CMPSQ,
+	OPCODE_DEC,
+	OPCODE_HLT,
+	OPCODE_IN,
+	OPCODE_INSB,
+	OPCODE_INSW,
+	OPCODE_INSD,
+	OPCODE_INC,
+	OPCODE_INT,
+	OPCODE_INT1,
+	OPCODE_INT3,
+	OPCODE_INTO,
+	OPCODE_IMUL,
+
+	OPCODE_JMP,
+	OPCODE_JA,
+	OPCODE_JAE,
+	OPCODE_JB,
+	OPCODE_JBE,
+	OPCODE_JC,
+	OPCODE_JCXZ,
+	OPCODE_JECXZ,
+	OPCODE_JRCXZ,
+	OPCODE_JE,
+	OPCODE_JG,
+	OPCODE_JGE,
+	OPCODE_JL,
+	OPCODE_JLE,
+
+	OPCODE_LOOP,
+	OPCODE_LOOPE,
+	OPCODE_LOOPNE,
+
+	OPCODE_MOV,
+	OPCODE_MOVSB,
+	OPCODE_MOVSW,
+	OPCODE_MOVSD,
+	OPCODE_MOVSQ,
+	OPCODE_MOVXSD,
+	OPCODE_OR,
+	OPCODE_OUT,
+	OPCODE_OUTSB,
+	OPCODE_OUTSW,
+	OPCODE_OUTSD,
+	OPCODE_POP,
+	OPCODE_PUSH,
+	OPCODE_RET,
+	OPCODE_RET_FAR,
 	OPCODE_SAL,
 	OPCODE_SAR,
+	OPCODE_SBB,
 	OPCODE_SHL,
 	OPCODE_SHR,
+	OPCODE_SUB,
+	OPCODE_TEST,
+	OPCODE_XCHG,
+	OPCODE_XLAT,
+	OPCODE_XOR,
 };
 
 enum {
@@ -134,22 +195,70 @@ enum {
 
 typedef struct {
 	uint32_t opcode;
-	uint32_t operands; // top 3 is Operands_Type, bottom 5 is argument
+	uint32_t operands; // top 3 is Operands_Type, next 1 is don't add rex, bottom 4 is argument
 } X86_Instruction_Variant;
 
 typedef struct {
 	X86_Instruction_Variant
+		noarg,
+		al_i8, ax_i16, eax_i32, rax_i32,
+			   ax_i8,  eax_i8,
+		       ax_r16, eax_r32, rax_r64,
+		al_dx, ax_dx,  eax_dx,
+		rm8, rm16,  rm32, rm64,
+		rm8_cl, rm16_cl,  rm32_cl, rm64_cl,
 		rm8_r8, rm16_r16, rm32_r32, rm64_r64,
+		r16, r32, r64,
 		r8_rm8, r16_rm16, r32_rm32, r64_rm64,
 		r8_i8, r16_i16, r32_i32, r64_i64,
-		rm8_i8, rm16_i16, rm32_i32, rm64_i32, rm16_i8, rm32_i8, rm64_i8;
+		rm8_i8, rm16_i16, rm32_i32, rm64_i32, rm16_i8, rm32_i8, rm64_i8,
+		i8, i16, i32,
+		rel8, rel16, rel32,
+		r16_rm16_i8, r32_rm32_i8, r64_rm64_i8, 
+		r16_rm16_i16, r32_rm32_i32, r64_rm64_i32;
 } X86_Instruction;
 
 typedef enum {
+	/* X86_VARIANT_KIND_rm8, */
+	/* X86_VARIANT_KIND_rm16, */
+	/* X86_VARIANT_KIND_rm32, */
+	/* X86_VARIANT_KIND_rm64, */
+	X86_VARIANT_KIND_noarg,
+
+	X86_VARIANT_KIND_al_i8,
+   	X86_VARIANT_KIND_ax_i16,
+   	X86_VARIANT_KIND_eax_i32,
+   	X86_VARIANT_KIND_rax_i32,
+
+   	X86_VARIANT_KIND_ax_i8,
+   	X86_VARIANT_KIND_eax_i8,
+
+   	X86_VARIANT_KIND_ax_r16,
+   	X86_VARIANT_KIND_eax_r32,
+   	X86_VARIANT_KIND_rax_r32,
+
+   	X86_VARIANT_KIND_al_dx,
+   	X86_VARIANT_KIND_ax_dx,
+   	X86_VARIANT_KIND_eax_dx,
+
+	X86_VARIANT_KIND_rm8,
+	X86_VARIANT_KIND_rm16,
+	X86_VARIANT_KIND_rm32,
+	X86_VARIANT_KIND_rm64,
+
 	X86_VARIANT_KIND_rm8_r8,
 	X86_VARIANT_KIND_rm16_r16,
 	X86_VARIANT_KIND_rm32_r32,
 	X86_VARIANT_KIND_rm64_r64,
+
+	X86_VARIANT_KIND_rm8_cl,
+	X86_VARIANT_KIND_rm16_cl,
+	X86_VARIANT_KIND_rm32_cl,
+	X86_VARIANT_KIND_rm64_cl,
+
+	X86_VARIANT_KIND_r16,
+	X86_VARIANT_KIND_r32,
+	X86_VARIANT_KIND_r64,
 
 	X86_VARIANT_KIND_r8_rm8,
 	X86_VARIANT_KIND_r16_rm16,
@@ -168,10 +277,151 @@ typedef enum {
 	X86_VARIANT_KIND_rm16_i8,
 	X86_VARIANT_KIND_rm32_i8,
 	X86_VARIANT_KIND_rm64_i8,
+
+	X86_VARIANT_KIND_i8,
+	X86_VARIANT_KIND_i16,
+	X86_VARIANT_KIND_i32,
+
+	X86_VARIANT_KIND_rel8,
+	X86_VARIANT_KIND_rel16,
+	X86_VARIANT_KIND_rel32,
+
+	X86_VARIANT_KIND_r16_rm16_i8,
+   	X86_VARIANT_KIND_r32_rm32_i8,
+	X86_VARIANT_KIND_r64_rm64_i8,
+	X86_VARIANT_KIND_r16_rm16_i16,
+	X86_VARIANT_KIND_r32_rm32_i32,
+   	X86_VARIANT_KIND_r64_rm64_i32,
 } X86_Variant_Kind;
 
+#define X86_OPCODE_MAKE_ARITHMETIC(op, offset, modreg) \
+	[op] = { \
+		.al_i8  	= { .opcode = 0x04u + offset, .operands = MAKE_OPERANDS(imm) }, \
+		.ax_i16  	= { .opcode = 0x05u + offset, .operands = MAKE_OPERANDS(imm) }, \
+		.eax_i32  	= { .opcode = 0x05u + offset, .operands = MAKE_OPERANDS(imm) }, \
+		.rax_i32  	= { .opcode = 0x05u + offset, .operands = MAKE_OPERANDS(imm) }, \
+ \
+		.rm8_i8 	= { .opcode = 0x80u, .operands = MAKE_OPERANDS(mod_rm(modreg), imm) }, \
+		.rm16_i16	= { .opcode = 0x81u, .operands = MAKE_OPERANDS(mod_rm(modreg), imm) }, \
+		.rm32_i32 	= { .opcode = 0x81u, .operands = MAKE_OPERANDS(mod_rm(modreg), imm) }, \
+		.rm64_i32 	= { .opcode = 0x81u, .operands = MAKE_OPERANDS(mod_rm(modreg), imm) }, \
+ \
+		.rm16_i8 	= { .opcode = 0x83u, .operands = MAKE_OPERANDS(mod_rm(modreg), imm) }, \
+		.rm32_i8 	= { .opcode = 0x83u, .operands = MAKE_OPERANDS(mod_rm(modreg), imm) }, \
+		.rm64_i8 	= { .opcode = 0x83u, .operands = MAKE_OPERANDS(mod_rm(modreg), imm) }, \
+ \
+		.rm8_r8  	= { .opcode = 0x00u + offset, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, \
+		.rm16_r16  	= { .opcode = 0x01u + offset, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, \
+		.rm32_r32  	= { .opcode = 0x01u + offset, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, \
+		.rm64_r64  	= { .opcode = 0x01u + offset, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, \
+ \
+		.r8_rm8  	= { .opcode = 0x02u + offset, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, \
+		.r16_rm16  	= { .opcode = 0x03u + offset, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, \
+		.r32_rm32  	= { .opcode = 0x03u + offset, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, \
+		.r64_rm64  	= { .opcode = 0x03u + offset, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, \
+	}
+
+#define X86_OPCODE_MAKE_Jcc(op, code) \
+	[op] = { 							\
+		.rel8  	= { .opcode = code, .operands = MAKE_OPERANDS(imm) }, \
+		.rel16 	= { .opcode = code, .operands = MAKE_OPERANDS(imm) }, \
+		.rel32 	= { .opcode = code, .operands = MAKE_OPERANDS(imm) }, \
+	}
+
 const X86_Instruction instructions[] = {
-	[OPCODE_MOVE] = {
+	X86_OPCODE_MAKE_ARITHMETIC(OPCODE_ADD, 0x00u, 0u),
+	X86_OPCODE_MAKE_ARITHMETIC(OPCODE_OR,  0x04u, 1u),
+	X86_OPCODE_MAKE_ARITHMETIC(OPCODE_ADC, 0x10u, 2u),
+	X86_OPCODE_MAKE_ARITHMETIC(OPCODE_SBB, 0x14u, 3u),
+	X86_OPCODE_MAKE_ARITHMETIC(OPCODE_AND, 0x20u, 4u),
+	X86_OPCODE_MAKE_ARITHMETIC(OPCODE_SUB, 0x24u, 5u),
+	X86_OPCODE_MAKE_ARITHMETIC(OPCODE_XOR, 0x30u, 6u),
+	X86_OPCODE_MAKE_ARITHMETIC(OPCODE_CMP, 0x34u, 7u),
+	[OPCODE_CMC]   = { .noarg = { .opcode = 0xF5u }, },
+	[OPCODE_CMPSB] = { .noarg = { .opcode = 0xA6u, .operands = 0x00u }, },
+	[OPCODE_CMPSW] = { .noarg = { .opcode = 0xA7u, .operands = 0x20u }, },
+	[OPCODE_CMPSD] = { .noarg = { .opcode = 0xA7u, .operands = 0x00u }, },
+	[OPCODE_CMPSQ] = { .noarg = { .opcode = 0xA7u, .operands = 0x10u }, },
+	[OPCODE_DEC] = {
+		.rm8  		= { .opcode = 0xFEu, .operands = MAKE_OPERANDS(mod_rm(1)) },
+		.rm16  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(1)) },
+		.rm32  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(1)) },
+		.rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(1)) },
+	},
+	[OPCODE_HLT] = {
+		.noarg		= { .opcode = 0xF4u },
+	},
+	[OPCODE_IMUL] = {
+		.rm8  		= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm16  		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm32  		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm64  		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+
+		.r16_rm16  	= { .opcode = 0x0FAFu, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm32  	= { .opcode = 0x0FAFu, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm64  	= { .opcode = 0x0FAFu, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+
+		.r16_rm16_i8  	= { .opcode = 0x6Bu, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm32_i8  	= { .opcode = 0x6Bu, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm64_i8  	= { .opcode = 0x6Bu, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+
+		.r16_rm16_i16  	= { .opcode = 0x69u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm32_i32  	= { .opcode = 0x69u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm64_i32  	= { .opcode = 0x69u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+	},
+	[OPCODE_IN] = {
+		.al_i8 		= { .opcode = 0xE4u, .operands = MAKE_OPERANDS(imm) },
+		.ax_i8 		= { .opcode = 0xE5u, .operands = MAKE_OPERANDS(imm) },
+		.eax_i8		= { .opcode = 0xE5u, .operands = MAKE_OPERANDS(imm) },
+		.al_dx 		= { .opcode = 0xECu, .operands = 0x00u },
+		.ax_dx 		= { .opcode = 0xEDu, .operands = 0x00u },
+		.eax_dx		= { .opcode = 0xEDu, .operands = 0x00u },
+	},
+	[OPCODE_INSB] 	= { .noarg	= { .opcode = 0x6Cu, } },
+	[OPCODE_INSW] 	= { .noarg	= { .opcode = 0x6Du, .operands = 0x20u } },
+	[OPCODE_INSD] 	= { .noarg	= { .opcode = 0x6Du, } },
+	[OPCODE_INC] = {
+		.rm8  		= { .opcode = 0xFEu, .operands = MAKE_OPERANDS(mod_rm(0)) },
+		.rm16  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(0)) },
+		.rm32  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(0)) },
+		.rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(0)) },
+	},
+
+	[OPCODE_INT] = {
+		.i8 		= { .opcode = 0xCDu, .operands = MAKE_OPERANDS(imm) },
+	},
+	[OPCODE_INT1] = {
+		.noarg 		= { .opcode = 0xF1u, .operands = 0x00u },
+	},
+	[OPCODE_INT3] = {
+		.noarg 		= { .opcode = 0xCCu, .operands = 0x00u },
+	},
+	[OPCODE_INTO] = {
+		.noarg 		= { .opcode = 0xF1u, .operands = 0x00u },
+	},
+	[OPCODE_JMP] = {
+		.rel8  		= { .opcode = 0xEBu, .operands = MAKE_OPERANDS(imm) },
+		.rel32 		= { .opcode = 0xE9u, .operands = MAKE_OPERANDS(imm) },
+		.rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		// TODO: add far jumps
+	},
+	X86_OPCODE_MAKE_Jcc(OPCODE_JA, 0x77),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JAE, 0x73),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JB, 0x72),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JBE, 0x76),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JC, 0x72),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JCXZ, 0xE3),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JECXZ, 0x67E3),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JRCXZ, 0xE3),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JE, 0x74),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JG, 0x7F),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JGE, 0x7D),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JL, 0x7C),
+	X86_OPCODE_MAKE_Jcc(OPCODE_JLE, 0x7E),
+	[OPCODE_LOOP] 	= { .rel8 = { .opcode = 0xE2u, .operands = MAKE_OPERANDS(imm) } },
+	[OPCODE_LOOPE] 	= { .rel8 = { .opcode = 0xE1u, .operands = MAKE_OPERANDS(imm) } },
+	[OPCODE_LOOPNE] = { .rel8 = { .opcode = 0xE0u, .operands = MAKE_OPERANDS(imm) } },
+	[OPCODE_MOV] = {
 		.rm8_r8  	= { .opcode = 0x88u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
 		.rm16_r16  	= { .opcode = 0x89u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
 		.rm32_r32  	= { .opcode = 0x89u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
@@ -192,45 +442,175 @@ const X86_Instruction instructions[] = {
 		.rm32_i32 	= { .opcode = 0xC7u, .operands = MAKE_OPERANDS(mod_rm(0), imm) },
 		.rm64_i32 	= { .opcode = 0xC7u, .operands = MAKE_OPERANDS(mod_rm(0), imm) },
 	},
+	[OPCODE_MOVSB] 	= { .noarg = { .opcode = 0xA4u, .operands = 0x00u }, },
+	[OPCODE_MOVSW] 	= { .noarg = { .opcode = 0xA5u, .operands = 0x20u }, },
+	[OPCODE_MOVSD] 	= { .noarg = { .opcode = 0xA5u, .operands = 0x00u }, },
+	[OPCODE_MOVSQ] 	= { .noarg = { .opcode = 0xA5u, .operands = 0x10u }, },
+	[OPCODE_MOVXSD] = {
+		.r16_rm16  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm32  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm64  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+	},
+	[OPCODE_OUT] = {
+		.al_i8 		= { .opcode = 0xE6u, .operands = MAKE_OPERANDS(imm) },
+		.ax_i8 		= { .opcode = 0xE7u, .operands = MAKE_OPERANDS(imm) },
+		.eax_i8		= { .opcode = 0xE7u, .operands = MAKE_OPERANDS(imm) },
+		.al_dx 		= { .opcode = 0xEEu, .operands = 0x00u },
+		.ax_dx 		= { .opcode = 0xEFu, .operands = 0x00u },
+		.eax_dx		= { .opcode = 0xEFu, .operands = 0x00u },
+	},
+	[OPCODE_OUTSB] 	= { .noarg	= { .opcode = 0x6Eu, } },
+	[OPCODE_OUTSW] 	= { .noarg	= { .opcode = 0x6Fu, .operands = 0x20u } },
+	[OPCODE_OUTSD] 	= { .noarg	= { .opcode = 0x6Fu, } },
+	[OPCODE_POP] = {
+		.rm16 		= { .opcode = 0x8Fu, .operands = MAKE_OPERANDS(mod_rm(0)) },
+		.rm64 		= { .opcode = 0x8Fu, .operands = MAKE_OPERANDS(mod_rm(0)) | 0x10 },
+		.r16 		= { .opcode = 0x58u, .operands = MAKE_OPERANDS(add_to_opcode) },
+		.r64 		= { .opcode = 0x58u, .operands = MAKE_OPERANDS(add_to_opcode) | 0x10 },
+	},
+	[OPCODE_PUSH] = {
+		.rm16 		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(6)) },
+		.rm64 		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(6)) | 0x10 },
+		.r16 		= { .opcode = 0x50u, .operands = MAKE_OPERANDS(add_to_opcode) },
+		.r64 		= { .opcode = 0x50u, .operands = MAKE_OPERANDS(add_to_opcode) | 0x10 },
+
+		.i8 		= { .opcode = 0x6Au, .operands = MAKE_OPERANDS(add_to_opcode) },
+		.i16 		= { .opcode = 0x68u, .operands = MAKE_OPERANDS(add_to_opcode) },
+		.i32 		= { .opcode = 0x68u, .operands = MAKE_OPERANDS(add_to_opcode) },
+	},
+	[OPCODE_RET] = {
+		.noarg		= { .opcode = 0xC3, .operands = 0x00u },
+		.i16		= { .opcode = 0xC2, .operands = MAKE_OPERANDS(imm) },
+	},
+	[OPCODE_RET_FAR] = {
+		.noarg		= { .opcode = 0xCB, .operands = 0x00u },
+		.i16		= { .opcode = 0xCA, .operands = MAKE_OPERANDS(imm) },
+	},
 	[OPCODE_SAL] = {
+		.rm8	 	= { .opcode = 0xD0u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm16	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm32	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm64	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(4)) },
 		.rm8_i8 	= { .opcode = 0xC0u, .operands = MAKE_OPERANDS(mod_rm(4), imm) },
 		.rm16_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(4), imm) },
 		.rm32_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(4), imm) },
 		.rm64_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(4), imm) },
+		.rm8_cl	 	= { .opcode = 0xD2u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm16_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm32_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm64_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(4)) },
 	},
 	[OPCODE_SAR] = {
+		.rm8	 	= { .opcode = 0xD0u, .operands = MAKE_OPERANDS(mod_rm(7)) },
+		.rm16	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(7)) },
+		.rm32	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(7)) },
+		.rm64	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(7)) },
 		.rm8_i8 	= { .opcode = 0xC0u, .operands = MAKE_OPERANDS(mod_rm(7), imm) },
 		.rm16_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(7), imm) },
 		.rm32_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(7), imm) },
 		.rm64_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(7), imm) },
+		.rm8_cl	 	= { .opcode = 0xD2u, .operands = MAKE_OPERANDS(mod_rm(7)) },
+		.rm16_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(7)) },
+		.rm32_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(7)) },
+		.rm64_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(7)) },
 	},
 	[OPCODE_SHL] = {
+		.rm8	 	= { .opcode = 0xD0u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm16	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm32	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm64	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(4)) },
 		.rm8_i8 	= { .opcode = 0xC0u, .operands = MAKE_OPERANDS(mod_rm(4), imm) },
 		.rm16_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(4), imm) },
 		.rm32_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(4), imm) },
 		.rm64_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(4), imm) },
+		.rm8_cl	 	= { .opcode = 0xD2u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm16_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm32_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(4)) },
+		.rm64_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(4)) },
 	},
 	[OPCODE_SHR] = {
+		.rm8	 	= { .opcode = 0xD0u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm16	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm32	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm64	 	= { .opcode = 0xD1u, .operands = MAKE_OPERANDS(mod_rm(5)) },
 		.rm8_i8 	= { .opcode = 0xC0u, .operands = MAKE_OPERANDS(mod_rm(5), imm) },
 		.rm16_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(5), imm) },
 		.rm32_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(5), imm) },
 		.rm64_i8 	= { .opcode = 0xC1u, .operands = MAKE_OPERANDS(mod_rm(5), imm) },
+		.rm8_cl	 	= { .opcode = 0xD2u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm16_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm32_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(5)) },
+		.rm64_cl 	= { .opcode = 0xD3u, .operands = MAKE_OPERANDS(mod_rm(5)) },
 	},
+	[OPCODE_TEST] = { 
+		.al_i8  	= { .opcode = 0xA8u, .operands = MAKE_OPERANDS(imm) }, 
+		.ax_i16  	= { .opcode = 0xA9u, .operands = MAKE_OPERANDS(imm) }, 
+		.eax_i32  	= { .opcode = 0xA9u, .operands = MAKE_OPERANDS(imm) }, 
+		.rax_i32  	= { .opcode = 0xA9u, .operands = MAKE_OPERANDS(imm) }, 
+ 
+		.rm8_i8 	= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(0), imm) }, 
+		.rm16_i16	= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(0), imm) }, 
+		.rm32_i32 	= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(0), imm) }, 
+		.rm64_i32 	= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(0), imm) }, 
+ 
+		.rm8_r8  	= { .opcode = 0x84u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, 
+		.rm16_r16  	= { .opcode = 0x85u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, 
+		.rm32_r32  	= { .opcode = 0x85u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, 
+		.rm64_r64  	= { .opcode = 0x85u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, 
+	},
+	[OPCODE_XCHG] = {
+		.ax_r16 = { .opcode = 0x90u, .operands = MAKE_OPERANDS(add_to_opcode) },
+		.eax_r32 = { .opcode = 0x90u, .operands = MAKE_OPERANDS(add_to_opcode) },
+		.rax_r64 = { .opcode = 0x90u, .operands = MAKE_OPERANDS(add_to_opcode) },
+
+		.rm8_r8 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
+		.rm16_r16 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
+		.rm32_r32 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
+		.rm64_r64 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
+
+		.r8_rm8 = { .opcode = 0x86u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r16_rm16 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm32 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm64 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+	},
+	[OPCODE_XLAT] 	= { .noarg = { .opcode = 0xD7u, .operands = 0x00u }, },
 };
 
-#define X86_REG_BASE (0x08u)
+#define X86_REG_BASE (0x10u)
+
+typedef enum {
+	X86_PREFIX_REP = 0xF3,
+	X86_PREFIX_REPE = 0xF3,
+	X86_PREFIX_REPNE = 0xF2,
+} X86_Prefixes;
+
+#define X86_SIB_INDEX (1u << 1u)
+#define X86_SIB_SCALE (1u << 2u)
 
 typedef struct {
 	uint8_t reg0, reg1, reg2, reg3;
-	int64_t displacement, immediate;
+	uint8_t use_sib;
+	uint8_t scale, index;
+	int64_t displacement, immediate, relative;
+	uint8_t rep;
 } X86_Instruction_Parameters;
 
 bool x86_uses_modrm(X86_Variant_Kind kind) {
 	switch (kind) {
+	case X86_VARIANT_KIND_rm8:
+	case X86_VARIANT_KIND_rm16:
+	case X86_VARIANT_KIND_rm32:
+	case X86_VARIANT_KIND_rm64:
+
 	case X86_VARIANT_KIND_rm8_r8:
 	case X86_VARIANT_KIND_rm16_r16:
 	case X86_VARIANT_KIND_rm32_r32:
 	case X86_VARIANT_KIND_rm64_r64:
+
+	case X86_VARIANT_KIND_rm8_cl:
+	case X86_VARIANT_KIND_rm16_cl:
+	case X86_VARIANT_KIND_rm32_cl:
+	case X86_VARIANT_KIND_rm64_cl:
 
 	case X86_VARIANT_KIND_r8_rm8:
 	case X86_VARIANT_KIND_r16_rm16:
@@ -244,65 +624,191 @@ bool x86_uses_modrm(X86_Variant_Kind kind) {
 	case X86_VARIANT_KIND_rm16_i8:
 	case X86_VARIANT_KIND_rm32_i8:
 	case X86_VARIANT_KIND_rm64_i8:
+
+	case X86_VARIANT_KIND_r16_rm16_i8:
+   	case X86_VARIANT_KIND_r32_rm32_i8:
+	case X86_VARIANT_KIND_r64_rm64_i8:
+	case X86_VARIANT_KIND_r16_rm16_i16:
+	case X86_VARIANT_KIND_r32_rm32_i32:
+   	case X86_VARIANT_KIND_r64_rm64_i32:
 		return true;
 	default: return false;
 	}
 }
 
 void linux_x86_64_elf_write_instruction(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, X86_Variant_Kind variant, X86_Instruction_Variant instruction, X86_Instruction_Parameters parameters) {
-	uint8_t mod, rex = 0, prefix[4], prefixi = 0;
+	uint8_t mod, sib, rex = 0, prefix[4], prefixi = 0;
 	int i;
 
+	if (instruction.opcode == 0) {
+		fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: invalid opcode\n");
+		return;
+	}
+
 	switch (variant) {
+	case X86_VARIANT_KIND_noarg:
+		if (instruction.operands & 0x10)
+			rex |= 0x48;
+		else if (instruction.operands & 0x20)
+			prefix[prefixi++] = 0x66;
+		break;
+	case X86_VARIANT_KIND_rm64:
 	case X86_VARIANT_KIND_rm64_r64:
+	case X86_VARIANT_KIND_rm64_cl:
 	case X86_VARIANT_KIND_r64_rm64:
 	case X86_VARIANT_KIND_r64_i64:
 	case X86_VARIANT_KIND_rm64_i32:
 	case X86_VARIANT_KIND_rm64_i8:
-		rex |= 0x48;
+	case X86_VARIANT_KIND_rax_i32:
+	case X86_VARIANT_KIND_r64:
+	case X86_VARIANT_KIND_r64_rm64_i8:
+   	case X86_VARIANT_KIND_r64_rm64_i32:
+		if (!(instruction.operands & 0x10))
+			rex |= 0x48;
 		break;
+	case X86_VARIANT_KIND_rm16:
 	case X86_VARIANT_KIND_rm16_r16:
+	case X86_VARIANT_KIND_rm16_cl:
 	case X86_VARIANT_KIND_r16_rm16:
 	case X86_VARIANT_KIND_r16_i16:
 	case X86_VARIANT_KIND_rm16_i16:
 	case X86_VARIANT_KIND_rm16_i8:
+	case X86_VARIANT_KIND_ax_i16:
+	case X86_VARIANT_KIND_r16:
+	case X86_VARIANT_KIND_i16:
+	case X86_VARIANT_KIND_r16_rm16_i8:
+	case X86_VARIANT_KIND_r16_rm16_i16:
+	case X86_VARIANT_KIND_ax_i8:
+	case X86_VARIANT_KIND_ax_dx:
 		prefix[prefixi++] = 0x66;
 		break;
 	default: break;
 	}
+
+	if (parameters.rep) {
+		// TODO: add check for valid instructions
+		X86_64_APPEND_OP_SEGMENT(parameters.rep);
+	}
+
+#define SWITCH_OP(n)												\
+		uint32_t op##n = GET_OPERAND##n(instruction.operands);		\
+		switch (op##n >> 5u) {										\
+		case OPERANDS_TYPE_modrm:									\
+			if ((parameters.reg ## n & 0xFu) >= X86_OPERAND_REGISTER_r8)	{ 	\
+				rex |= 0x41u; 										\
+			} 														\
+			break;													\
+		default: break;												\
+		}
+
+		SWITCH_OP(0)
+		SWITCH_OP(1)
+#undef SWITCH_OP
 
 	if (rex) X86_64_APPEND_OP_SEGMENT(rex);
 	for (i = 0; i < prefixi; ++i) {
 		X86_64_APPEND_OP_SEGMENT(prefix[i]);
 	}
 
+	if ((instruction.opcode >> 8) & 0xFF) {
+		X86_64_APPEND_OP_SEGMENT((uint8_t)((instruction.opcode >> 8) & 0xFF));
+	}
 	X86_64_APPEND_OP_SEGMENT((uint8_t)(instruction.opcode & 0xFF));
 
 	if (x86_uses_modrm(variant)) {
 		mod = 0;
+		sib = 0;
 
 #define SWITCH_OP(n)										\
 		uint32_t op##n = GET_OPERAND##n(instruction.operands);	\
 		switch (op##n >> 5u) {								\
 		case OPERANDS_TYPE_modreg:							\
-			mod |= ((op ##n & 0x1Fu) << 3u);					\
-			mod |= (parameters.reg ##n & 0x7u) << 3u;			\
+			mod |= ((op ##n & 0xFu) << 3u);					\
+			mod |= (parameters.reg ##n & 0x7u) << 3u;		\
 			break;											\
 		case OPERANDS_TYPE_modrm:							\
-			mod |= ((op ## n & 0x1Fu) << 3u);					\
-			mod |= parameters.reg ## n & 0x7u;					\
+			mod |= ((op ## n & 0xFu) << 3u);				\
+			if (parameters.use_sib) { 						\
+				sib |= parameters.reg ## n & 0x7u;			\
+			} else { 										\
+				mod |= parameters.reg ## n & 0x7u;			\
+			} 												\
 			break;											\
 		default: break;										\
 		}
-		
+
 		SWITCH_OP(0)
 		SWITCH_OP(1)
 #undef SWITCH_OP
+
 		 //mod: 0b00 -> no offset, 0b01 -> 8 bit offset, 0b10 -> 32 bit offset, 0b11 -> no offset
 
+		uint8_t base_reg = (parameters.reg0 & X86_REG_BASE) ? (parameters.reg0 & 0x7u) :
+			(parameters.reg1 & X86_REG_BASE) ? (parameters.reg1 & 0x7u) : 0;
+
+
 		if ((parameters.reg0 & X86_REG_BASE) || (parameters.reg1 & X86_REG_BASE)) {
+
 			int64_t offset = parameters.displacement;
-			if (offset >= INT8_MIN && offset <= INT8_MAX) {
+
+			if (!parameters.use_sib && base_reg == X86_OPERAND_REGISTER_rsp) {
+				parameters.use_sib = 1;
+				sib = (X86_OPERAND_REGISTER_rsp << 3u) | X86_OPERAND_REGISTER_rsp;
+			}
+
+			if (parameters.use_sib) {
+				mod |= 0x4u;
+				if (parameters.use_sib & X86_SIB_SCALE) {
+					if (!(parameters.use_sib & X86_SIB_INDEX)) {
+						fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: scale requires index\n");
+						abort();
+					}
+					sib |= parameters.scale << 6u;
+				}
+				if (parameters.use_sib & X86_SIB_INDEX) {
+					if (parameters.index == X86_OPERAND_REGISTER_rsp)  {
+						fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: invalid use of rsp as index with rbp as base\x1b[0m\n");
+						abort();
+					}
+					sib |= (parameters.index & 7u) << 3u;
+				} else {
+					sib |= X86_OPERAND_REGISTER_rsp << 3u; // rsp as index means no index
+				}
+
+				if (offset == 0)  {
+					// rbp as base means no base, only if mod is 0
+					if (base_reg == X86_OPERAND_REGISTER_rbp) {
+						// TODO: i feel like this might be wrong, below too
+						assert((mod >> 6) == 0);
+						if (parameters.use_sib & X86_SIB_SCALE) {
+						} else {
+							mod |= 0x40u;
+						}
+					}
+					X86_64_APPEND_OP_SEGMENT(mod);
+					X86_64_APPEND_OP_SEGMENT(sib);
+					if (base_reg == X86_OPERAND_REGISTER_rbp) {
+						// rbp needs dsp32, so we just add 0
+						if (parameters.use_sib & X86_SIB_SCALE) {
+							X86_64_APPEND_OP_SEGMENT(PUN((int32_t)0u, uint32_t));
+						} else {
+							X86_64_APPEND_OP_SEGMENT(PUN((int8_t)0u, uint8_t));
+						}
+					}
+				} else if (offset >= INT8_MIN && offset <= INT8_MAX) {
+					mod |= 0x40;
+					X86_64_APPEND_OP_SEGMENT(mod);
+					X86_64_APPEND_OP_SEGMENT(sib);
+					X86_64_APPEND_OP_SEGMENT(PUN((int8_t)offset, uint8_t));
+				} else if (offset >= INT32_MIN && offset <= INT32_MAX) {
+					mod |= 0x80;
+					X86_64_APPEND_OP_SEGMENT(mod);
+					X86_64_APPEND_OP_SEGMENT(sib);
+					X86_64_APPEND_OP_SEGMENT(PUN((int32_t)offset, uint32_t));
+				}
+			} else if (offset == 0 && base_reg != X86_OPERAND_REGISTER_rbp) {
+				X86_64_APPEND_OP_SEGMENT(mod);
+			} else if (offset >= INT8_MIN && offset <= INT8_MAX) {
 				mod |= 0x40;
 				X86_64_APPEND_OP_SEGMENT(mod);
 				X86_64_APPEND_OP_SEGMENT(PUN((int8_t)offset, uint8_t));
@@ -314,34 +820,69 @@ void linux_x86_64_elf_write_instruction(Compiler_Context* cc, Linux_x86_64_Elf_B
 		} else {
 			mod |= 0xc0;
 			X86_64_APPEND_OP_SEGMENT(mod);
+			if (parameters.use_sib) {
+				X86_64_APPEND_OP_SEGMENT(sib);
+			}
 		}
+
 	}
 
 	switch (variant) {
+	case X86_VARIANT_KIND_al_i8:
 	case X86_VARIANT_KIND_rm8_i8:
 	case X86_VARIANT_KIND_r8_i8:
 	case X86_VARIANT_KIND_rm16_i8:
 	case X86_VARIANT_KIND_rm32_i8:
 	case X86_VARIANT_KIND_rm64_i8:
+	case X86_VARIANT_KIND_i8:
+	case X86_VARIANT_KIND_r16_rm16_i8:
+   	case X86_VARIANT_KIND_r32_rm32_i8:
+	case X86_VARIANT_KIND_r64_rm64_i8:
+   	case X86_VARIANT_KIND_ax_i8:
+   	case X86_VARIANT_KIND_eax_i8:
 		X86_64_APPEND_OP_SEGMENT(PUN((int8_t)parameters.immediate, uint8_t));
 	   	break;
 
+	case X86_VARIANT_KIND_ax_i16:
 	case X86_VARIANT_KIND_rm16_i16:
 	case X86_VARIANT_KIND_r16_i16:
+	case X86_VARIANT_KIND_i16:
+	case X86_VARIANT_KIND_r16_rm16_i16:
 		X86_64_APPEND_OP_SEGMENT(PUN((int16_t)parameters.immediate, uint16_t));
 		break;
 
+	case X86_VARIANT_KIND_rax_i32:
+	case X86_VARIANT_KIND_eax_i32:
 	case X86_VARIANT_KIND_rm32_i32:
 	case X86_VARIANT_KIND_r32_i32:
 	case X86_VARIANT_KIND_rm64_i32:
+	case X86_VARIANT_KIND_i32:
+	case X86_VARIANT_KIND_r32_rm32_i32:
+   	case X86_VARIANT_KIND_r64_rm64_i32:
 		X86_64_APPEND_OP_SEGMENT(PUN((int32_t)parameters.immediate, uint32_t));
 		break;
 
 	case X86_VARIANT_KIND_r64_i64:
 		X86_64_APPEND_OP_SEGMENT(PUN((int64_t)parameters.immediate, uint64_t));
 		break;
+
+
+	/* Relative addresses */
+	case X86_VARIANT_KIND_rel8:
+		X86_64_APPEND_OP_SEGMENT(PUN((int8_t)parameters.relative, uint8_t));
+	   	break;
+
+	case X86_VARIANT_KIND_rel16:
+		X86_64_APPEND_OP_SEGMENT(PUN((int16_t)parameters.relative, uint16_t));
+	   	break;
+
+	case X86_VARIANT_KIND_rel32:
+		X86_64_APPEND_OP_SEGMENT(PUN((int32_t)parameters.relative, uint32_t));
+	   	break;
+
 	default: break;
 	}
+
 }
 
 #define X86_WRITE_INSTRUCTION(op, variant, parameters) linux_x86_64_elf_write_instruction(cc, b, X86_VARIANT_KIND_ ## variant, instructions[op] . variant, parameters)
@@ -475,53 +1016,69 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 }
 
 void test_movs(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm8_r8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm16_r16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm32_r32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm64_r64, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm8_r8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm16_r16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm32_r32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm64_r64, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
 
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm8_r8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm16_r16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm32_r32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm64_r64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm8_r8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm16_r16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm32_r32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm64_r64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
 
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r8_rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r16_rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r64_rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r8_rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r16_rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r64_rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
 
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r8_rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r16_rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r64_rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r8_rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r16_rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r64_rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
 
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, r64_i64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, r64_i64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
 
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm64_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm64_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
 
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
-	X86_WRITE_INSTRUCTION(OPCODE_MOVE, rm64_i32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_MOV, rm64_i32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
 }
 
 void test_shifts(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
 #define DO_TESTS(op) \
+	X86_WRITE_INSTRUCTION(op, rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax }) );  \
+	X86_WRITE_INSTRUCTION(op, rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax }) );  \
+	X86_WRITE_INSTRUCTION(op, rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax }) );  \
+	X86_WRITE_INSTRUCTION(op, rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax }) );  \
 	X86_WRITE_INSTRUCTION(op, rm8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .immediate = 0x4 }) );  \
 	X86_WRITE_INSTRUCTION(op, rm16_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .immediate = 0x4 }) ); \
 	X86_WRITE_INSTRUCTION(op, rm32_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .immediate = 0x4 }) ); \
 	X86_WRITE_INSTRUCTION(op, rm64_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .immediate = 0x4 }) ); \
+	X86_WRITE_INSTRUCTION(op, rm8_cl, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .immediate = 0x4 }) );  \
+	X86_WRITE_INSTRUCTION(op, rm16_cl, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .immediate = 0x4 }) ); \
+	X86_WRITE_INSTRUCTION(op, rm32_cl, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .immediate = 0x4 }) ); \
+	X86_WRITE_INSTRUCTION(op, rm64_cl, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .immediate = 0x4 }) ); \
 \
+	X86_WRITE_INSTRUCTION(op, rm8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax }) );  \
+	X86_WRITE_INSTRUCTION(op, rm16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax }) );  \
+	X86_WRITE_INSTRUCTION(op, rm32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax }) );  \
+	X86_WRITE_INSTRUCTION(op, rm64, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax }) );  \
 	X86_WRITE_INSTRUCTION(op, rm8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) );  \
 	X86_WRITE_INSTRUCTION(op, rm16_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) ); \
 	X86_WRITE_INSTRUCTION(op, rm32_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) ); \
-	X86_WRITE_INSTRUCTION(op, rm64_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) );
+	X86_WRITE_INSTRUCTION(op, rm64_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) ); \
+	X86_WRITE_INSTRUCTION(op, rm8_cl, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) );  \
+	X86_WRITE_INSTRUCTION(op, rm16_cl, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) ); \
+	X86_WRITE_INSTRUCTION(op, rm32_cl, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) ); \
+	X86_WRITE_INSTRUCTION(op, rm64_cl, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x60, .immediate = 0x4 }) );
 
 	DO_TESTS(OPCODE_SAL)
 	DO_TESTS(OPCODE_SAR)
@@ -530,11 +1087,104 @@ void test_shifts(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
 #undef DO_TESTS
 }
 
+void test_arith(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, int opcode) {
+	X86_WRITE_INSTRUCTION(opcode, al_i8, ((X86_Instruction_Parameters) { .immediate = 0x4 }) );
+	X86_WRITE_INSTRUCTION(opcode, ax_i16, ((X86_Instruction_Parameters) { .immediate = 0x4 }) );
+	X86_WRITE_INSTRUCTION(opcode, eax_i32, ((X86_Instruction_Parameters) { .immediate = 0x4 }) );
+	X86_WRITE_INSTRUCTION(opcode, rax_i32, ((X86_Instruction_Parameters) { .immediate = 0x4 }) );
+
+	X86_WRITE_INSTRUCTION(opcode, rm8_r8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm16_r16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm32_r32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm64_r64, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, .displacement = 0x10 }) );
+
+	X86_WRITE_INSTRUCTION(opcode, rm8_r8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(opcode, rm16_r16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(opcode, rm32_r32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(opcode, rm64_r64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+
+	X86_WRITE_INSTRUCTION(opcode, r8_rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, r16_rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, r64_rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+
+	X86_WRITE_INSTRUCTION(opcode, r8_rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(opcode, r16_rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(opcode, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+	X86_WRITE_INSTRUCTION(opcode, r64_rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp, .reg1 = X86_OPERAND_REGISTER_rax, }) );
+
+	X86_WRITE_INSTRUCTION(opcode, rm8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm64_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .displacement = 0x10, .immediate = 0x78 }) );
+
+	X86_WRITE_INSTRUCTION(opcode, rm8_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm64_i32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+
+	X86_WRITE_INSTRUCTION(opcode, rm16_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm32_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm64_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rdx, .immediate = 0x78 }) );
+
+	X86_WRITE_INSTRUCTION(opcode, rm16_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm32_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+	X86_WRITE_INSTRUCTION(opcode, rm64_i8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10, .immediate = 0x78 }) );
+}
+
+void test_imul(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
+	X86_WRITE_INSTRUCTION(OPCODE_IMUL, rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx }) );
+	X86_WRITE_INSTRUCTION(OPCODE_IMUL, r16_rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_OPERAND_REGISTER_rax }) );
+	X86_WRITE_INSTRUCTION(OPCODE_IMUL, r16_rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_OPERAND_REGISTER_rax }) );
+	X86_WRITE_INSTRUCTION(OPCODE_IMUL, r16_rm16_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .immediate = 0x10 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_IMUL, r64_rm64_i8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .immediate = 0x10 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_IMUL, r16_rm16_i16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .immediate = 0x10 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_IMUL, r32_rm32_i32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rcx, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .immediate = 0x10 }) );
+
+}
+
+void test_incdec(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
+#define DO_TESTS(op) \
+	X86_WRITE_INSTRUCTION(op, rm8, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp }) );  \
+	X86_WRITE_INSTRUCTION(op, rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp }) ); \
+	X86_WRITE_INSTRUCTION(op, rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp }) ); \
+	X86_WRITE_INSTRUCTION(op, rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp }) ); \
+\
+	X86_WRITE_INSTRUCTION(op, rm8, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10 }) );  \
+	X86_WRITE_INSTRUCTION(op, rm16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10 }) ); \
+	X86_WRITE_INSTRUCTION(op, rm32, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10 }) ); \
+	X86_WRITE_INSTRUCTION(op, rm64, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x10 }) ); \
+\
+	X86_WRITE_INSTRUCTION(op, r16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp }) ); \
+	X86_WRITE_INSTRUCTION(op, r32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbp }) );
+
+	DO_TESTS(OPCODE_INC)
+	DO_TESTS(OPCODE_DEC)
+
+#undef DO_TESTS
+}
+
+void test_push(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, rm16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax }) );
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbx }) );
+
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, rm16, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rax }) );
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_Instruction_Parameters) { .reg0 = X86_REG_BASE | X86_OPERAND_REGISTER_rbx }) );
+
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, r16, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax }) );
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, r64, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rbx }) );
+
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, i8, ((X86_Instruction_Parameters) { .immediate = 0x69 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, i16, ((X86_Instruction_Parameters) { .immediate = 0x69 }) );
+	X86_WRITE_INSTRUCTION(OPCODE_PUSH, i32, ((X86_Instruction_Parameters) { .immediate = 0x69 }) );
+}
+
 static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
 	size_t i;
 	for (i = 0; i < block->ops.count; ++i) {
 		LL_Ir_Opcode opcode = (LL_Ir_Opcode)block->ops.items[i];
 		LL_Ir_Operand* operands = (LL_Ir_Operand*)&block->ops.items[i + 1];
+		printf("%zu\n", sizeof(instructions));
 
 		switch (opcode) {
 		case LL_IR_OPCODE_RET: break;
@@ -542,10 +1192,107 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 			/* X86_64_OPERAND_MI_MEM(X86_64_OPCODE_MOV, qword, rbp, -0x10, 100); */
 
 			/* test_movs(cc, b); */
-			test_shifts(cc, b);
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rax }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rsp }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rsi }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdi }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_r12 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_r13 }) );
+
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rsp, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rsi, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdi, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx }) );
+
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rax, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rdx, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rbx, .scale = 2 }) );
+			/* X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rsp, .scale = 2 }) ); */
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_r12, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rbp, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rsi, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rdi, .scale = 2 }) );
+ 
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdx, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbx, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rsp, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rsi, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdi, .displacement = 0x07 }) );
+
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdi, .displacement = 0 }) );
+
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rax, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rdx, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rbx, .scale = 2 }) );
+			/* X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rsp, .scale = 2 }) ); */
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rbp, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rsi, .scale = 2 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rdi, .scale = 2 }) );
+
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rax, .scale = 0, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rcx, .scale = 0, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rdx, .scale = 0, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rbx, .scale = 0, .displacement = 0x07 }) );
+			/* X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rsp, .scale = 0, .displacement = 0x07 }) ); */
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rbp, .scale = 0, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rsi, .scale = 0, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX, .index = X86_OPERAND_REGISTER_rdi, .scale = 0, .displacement = 0x07 }) );
+
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rax, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rcx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbx, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rsp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rbp, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rsi, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2, .displacement = 0x07 }) );
+			X86_WRITE_INSTRUCTION(OPCODE_MOV, r32_rm32, ((X86_Instruction_Parameters) { .reg0 = X86_OPERAND_REGISTER_rax, .reg1 = X86_REG_BASE | X86_OPERAND_REGISTER_rdi, .use_sib = 1 | X86_SIB_INDEX | X86_SIB_SCALE, .index = X86_OPERAND_REGISTER_rcx, .scale = 2, .displacement = 0x07 }) );
+ 
+ 			/* test_shifts(cc, b); */
+ 			/* test_arith(cc, b, OPCODE_ADD); */
+ 			/* test_arith(cc, b, OPCODE_ADC); */
+ 			/* test_incdec(cc, b); */
+ 			/* test_push(cc, b); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_JECXZ, rel8, ((X86_Instruction_Parameters) { .relative = 0x60 }) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_JRCXZ, rel8, ((X86_Instruction_Parameters) { .relative = 0x60 }) ); */
+			/* test_imul(cc, b); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_CMPSB, noarg, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_CMPSW, noarg, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_CMPSD, noarg, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_CMPSQ, noarg, ((X86_Instruction_Parameters) {}) ); */
+
+			/* X86_WRITE_INSTRUCTION(OPCODE_IN, al_i8, ((X86_Instruction_Parameters) { .immediate = 0x01u }) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_IN, ax_i8, ((X86_Instruction_Parameters) { .immediate = 0x02u }) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_IN, eax_i8, ((X86_Instruction_Parameters) { .immediate = 0x02u }) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_IN, al_dx, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_IN, ax_dx, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_IN, eax_dx, ((X86_Instruction_Parameters) {}) ); */
+
+			/* X86_WRITE_INSTRUCTION(OPCODE_OUT, al_i8, ((X86_Instruction_Parameters) { .immediate = 0x01u }) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_OUT, ax_i8, ((X86_Instruction_Parameters) { .immediate = 0x02u }) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_OUT, eax_i8, ((X86_Instruction_Parameters) { .immediate = 0x02u }) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_OUT, al_dx, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_OUT, ax_dx, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_OUT, eax_dx, ((X86_Instruction_Parameters) { .rep = X86_PREFIX_REP }) ); */
+
+			/* X86_WRITE_INSTRUCTION(OPCODE_RET, noarg, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_RET, i16, ((X86_Instruction_Parameters) { .immediate = 0x10 }) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_RET_FAR, noarg, ((X86_Instruction_Parameters) {}) ); */
+			/* X86_WRITE_INSTRUCTION(OPCODE_RET_FAR, i16, ((X86_Instruction_Parameters) { .immediate = 0x10 }) ); */
 			// 0x55 -> 0b01 010 101
 			
-			/* X86_64_APPEND_OP_SEGMENT((uint8_t)0xFFu); */
 
 			/* X86_64_APPEND_OP_SEGMENT((uint8_t)0x48u); */
 			/* X86_64_APPEND_OP_SEGMENT((uint8_t)0xb8u); */
