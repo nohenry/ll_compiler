@@ -1,8 +1,8 @@
 void main() {
 	int a = 23;
-	int d = 56;
-	int* pa = &a;
-	int8 b = *pa;
+	// int d = 56;
+	// int* pa = &a;
+	// int8 b = *pa;
 	// int* a;
 	// int[10] array;
 	// int[:] slice;
@@ -16,7 +16,7 @@ void main() {
 		// int c = h;
 	}
 
-	int bb = printf("hello", 1, 2, 3);
-	int aa = b(123, 1);
+	// int bb = printf("hello", 1, 2, 3);
+	// int aa = b(123, 1);
 }
 
