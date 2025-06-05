@@ -63,6 +63,24 @@ enum {
 	OPCODE_CLI,
 	OPCODE_CLD,
 	OPCODE_CMC,
+
+	OPCODE_CMOVO,
+	OPCODE_CMOVNO,
+	OPCODE_CMOVB,
+	OPCODE_CMOVAE,
+	OPCODE_CMOVE,
+	OPCODE_CMOVNE,
+	OPCODE_CMOVBE,
+	OPCODE_CMOVA,
+	OPCODE_CMOVS,
+	OPCODE_CMOVNS,
+	OPCODE_CMOVPE,
+	OPCODE_CMOVPO,
+	OPCODE_CMOVL,
+	OPCODE_CMOVGE,
+	OPCODE_CMOVLE,
+	OPCODE_CMOVG,
+
 	OPCODE_CMP,
 	OPCODE_CMPSB,
 	OPCODE_CMPSW,
@@ -164,7 +182,7 @@ enum {
 	OPCODE_XOR,
 };
 
-enum {
+typedef enum {
 	OPERANDS_TYPE_modrm = 0,
 	OPERANDS_TYPE_modreg,
 	OPERANDS_TYPE_add_to_opcode,
@@ -288,7 +306,9 @@ typedef struct {
 } X86_64_Instruction_Parameters;
 
 void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* b, X86_64_Variant_Kind variant, X86_64_Instruction_Variant instruction, X86_64_Instruction_Parameters parameters);
+void x86_64_run_tests(Compiler_Context* cc, X86_64_Machine_Code_Writer* b);
 extern const X86_64_Instruction x86_64_instructions_table[];
 extern const size_t x86_64_instructions_table_size;
 
 #define X86_64_WRITE_INSTRUCTION(op, variant, parameters) x86_64_write_instruction(cc, (X86_64_Machine_Code_Writer*)b, X86_64_VARIANT_KIND_ ## variant, x86_64_instructions_table[op] . variant, parameters)
+
