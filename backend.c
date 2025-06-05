@@ -5,6 +5,7 @@
 #include "backends/linux-x64_64-gas.c"
 #include "backends/linux-x64_64-elf.c"
 #include "backends/ir.c"
+#include "backends/x86_64_common.c"
 
 LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind) {
 	size_t backend_size;

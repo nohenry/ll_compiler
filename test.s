@@ -50,7 +50,6 @@ main:                                   # @main
 	mov eax, [rbp + 7]
 	mov eax, [rsi + 7]
 	mov eax, [rdi + 7]
-	mov eax, [rsp * 4]
 	mov eax, [r12 * 4]
 
 	mov eax, [rax * 4 + rcx]
@@ -80,6 +79,9 @@ main:                                   # @main
 	mov eax, [rsi * 4 + rcx + 7]
 	mov eax, [rdi * 4 + rcx + 700]
 	mov ecx, [rcx + rbx]
+
+	wait
+	fwait
 
 	xor	eax, eax
 	pop	rbp
