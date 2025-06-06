@@ -163,6 +163,33 @@ void linux_x86_64_elf_init(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
 	b->current_section = &b->section_text;
 	arena_da_append(&cc->arena, &b->section_strtab, 0);
 	arena_da_append(&cc->arena, &b->symbols, ((Elf64_Sym){}));
+
+
+	Elf64_Sym sym;
+	{
+		sym.st_name = b->section_strtab.count;
+		arena_da_append_many(&cc->arena, &b->section_strtab, str_lit("text.c").ptr, str_lit("text.c").len);
+		arena_da_append(&cc->arena, &b->section_strtab, 0);
+
+		sym.st_info = ELF32_ST_INFO(STB_LOCAL, STT_FILE);
+		sym.st_other = STV_DEFAULT;
+		sym.st_shndx = SHN_ABS;
+		sym.st_value = 0;
+		sym.st_size = 0;
+		arena_da_append(&cc->arena, &b->symbols, sym);
+	}
+	{
+		sym.st_name = b->section_strtab.count;
+		arena_da_append_many(&cc->arena, &b->section_strtab, str_lit(".text").ptr, str_lit(".text").len);
+		arena_da_append(&cc->arena, &b->section_strtab, 0);
+
+		sym.st_info = ELF32_ST_INFO(STB_LOCAL, STT_SECTION);
+		sym.st_other = STV_DEFAULT;
+		sym.st_shndx = b->section_text.index;
+		sym.st_value = 0;
+		sym.st_size = 0;
+		arena_da_append(&cc->arena, &b->symbols, sym);
+	}
 }
 
 bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, char* filepath) {
@@ -188,6 +215,7 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 	Elf64_Ehdr* hdrptr = (Elf64_Ehdr*)b->ops.items;
 	/* fwrite(&header, 1, sizeof(header), fptr); */
 
+
 	Linux_x86_64_Elf_Section sections[] = {
 		{ 0 },
 	   	b->section_text, b->section_data,
@@ -197,7 +225,7 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 		   	.count = b->symbols.count * sizeof(Elf64_Sym),
 			.shdr = {
 				.sh_type = SHT_SYMTAB,
-				.sh_info = 8,
+				.sh_info = 3,
 				.sh_link = 4,
 				.sh_addralign = 8,
 				.sh_entsize = sizeof(Elf64_Sym),
@@ -206,12 +234,15 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 		b->section_strtab
 	};
 	for (i = 0; i < LEN(sections); ++i) {
+
+		if (sections[i].shdr.sh_addralign > 1) {
+			uint64_t aligned_to = align_forward(b->ops.count, sections[i].shdr.sh_addralign);
+			printf("alskfjldsf %x\n", aligned_to);
+			arena_da_reserve(&cc->arena, &b->ops, aligned_to);
+		}
+
 		sections[i].file_offset = b->ops.count;
-		printf("section: %d %zu %zu %zu\n", i, sections[i].file_offset, sections[i].count, b->ops.count);
-		if (sections[i].items)
-			printf("%d %d %d %d\n", sections[i].items[0], sections[i].items[1], sections[i].items[2], sections[i].items[3]);
 		arena_da_append_many(&cc->arena, &b->ops, sections[i].items, sections[i].count);
-		/* fwrite(sections[i].items, 1, sections[i].count, fptr); */
 	}
 
 	Linux_x86_64_Elf_Section shstrtab = { 0 };
@@ -255,6 +286,7 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 		shdr.sh_info = sections[i].shdr.sh_info;
 		shdr.sh_addralign = sections[i].shdr.sh_addralign;
 		shdr.sh_entsize = sections[i].shdr.sh_entsize;
+
 		arena_da_append_many(&cc->arena, &b->ops, &shdr, sizeof(shdr));
 	}
 
