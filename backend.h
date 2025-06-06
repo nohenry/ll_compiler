@@ -30,10 +30,6 @@ bool ll_backend_write_to_file(Compiler_Context* cc, LL_Backend* b, char* filepat
 void ll_backend_generate_statement(Compiler_Context* cc, LL_Backend* b, Ast_Base* stmt);
 void ll_backend_generate_statement_from_ir(Compiler_Context* cc, LL_Backend* b, LL_Backend_Ir* bir);
 
-static inline uint64_t align_forward(uint64_t offset, uint64_t alignment) {
-      return ((offset + alignment - 1) & (~(alignment - 1)));
-}
-
 #define AS_LITTLE_ENDIAN_U8(x) (x)
 #define AS_LITTLE_ENDIAN_U16(x) (x)
 #define AS_LITTLE_ENDIAN_U32(x) (x)

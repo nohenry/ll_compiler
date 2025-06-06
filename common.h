@@ -158,4 +158,7 @@ String_View ll_intern_string(Compiler_Context* cc, String_View str);
 size_t ll_type_hash(struct ll_type* type, size_t seed);
 bool ll_type_eql(struct ll_type* a, struct ll_type* b);
 
+static inline uint64_t align_forward(uint64_t offset, uint64_t alignment) {
+      return ((offset + alignment - 1) & (~(alignment - 1)));
+}
 

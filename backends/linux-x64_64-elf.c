@@ -234,6 +234,11 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 
 	arena_da_append_many(&cc->arena, &b->ops, shstrtab.items, shstrtab.count);
 
+	uint64_t needed_padding = align_forward(b->ops.count, 16) - b->ops.count;
+	if (needed_padding) {
+		arena_da_reserve(&cc->arena, &b->ops, b->ops.count + needed_padding);
+	}
+
 	hdrptr = (Elf64_Ehdr*)b->ops.items;
 	hdrptr->e_shoff = b->ops.count;
 	hdrptr->e_shnum = LEN(sections) + 1 /* plus one for shstrtab */;
