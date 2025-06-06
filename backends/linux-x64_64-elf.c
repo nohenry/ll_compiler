@@ -217,18 +217,30 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 	Linux_x86_64_Elf_Section shstrtab = { 0 };
 	arena_da_append(&cc->arena, &shstrtab, 0);
 
+	size_t shstrtab_offset = b->ops.count;
+	for (i = 0; i < LEN(sections); ++i) {
+		if (i != 0) {
+			sections[i].shdr.sh_name = shstrtab.count;
+			arena_da_append_many(&cc->arena, &shstrtab, sections[i].name.ptr, sections[i].name.len);
+			arena_da_append(&cc->arena, &shstrtab, 0);
+		} else {
+			sections[i].shdr.sh_name = 0;
+		}
+	}
+
+	size_t shstrtab_name = shstrtab.count;
+	arena_da_append_many(&cc->arena, &shstrtab, str_lit(".shstrtab").ptr, str_lit(".shstrtab").len);
+	arena_da_append(&cc->arena, &shstrtab, 0);
+
+	arena_da_append_many(&cc->arena, &b->ops, shstrtab.items, shstrtab.count);
+
 	hdrptr = (Elf64_Ehdr*)b->ops.items;
 	hdrptr->e_shoff = b->ops.count;
 	hdrptr->e_shnum = LEN(sections) + 1 /* plus one for shstrtab */;
 	hdrptr->e_shstrndx = LEN(sections);
+
 	for (i = 0; i < LEN(sections); ++i) {
-		if (i != 0) {
-			shdr.sh_name = shstrtab.count;
-			arena_da_append_many(&cc->arena, &shstrtab, sections[i].name.ptr, sections[i].name.len);
-			arena_da_append(&cc->arena, &shstrtab, 0);
-		} else {
-			shdr.sh_name = 0;
-		}
+		shdr.sh_name = sections[i].shdr.sh_name;
 		shdr.sh_type = sections[i].shdr.sh_type;
 		shdr.sh_flags = sections[i].shdr.sh_flags;
 		shdr.sh_addr = 0x00000;
@@ -245,14 +257,8 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 	arena_da_append_many(&cc->arena, &b->ops, &shdr, sizeof(shdr));
 	shdr_ptr = (Elf64_Shdr*)(b->ops.items + shdr_offset);
 
-	shdr_ptr->sh_name = shstrtab.count;
-	printf("%p %p  %d %zu\n", shdr_ptr, hdrptr, shdr_ptr->sh_name, b->ops.count);
-	arena_da_append_many(&cc->arena, &shstrtab, str_lit(".shstrtab").ptr, str_lit(".shstrtab").len);
-	arena_da_append(&cc->arena, &shstrtab, 0);
-	shdr_ptr->sh_offset = b->ops.count;
-	arena_da_append_many(&cc->arena, &b->ops, shstrtab.items, shstrtab.count);
-
-	shdr_ptr = (Elf64_Shdr*)(b->ops.items + shdr_offset);
+	shdr_ptr->sh_name = shstrtab_name;
+	shdr_ptr->sh_offset = shstrtab_offset;
 	shdr_ptr->sh_type = SHT_STRTAB;
 	shdr_ptr->sh_flags = 0;
 	shdr_ptr->sh_addr = 0;
@@ -325,8 +331,8 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 		/* printf("function " FMT_SV_FMT ":\n", FMT_SV_ARG(fn->ident->str)); */
 
 		size_t function_offset = b->current_section->count;
-		X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
-		X86_64_WRITE_INSTRUCTION(OPCODE_MOV, rm64_r64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp, .reg1 = X86_64_OPERAND_REGISTER_rsp }));
+		/* X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp })); */
+		/* X86_64_WRITE_INSTRUCTION(OPCODE_MOV, rm64_r64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp, .reg1 = X86_64_OPERAND_REGISTER_rsp })); */
 
 		int bi = 0;
 		while (block) {
@@ -335,7 +341,7 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 			block = block->next;
 		}
 
-		X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
+		/* X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp })); */
 		X86_64_WRITE_INSTRUCTION(OPCODE_RET, noarg, ((X86_64_Instruction_Parameters){ }));
 
 		sym.st_name = b->section_strtab.count;
