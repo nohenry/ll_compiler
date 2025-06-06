@@ -1,5 +1,7 @@
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <elf.h>
 
 #include "../arena.h"
 #include "../backend.h"
@@ -21,11 +23,31 @@ typedef struct {
 } Linux_x86_64_Elf_Local_List;
 
 typedef struct {
+	String_View name;
+	size_t file_offset;
+	size_t count, capacity;
+	uint8_t* items; // data/instructions
+	Elf64_Shdr shdr;
+	int index;
+} Linux_x86_64_Elf_Section;
+
+typedef struct {
+	size_t count, capacity;
+	Elf64_Sym* items; // data/instructions
+} Linux_x86_64_Elf_Symbols;
+
+typedef struct {
 	X86_64_Machine_Code_Writer w;
 	Linux_x86_64_Elf_Ops_List ops;
 
 	LL_Ir_Function* fn;
 	Linux_x86_64_Elf_Local_List locals;
+
+	Linux_x86_64_Elf_Section* current_section;
+	Linux_x86_64_Elf_Section section_text;
+	Linux_x86_64_Elf_Section section_data;
+	Linux_x86_64_Elf_Section section_strtab;
+	Linux_x86_64_Elf_Symbols symbols;
 } Linux_x86_64_Elf_Backend;
 
 typedef struct {
@@ -34,22 +56,22 @@ typedef struct {
 
 void linux_x86_64_elf_append_op_segment_u8(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, uint8_t segment) {
 	segment = AS_LITTLE_ENDIAN_U8(segment);
-	arena_da_append(&cc->arena, &b->ops, segment);
+	arena_da_append(&cc->arena, b->current_section, segment);
 }
 
 void linux_x86_64_elf_append_op_segment_u16(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, uint16_t segment) {
 	segment = AS_LITTLE_ENDIAN_U16(segment);
-	arena_da_append_many(&cc->arena, &b->ops, (uint8_t*)&segment, 2);
+	arena_da_append_many(&cc->arena, b->current_section, (uint8_t*)&segment, 2);
 }
 
 void linux_x86_64_elf_append_op_segment_u32(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, uint32_t segment) {
 	segment = AS_LITTLE_ENDIAN_U32(segment);
-	arena_da_append_many(&cc->arena, &b->ops, (uint8_t*)&segment, 4);
+	arena_da_append_many(&cc->arena, b->current_section, (uint8_t*)&segment, 4);
 }
 
 void linux_x86_64_elf_append_op_segment_u64(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, uint64_t segment) {
 	segment = AS_LITTLE_ENDIAN_U64(segment);
-	arena_da_append_many(&cc->arena, &b->ops, (uint8_t*)&segment, 8);
+	arena_da_append_many(&cc->arena, b->current_section, (uint8_t*)&segment, 8);
 }
 
 static Linux_x86_64_Elf_Layout linux_x86_64_elf_get_layout(LL_Type* ty) {
@@ -115,18 +137,135 @@ void linux_x86_64_elf_init(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
 	b->w.append_u32 = (__typeof__(b->w.append_u32))linux_x86_64_elf_append_op_segment_u32;
 	b->w.append_u64 = (__typeof__(b->w.append_u64))linux_x86_64_elf_append_op_segment_u64;
 	memset(&b->ops, 0, sizeof(b->ops));
-	/* arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT ".text\n"); */
-	/* arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT ".intel_syntax noprefix\n"); */
+
+	memset(&b->section_text, 0, sizeof(b->section_text));
+	b->section_text.name = str_lit(".text");
+	b->section_text.shdr.sh_type = SHT_PROGBITS;
+	b->section_text.shdr.sh_flags = SHF_ALLOC | SHF_EXECINSTR;
+	b->section_text.shdr.sh_addralign = 16;
+	b->section_text.index = 1;
+
+	memset(&b->section_data, 0, sizeof(b->section_data));
+	b->section_data.name = str_lit(".data");
+	b->section_data.shdr.sh_type = SHT_PROGBITS;
+	b->section_data.shdr.sh_flags = SHF_ALLOC | SHF_WRITE;
+	b->section_data.shdr.sh_addralign = 1;
+	b->section_data.index = 2;
+
+	memset(&b->section_strtab, 0, sizeof(b->section_strtab));
+	b->section_strtab.name = str_lit(".strtab");
+	b->section_strtab.shdr.sh_type = SHT_STRTAB;
+	b->section_strtab.shdr.sh_addralign = 1;
+	b->section_strtab.index = 3;
+
+	memset(&b->symbols, 0, sizeof(b->symbols));
+
+	b->current_section = &b->section_text;
+	arena_da_append(&cc->arena, &b->section_strtab, 0);
+	arena_da_append(&cc->arena, &b->symbols, ((Elf64_Sym){}));
 }
 
 bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, char* filepath) {
+	int i;
 	FILE* fptr;
+	Elf64_Shdr shdr, *shdr_ptr;
 	if (!(fptr = fopen(filepath, "w"))) {
 		fprintf(stderr, "Unable to open output file: %s\n", filepath);
 		return false;
 	}
 
+	Elf64_Ehdr header = {
+		.e_ident = { ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3, ELFCLASS64, ELFDATA2LSB, EV_CURRENT, ELFOSABI_SYSV, 0 },
+		.e_type = ET_REL,
+		.e_machine = EM_X86_64,
+		.e_version = EV_CURRENT,
+		.e_flags = 0,
+		.e_ehsize = sizeof(header),
+		/* .e_phentsize = sizeof(Elf64_Phdr), */
+		.e_shentsize = sizeof(Elf64_Shdr),
+   	};
+	arena_da_append_many(&cc->arena, &b->ops, &header, sizeof(header));
+	Elf64_Ehdr* hdrptr = (Elf64_Ehdr*)b->ops.items;
+	/* fwrite(&header, 1, sizeof(header), fptr); */
+
+	Linux_x86_64_Elf_Section sections[] = {
+		{ 0 },
+	   	b->section_text, b->section_data,
+	   	{
+			.name = str_lit(".symtab"),
+		   	.items = (uint8_t*)b->symbols.items,
+		   	.count = b->symbols.count * sizeof(Elf64_Sym),
+			.shdr = {
+				.sh_type = SHT_SYMTAB,
+				.sh_info = 8,
+				.sh_link = 4,
+				.sh_addralign = 8,
+				.sh_entsize = sizeof(Elf64_Sym),
+			}
+		},
+		b->section_strtab
+	};
+	for (i = 0; i < LEN(sections); ++i) {
+		sections[i].file_offset = b->ops.count;
+		printf("section: %d %zu %zu %zu\n", i, sections[i].file_offset, sections[i].count, b->ops.count);
+		if (sections[i].items)
+			printf("%d %d %d %d\n", sections[i].items[0], sections[i].items[1], sections[i].items[2], sections[i].items[3]);
+		arena_da_append_many(&cc->arena, &b->ops, sections[i].items, sections[i].count);
+		/* fwrite(sections[i].items, 1, sections[i].count, fptr); */
+	}
+
+	Linux_x86_64_Elf_Section shstrtab = { 0 };
+	arena_da_append(&cc->arena, &shstrtab, 0);
+
+	hdrptr = (Elf64_Ehdr*)b->ops.items;
+	hdrptr->e_shoff = b->ops.count;
+	hdrptr->e_shnum = LEN(sections) + 1 /* plus one for shstrtab */;
+	hdrptr->e_shstrndx = LEN(sections);
+	for (i = 0; i < LEN(sections); ++i) {
+		if (i != 0) {
+			shdr.sh_name = shstrtab.count;
+			arena_da_append_many(&cc->arena, &shstrtab, sections[i].name.ptr, sections[i].name.len);
+			arena_da_append(&cc->arena, &shstrtab, 0);
+		} else {
+			shdr.sh_name = 0;
+		}
+		shdr.sh_type = sections[i].shdr.sh_type;
+		shdr.sh_flags = sections[i].shdr.sh_flags;
+		shdr.sh_addr = 0x00000;
+		shdr.sh_offset = i == 0 ? 0 : sections[i].file_offset;
+		shdr.sh_size = sections[i].count;
+		shdr.sh_link = sections[i].shdr.sh_link;
+		shdr.sh_info = sections[i].shdr.sh_info;
+		shdr.sh_addralign = sections[i].shdr.sh_addralign;
+		shdr.sh_entsize = sections[i].shdr.sh_entsize;
+		arena_da_append_many(&cc->arena, &b->ops, &shdr, sizeof(shdr));
+	}
+
+	size_t shdr_offset = b->ops.count;
+	arena_da_append_many(&cc->arena, &b->ops, &shdr, sizeof(shdr));
+	shdr_ptr = (Elf64_Shdr*)(b->ops.items + shdr_offset);
+
+	shdr_ptr->sh_name = shstrtab.count;
+	printf("%p %p  %d %zu\n", shdr_ptr, hdrptr, shdr_ptr->sh_name, b->ops.count);
+	arena_da_append_many(&cc->arena, &shstrtab, str_lit(".shstrtab").ptr, str_lit(".shstrtab").len);
+	arena_da_append(&cc->arena, &shstrtab, 0);
+	shdr_ptr->sh_offset = b->ops.count;
+	arena_da_append_many(&cc->arena, &b->ops, shstrtab.items, shstrtab.count);
+
+	shdr_ptr = (Elf64_Shdr*)(b->ops.items + shdr_offset);
+	shdr_ptr->sh_type = SHT_STRTAB;
+	shdr_ptr->sh_flags = 0;
+	shdr_ptr->sh_addr = 0;
+	shdr_ptr->sh_size = shstrtab.count;
+	shdr_ptr->sh_link = 0;
+	shdr_ptr->sh_info = 0;
+	shdr_ptr->sh_addralign = 1;
+	shdr_ptr->sh_entsize = 0;
+
 	return fwrite(b->ops.items, 1, b->ops.count, fptr) == b->ops.count;
+	/* return fwrite(&header, 1, sizeof(header), fptr) == sizeof(header); */
+	/* return fwrite(&, 1, sizeof(header), fptr) == sizeof(header); */
+	/* return true; */
 }
 
 static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
@@ -167,7 +306,7 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 }
 
 void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir) {
-
+	Elf64_Sym sym;
 	int fi;
 	for (fi = 0; fi < bir->fns.count; ++fi) {
 		LL_Ir_Function* fn = &bir->fns.items[fi];
@@ -185,15 +324,9 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 
 		/* printf("function " FMT_SV_FMT ":\n", FMT_SV_ARG(fn->ident->str)); */
 
-		/* arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT ".globl "); */
-		/* arena_sb_append_strview(&cc->arena, &b->output, fn->ident->str); */
-		/* arena_sb_append_cstr(&cc->arena, &b->output, "\n"); */
-
-		/* arena_sb_append_strview(&cc->arena, &b->output, fn->ident->str); */
-		/* arena_sb_append_cstr(&cc->arena, &b->output, ":\n"); */
-
-		/* arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "push rbp\n"); */
-		/* arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "mov rbp, rsp\n"); */
+		size_t function_offset = b->current_section->count;
+		X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
+		X86_64_WRITE_INSTRUCTION(OPCODE_MOV, rm64_r64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp, .reg1 = X86_64_OPERAND_REGISTER_rsp }));
 
 		int bi = 0;
 		while (block) {
@@ -202,44 +335,19 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 			block = block->next;
 		}
 
-		/* arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "pop rbp\n"); */
-		/* arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "ret\n\n"); */
+		X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
+		X86_64_WRITE_INSTRUCTION(OPCODE_RET, noarg, ((X86_64_Instruction_Parameters){ }));
+
+		sym.st_name = b->section_strtab.count;
+		arena_da_append_many(&cc->arena, &b->section_strtab, fn->ident->str.ptr, fn->ident->str.len);
+		arena_da_append(&cc->arena, &b->section_strtab, 0);
+
+		sym.st_info = ELF32_ST_INFO(STB_GLOBAL, STT_FUNC);
+		sym.st_other = STV_DEFAULT;
+		sym.st_shndx = b->current_section->index;
+		sym.st_value = function_offset;
+		sym.st_size = b->current_section->count - function_offset;
+		arena_da_append(&cc->arena, &b->symbols, sym);
 	}
 }
-
-/* void linux_x86_64_elf_generate_statement(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, Ast_Base* stmt) { */
-/* 	int i; */
-/* 	switch (stmt->kind) { */
-/* 	case AST_KIND_BLOCK: */
-/* 		for (i = 0; i < AST_AS(stmt, Ast_Block)->count; ++i) { */
-/* 			linux_x86_64_elf_generate_statement(cc, b, AST_AS(stmt, Ast_Block)->items[i]); */
-/* 		} */
-/* 		break; */
-/* 	case AST_KIND_FUNCTION_DECLARATION: { */
-/* 		Ast_Function_Declaration* fn_decl = AST_AS(stmt, Ast_Function_Declaration); */
-/* 		if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break; */
-
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT ".globl "); */
-/* 		arena_sb_append_strview(&cc->arena, &b->output, fn_decl->ident->str); */
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, "\n"); */
-
-/* 		arena_sb_append_strview(&cc->arena, &b->output, fn_decl->ident->str); */
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, ":\n"); */
-
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "push rbp\n"); */
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "mov rbp, rsp\n"); */
-
-/* 		if (fn_decl->body) { */
-/* 			linux_x86_64_elf_generate_statement(cc, b, fn_decl->body); */
-/* 		} */
-
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "pop rbp\n"); */
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "ret\n\n"); */
-/* 		break; */
-/* 	} */
-/* 	} */
-/* } */
-
-/* void linux_x86_64_elf_generate_expression(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, Ast_Base* expr) { */
-/* } */
 
