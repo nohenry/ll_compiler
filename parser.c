@@ -1,6 +1,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "common.h"
 #include "parser.h"
@@ -392,7 +393,7 @@ const char* get_node_kind(Ast_Base* node) {
 
 void print_node_value(Ast_Base* node) {
 	switch (node->kind) {
-		case AST_KIND_LITERAL_INT: printf("%ld", AST_AS(node, Ast_Literal)->i64); break;
+		case AST_KIND_LITERAL_INT: printf("%" PRId64, AST_AS(node, Ast_Literal)->i64); break;
 		case AST_KIND_LITERAL_STRING: printf(FMT_SV_FMT, FMT_SV_ARG(AST_AS(node, Ast_Literal)->str)); break;
 		case AST_KIND_IDENT: printf(FMT_SV_FMT, FMT_SV_ARG(AST_AS(node, Ast_Ident)->str)); break;
 		case AST_KIND_BINARY_OP: lexer_print_token_raw(&AST_AS(node, Ast_Operation)->op); break;

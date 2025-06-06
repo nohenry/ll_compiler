@@ -1,4 +1,6 @@
 
+#include <inttypes.h>
+
 #include "common.h"
 #include "lexer.h"
 
@@ -224,7 +226,7 @@ void lexer_print_token_raw_to_fd(LL_Token* token, FILE* fd) {
         fprintf(fd, FMT_SV_FMT, FMT_SV_ARG(token->str));
         break;
     case LL_TOKEN_KIND_INT:
-        fprintf(fd, "%ld", token->i64);
+        fprintf(fd, "%" PRId64, token->i64);
         break;
     case LL_TOKEN_KIND_STRING:
         fprintf(fd, FMT_SV_FMT, FMT_SV_ARG(token->str));

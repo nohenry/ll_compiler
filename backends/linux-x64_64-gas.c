@@ -1,4 +1,5 @@
 
+#include <inttypes.h>
 #include <stdio.h>
 
 #include "../backend.h"
@@ -67,10 +68,10 @@ static void write_operand(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL_
 			case 64: arena_sb_append_cstr(&cc->arena, &b->output, "qword"); break;
 			default: assert(false);
 			}
-			arena_sb_sprintf(&cc->arena, &b->output, " ptr [rbp - %lu]", offset);
+			arena_sb_sprintf(&cc->arena, &b->output, " ptr [rbp - %" PRIu64 "]", offset);
 			break;
 		case LL_TYPE_POINTER:
-			arena_sb_sprintf(&cc->arena, &b->output, "qword ptr [rbp - %lu]", offset);
+			arena_sb_sprintf(&cc->arena, &b->output, "qword ptr [rbp - %" PRIu64 "]", offset);
 			break;
 		default: assert(false);
 		}
