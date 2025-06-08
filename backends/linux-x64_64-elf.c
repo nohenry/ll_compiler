@@ -213,7 +213,6 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
    	};
 	arena_da_append_many(&cc->arena, &b->ops, &header, sizeof(header));
 	Elf64_Ehdr* hdrptr = (Elf64_Ehdr*)b->ops.items;
-	/* fwrite(&header, 1, sizeof(header), fptr); */
 
 
 	Linux_x86_64_Elf_Section sections[] = {
@@ -306,9 +305,6 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 	shdr_ptr->sh_entsize = 0;
 
 	return fwrite(b->ops.items, 1, b->ops.count, fptr) == b->ops.count;
-	/* return fwrite(&header, 1, sizeof(header), fptr) == sizeof(header); */
-	/* return fwrite(&, 1, sizeof(header), fptr) == sizeof(header); */
-	/* return true; */
 }
 
 static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
@@ -392,5 +388,7 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 		sym.st_size = b->current_section->count - function_offset;
 		arena_da_append(&cc->arena, &b->symbols, sym);
 	}
+
+	x86_64_run_tests(cc, b);
 }
 

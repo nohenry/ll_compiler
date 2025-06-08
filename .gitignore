@@ -3,6 +3,8 @@
 ./out.bin
 ./out.s
 ./test.s
+main
+out.bin
 
 tags
 
