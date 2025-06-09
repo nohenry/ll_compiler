@@ -71,7 +71,7 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
 
 Ast_Base* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
 	Ast_Base* b = parser_parse_statement(cc, parser);
-	print_node(b, 0);
+	/* print_node(b, 0); */
 	return b;
 }
 

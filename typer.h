@@ -95,7 +95,7 @@ LL_Typer ll_typer_create(Compiler_Context* cc);
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Ast_Base* node);
 
 LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base* stmt);
-LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr);
+LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr, LL_Type* expected_type);
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Ast_Base* typename);
 void ll_print_type_raw(LL_Type* type, FILE* fd);
 void ll_print_type(LL_Type* type);

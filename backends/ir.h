@@ -43,6 +43,8 @@ typedef enum {
 	LL_IR_OPCODE_LOAD,
 	LL_IR_OPCODE_INVOKE,
 	LL_IR_OPCODE_LEA,
+
+	LL_IR_OPCODE_ADD,
 } LL_Ir_Opcode;
 
 typedef struct {
@@ -58,6 +60,7 @@ typedef struct {
 typedef struct ll_ir_block {
 	struct ll_ir_block *next, *prev;
 	LL_Ir_Op_List ops;
+	LL_Ir_Op_List rops;
 	bool did_return;
 } LL_Ir_Block;
 
@@ -72,9 +75,21 @@ typedef struct {
 	LL_Ir_Block* current_block;
 } LL_Backend_Ir;
 
+#define OPERAND_FMT "%s%d"
+#define OPERAND_FMT_VALUE(v) ( \
+		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_LOCAL_BIT ? "l" : \
+		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_REGISTER_BIT ? "r" : \
+		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_PARMAETER_BIT ? "p" : \
+		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_FUNCTION_BIT ? "f" : \
+		"" \
+		), (v & LL_IR_OPERAND_VALUE_MASK)
+
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b);
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath);
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt);
 LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, bool ref);
+LL_Type* ir_get_operand_type(LL_Ir_Function* fn, LL_Ir_Operand operand);
 
+size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i);
+void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i);
 

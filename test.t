@@ -1,5 +1,8 @@
 void main() {
-	int a = 23;
+	int b = 23 + 45;
+	int d = 10;
+	int c = b + d;
+	int a = c + 45;
 	// int d = 56;
 	// int* pa = &a;
 	// int8 b = *pa;

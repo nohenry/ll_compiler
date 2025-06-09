@@ -19,9 +19,9 @@ int main() {
 	ll_backend_generate_statement(&cc, &backend_ir, root);
 	ll_backend_write_to_file(&cc, &backend_ir, "");
 
-	LL_Backend backend = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_GAS);
-	ll_backend_generate_statement_from_ir(&cc, &backend, backend_ir.backend);
-	ll_backend_write_to_file(&cc, &backend, "out.s");
+	/* LL_Backend backend = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_GAS); */
+	/* ll_backend_generate_statement_from_ir(&cc, &backend, backend_ir.backend); */
+	/* ll_backend_write_to_file(&cc, &backend, "out.s"); */
 
 	LL_Backend backend_elf = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_ELF);
 	ll_backend_generate_statement_from_ir(&cc, &backend_elf, backend_ir.backend);

@@ -245,8 +245,9 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
 		if (var_decl->initializer) {
 
+			ll_print_type(declared_type);
 			typer->current_scope = (LL_Scope*)var_scope;
-			LL_Type* init_type = ll_typer_type_expression(cc, typer, var_decl->initializer);
+			LL_Type* init_type = ll_typer_type_expression(cc, typer, var_decl->initializer, declared_type);
 			typer->current_scope = var_scope->parent;
 
 			if (!ll_typer_implicit_cast_tofrom(cc, typer, init_type, declared_type)) {
@@ -319,13 +320,13 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
 		break;
 	}
-	default: return ll_typer_type_expression(cc, typer, stmt);
+	default: return ll_typer_type_expression(cc, typer, stmt, NULL);
 	}
 
 	return NULL;
 }
 
-LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr) {
+LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr, LL_Type* expected_type) {
 	LL_Type* result;
 	switch (expr->kind) {
 	case AST_KIND_IDENT: {
@@ -334,17 +335,37 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: symbol '" FMT_SV_FMT "' not found!\n", FMT_SV_ARG(AST_AS(expr, Ast_Ident)->str));
 		}
 		AST_AS(expr, Ast_Ident)->resolved_scope = scope;
-		return scope->ident->base.type;
+		printf("typer type %p\n", scope->ident->base.type);
+		result = scope->ident->base.type;
+		break;
 	}
 	case AST_KIND_LITERAL_INT:
-		result = typer->ty_anyint;
+		if (expected_type) {
+			result = expected_type;
+		} else {
+			result = typer->ty_anyint;
+		}
 		break;
 	case AST_KIND_LITERAL_STRING:
 		result = typer->ty_string;
 		break;
 	case AST_KIND_BINARY_OP: {
-		LL_Type* lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left);
-		LL_Type* rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right);
+		LL_Type* lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left, NULL);
+		LL_Type* rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, NULL);
+
+		if (lhs_type->kind == LL_TYPE_ANYINT && rhs_type->kind == LL_TYPE_ANYINT && expected_type) {
+			printf("both\n");
+			ll_print_type(expected_type);
+			lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left, expected_type);
+			rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, expected_type);
+		} else if (lhs_type->kind == LL_TYPE_ANYINT || lhs_type->kind == LL_TYPE_ANYFLOAT) {
+			printf("left\n");
+			lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left, rhs_type);
+		} else if (rhs_type->kind == LL_TYPE_ANYINT || rhs_type->kind == LL_TYPE_ANYFLOAT) {
+			printf("right\n");
+			rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, lhs_type);
+		}
+
 
 		result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
 		if (!result) {
@@ -359,11 +380,11 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		break;
 	}
 	case AST_KIND_PRE_OP: {
-		LL_Type* expr_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right);
-
+		LL_Type* expr_type;
 		result = NULL;
 		switch (AST_AS(expr, Ast_Operation)->op.kind) {
 		case '-': {
+			expr_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, expected_type);
 			switch (expr_type->kind) {
 			case LL_TYPE_INT:
 			case LL_TYPE_UINT:
@@ -376,6 +397,14 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 			}
 		}
 		case '*': {
+
+			if (expected_type) {
+				expr_type = ll_typer_get_ptr_type(cc, typer, expected_type);
+				expr_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, expr_type);
+			} else {
+				expr_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, NULL);
+			}
+
 			switch (expr_type->kind) {
 			case LL_TYPE_POINTER: result = ((LL_Type_Pointer*)expr_type)->element_type;
 			default: break;
@@ -402,19 +431,19 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 	case AST_KIND_INVOKE: {
 		int pi, di;
 		Ast_Invoke* inv = AST_AS(expr, Ast_Invoke);
-		LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, inv->expr);
+		LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, inv->expr, NULL);
 		if (fn_type->base.kind != LL_TYPE_FUNCTION) {
 			fprintf(stderr, "\x1b[31;1mTODO:\x1b[0m expression is not callable\n");
 			return NULL;
 		}
 
 		for (pi = 0, di = 0; pi < inv->arguments.count && (fn_type->is_variadic || di < fn_type->parameter_count); ++pi, ++di) {
-			LL_Type* provided_type = ll_typer_type_expression(cc, typer, inv->arguments.items[pi]);
+			LL_Type* declared_type = fn_type->parameters[di];
+			LL_Type* provided_type = ll_typer_type_expression(cc, typer, inv->arguments.items[pi], declared_type);
 			if (fn_type->is_variadic && di >= fn_type->parameter_count - 1) {
 				continue;
 			}
 
-			LL_Type* declared_type = fn_type->parameters[di];
 
 			if (!ll_typer_implicit_cast_tofrom(cc, typer, provided_type, declared_type)) {
 				fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: provided argument type does not match declared type of function! Expected ");

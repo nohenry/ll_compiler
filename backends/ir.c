@@ -8,6 +8,35 @@ static void ir_append_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* bl
 	arena_da_append_many(&cc->arena, &block->ops, (uint32_t*)operands, operands_count);
 }
 
+size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i) {
+	LL_Ir_Opcode opcode = opcode_list[i];
+
+	switch (opcode) {
+	case LL_IR_OPCODE_RET: return 1;
+	case LL_IR_OPCODE_STORE: return 3;
+	case LL_IR_OPCODE_LOAD: return 3;
+	case LL_IR_OPCODE_ADD: return 4;
+	case LL_IR_OPCODE_LEA: return 3;
+	case LL_IR_OPCODE_INVOKE: {
+		uint32_t count = opcode_list[1 + 2];
+		return 4 + count;
+		break;
+	}
+	}
+}
+
+static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block) {
+	arena_da_reserve(&cc->arena, &block->rops, block->ops.count);
+
+	size_t i;
+	for (i = 0; i < block->ops.count;) {
+		size_t count = ir_get_op_count(cc, b, block->ops.items, i);
+		size_t dst_i = block->ops.count - i - count;
+		memcpy(&block->rops.items[dst_i], &block->ops.items[i], sizeof(block->ops.items[i]) * count);
+		i += count;
+	}
+}
+
 #define IR_APPEND_OP(opcode, ...) ({ \
 			LL_Ir_Operand _ops[] = {__VA_ARGS__}; \
 			ir_append_op(cc, b, b->current_block, opcode, _ops, LEN(_ops)); \
@@ -29,39 +58,36 @@ static void ir_append_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* bl
 		})
 #define INDENT "    "
 
-#define OPERAND_FMT "%s%d"
-#define OPERAND_FMT_VALUE(v) ( \
-		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_LOCAL_BIT ? "l" : \
-		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_REGISTER_BIT ? "r" : \
-		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_PARMAETER_BIT ? "p" : \
-		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_FUNCTION_BIT ? "f" : \
-		"" \
-		), (v & LL_IR_OPERAND_VALUE_MASK)
+void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i) {
+	LL_Ir_Opcode opcode = opcode_list[i];
+	LL_Ir_Operand* operands = &opcode_list[i + 1];
+
+	switch (opcode) {
+	case LL_IR_OPCODE_RET: printf(INDENT "ret"); break;
+	case LL_IR_OPCODE_STORE: printf(INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+	case LL_IR_OPCODE_LOAD: printf(INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+	case LL_IR_OPCODE_LEA: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+	case LL_IR_OPCODE_ADD: printf(INDENT OPERAND_FMT " = add " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_INVOKE: {
+		uint32_t count = operands[2];
+		printf(INDENT OPERAND_FMT " = call " OPERAND_FMT " ", OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[0]));
+		for (uint32_t j = 0; j < count; ++j) {
+			if (j > 0) printf(", ");
+			printf(OPERAND_FMT, OPERAND_FMT_VALUE(operands[3 + j]));
+		}
+		break;
+	}
+	}
+
+	i += ir_get_op_count(cc, b, opcode_list, i);
+}
 
 static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block) {
 	size_t i;
-	for (i = 0; i < block->ops.count; ++i) {
-		LL_Ir_Opcode opcode = (LL_Ir_Opcode)block->ops.items[i];
-		LL_Ir_Operand* operands = (LL_Ir_Operand*)&block->ops.items[i + 1];
-
-		switch (opcode) {
-		case LL_IR_OPCODE_RET: printf(INDENT "ret"); break;
-		case LL_IR_OPCODE_STORE: printf(INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); i += 2; break;
-		case LL_IR_OPCODE_LOAD: printf(INDENT "load " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); i += 2; break;
-		case LL_IR_OPCODE_LEA: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); i += 2; break;
-		case LL_IR_OPCODE_INVOKE: {
-			uint32_t count = operands[2];
-			printf(INDENT OPERAND_FMT " = call " OPERAND_FMT " ", OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[0]));
-			for (uint32_t j = 0; j < count; ++j) {
-				if (j > 0) printf(", ");
-				printf(OPERAND_FMT, OPERAND_FMT_VALUE(operands[3 + j]));
-			}
-
-			i += 3 + count;
-		   	break;
-		}
-		}
+	for (i = 0; i < block->ops.count; ) {
+		ir_print_op(cc, b, block->ops.items, i);
 		printf("\n");
+		i += ir_get_op_count(cc, b, block->ops.items, i);
 	}
 }
 
@@ -128,6 +154,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 			.entry = arena_alloc(&cc->arena, sizeof(LL_Ir_Block)),
 		};
 		memset(&fn.entry->ops, 0, sizeof(fn.entry->ops));
+		memset(&fn.entry->rops, 0, sizeof(fn.entry->rops));
 		fn.entry->next = fn.entry->prev = NULL;
 		fn.entry->did_return = false;
 
@@ -145,6 +172,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 			IR_APPEND_OP(LL_IR_OPCODE_RET);
 			/* printf("apojfds %d\n", b->current_block->op_length); */
 		}
+		ir_gen_reverse_ops(cc, b, b->current_block);
 		b->current_block = last_block;
 		b->current_function = last_function;
 		break;
@@ -155,6 +183,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 
 LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, bool lvalue) {
 	LL_Ir_Operand result = 696969;
+	LL_Ir_Opcode op, r1, r2;
 	int i;
 
 	switch (expr->kind) {
@@ -188,6 +217,15 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		}
 
 		break;
+	case AST_KIND_BINARY_OP:
+		switch (AST_AS(expr, Ast_Operation)->op.kind) {
+		case '+': op = LL_IR_OPCODE_ADD; break;
+		default: assert(false);
+		}
+		r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+		r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+		result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
+		break;
 	case AST_KIND_INVOKE: {
 		assert(!lvalue);
 		Ast_Invoke* inv = AST_AS(expr, Ast_Invoke);
@@ -217,9 +255,9 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		case AST_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | AST_AS(decl, Ast_Parameter)->ir_index; break;
 		default: assert(false);
 		}
-		printf("%x\n", result);
 
 		if (!lvalue) {
+			printf("type %p\n", ident->base.type);
 			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ident->base.type, result);
 		}
 		
@@ -232,4 +270,22 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 	return result;
 }
 
+LL_Type* ir_get_operand_type(LL_Ir_Function* fn, LL_Ir_Operand operand) {
+	switch (operand & LL_IR_OPERAND_TYPE_MASK) {
+	case LL_IR_OPERAND_IMMEDIATE_BIT:
+		assert(false);
+		return NULL;
+	case LL_IR_OPERAND_REGISTER_BIT:
+		return fn->registers.items[operand & LL_IR_OPERAND_VALUE_MASK].type;
+	case LL_IR_OPERAND_LOCAL_BIT:
+		return fn->locals.items[operand & LL_IR_OPERAND_VALUE_MASK].ident->base.type;
+	case LL_IR_OPERAND_PARMAETER_BIT: {
+		LL_Type_Function* fn_type = (LL_Type_Function*)fn->ident->base.type;
+		return fn_type->parameters[operand & LL_IR_OPERAND_VALUE_MASK];
+	}
+	case LL_IR_OPERAND_FUNCTION_BIT:
+		return fn->ident->base.type;
+	default: assert(false);
+	}
+}
 

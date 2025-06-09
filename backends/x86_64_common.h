@@ -609,7 +609,7 @@ typedef enum {
 
    	X86_64_VARIANT_KIND_ax_r16,
    	X86_64_VARIANT_KIND_eax_r32,
-   	X86_64_VARIANT_KIND_rax_r32,
+   	/* X86_64_VARIANT_KIND_rax_r32, */
 
    	X86_64_VARIANT_KIND_al_dx,
    	X86_64_VARIANT_KIND_ax_dx,
@@ -714,6 +714,12 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 void x86_64_run_tests(Compiler_Context* cc, X86_64_Machine_Code_Writer* b);
 extern const X86_64_Instruction x86_64_instructions_table[];
 extern const size_t x86_64_instructions_table_size;
+extern const X86_64_Operand_Register x86_64_usable_gp_registers[];
+extern const size_t x86_64_usable_gp_registers_count;
+
+X86_64_Instruction_Variant x86_64_get_variant(const X86_64_Instruction* inst, X86_64_Variant_Kind kind);
 
 #define X86_64_WRITE_INSTRUCTION(op, variant, parameters) x86_64_write_instruction(cc, (X86_64_Machine_Code_Writer*)b, X86_64_VARIANT_KIND_ ## variant, x86_64_instructions_table[op] . variant, parameters)
+#define X86_64_WRITE_INSTRUCTION_DYN(op, variant, parameters) x86_64_write_instruction(cc, (X86_64_Machine_Code_Writer*)b, variant, x86_64_get_variant(&x86_64_instructions_table[op], variant), parameters)
+
 
