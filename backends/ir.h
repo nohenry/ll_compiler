@@ -11,6 +11,7 @@ typedef uint32_t LL_Ir_Operand;
 #define LL_IR_OPERAND_LOCAL_BIT 0x20000000u
 #define LL_IR_OPERAND_PARMAETER_BIT 0x30000000u
 #define LL_IR_OPERAND_FUNCTION_BIT 0x40000000u
+#define LL_IR_OPERAND_DATA_BIT 0x50000000u
 
 typedef struct {
 	Ast_Ident* ident;
@@ -30,18 +31,13 @@ typedef struct {
 	LL_Ir_Register* items;
 } LL_Ir_Register_List;
 
-typedef struct {
-	Ast_Ident* ident;
-	struct ll_ir_block* entry;
-	LL_Ir_Local_List locals;
-	LL_Ir_Register_List registers;
-} LL_Ir_Function;
-
 typedef enum {
 	LL_IR_OPCODE_RET,
+	LL_IR_OPCODE_RETVALUE,
 	LL_IR_OPCODE_STORE,
 	LL_IR_OPCODE_LOAD,
 	LL_IR_OPCODE_INVOKE,
+	LL_IR_OPCODE_INVOKEVALUE,
 	LL_IR_OPCODE_LEA,
 
 	LL_IR_OPCODE_ADD,
@@ -61,8 +57,21 @@ typedef struct ll_ir_block {
 	struct ll_ir_block *next, *prev;
 	LL_Ir_Op_List ops;
 	LL_Ir_Op_List rops;
-	bool did_return;
+	bool did_branch;
 } LL_Ir_Block;
+
+typedef enum {
+	LL_IR_FUNCTION_FLAG_EXTERN = (1u << 0u),
+} LL_Ir_Function_Flags;
+
+typedef struct {
+	Ast_Ident* ident;
+	LL_Ir_Block* entry;
+	LL_Ir_Block* exit;
+	LL_Ir_Local_List locals;
+	LL_Ir_Register_List registers;
+	LL_Ir_Function_Flags flags;
+} LL_Ir_Function;
 
 typedef struct {
 	size_t count, capacity;
@@ -70,9 +79,20 @@ typedef struct {
 } LL_Ir_Function_List;
 
 typedef struct {
+	void* ptr;
+	size_t len, binary_offset;
+} LL_Ir_Data_Item;
+
+typedef struct {
+	size_t count, capacity;
+	LL_Ir_Data_Item* items;
+} LL_Ir_Data_Item_List;
+
+typedef struct {
 	LL_Ir_Function_List fns;
+	LL_Ir_Data_Item_List data_items;
 	int32_t current_function;
-	LL_Ir_Block* current_block;
+	LL_Ir_Block* current_block, *return_block;
 } LL_Backend_Ir;
 
 #define OPERAND_FMT "%s%d"
@@ -81,6 +101,7 @@ typedef struct {
 		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_REGISTER_BIT ? "r" : \
 		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_PARMAETER_BIT ? "p" : \
 		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_FUNCTION_BIT ? "f" : \
+		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_DATA_BIT ? "d" : \
 		"" \
 		), (v & LL_IR_OPERAND_VALUE_MASK)
 

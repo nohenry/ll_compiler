@@ -71,7 +71,7 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
 
 Ast_Base* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
 	Ast_Base* b = parser_parse_statement(cc, parser);
-	/* print_node(b, 0); */
+	print_node(b, 0);
 	return b;
 }
 
@@ -358,8 +358,16 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
         break;
 
     case LL_TOKEN_KIND_IDENT:
-        result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = pk.str }));
 		CONSUME();
+		if (pk.str.ptr == LL_KEYWORD_RETURN.ptr) {
+			PEEK(&pk);
+			if (pk.kind != ';')
+				result = parser_parse_expression(cc, parser, 0, false);
+			else result = NULL;
+			result = CREATE_NODE(AST_KIND_RETURN, ((Ast_Control_Flow){ .expr = result }));
+			break;
+		}
+        result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = pk.str }));
         break;
 
     default:
@@ -387,6 +395,7 @@ const char* get_node_kind(Ast_Base* node) {
 		case AST_KIND_VARIABLE_DECLARATION: return "Variable_Declaration";
 		case AST_KIND_FUNCTION_DECLARATION: return "Function_Declaration";
 		case AST_KIND_PARAMETER: return "Parameter";
+		case AST_KIND_RETURN: return "Return";
 		case AST_KIND_TYPE_POINTER: return "Pointer";
 	}
 }
@@ -403,6 +412,7 @@ void print_node_value(Ast_Base* node) {
 		case AST_KIND_VARIABLE_DECLARATION: print_storage_class(AST_AS(node, Ast_Variable_Declaration)->storage_class); break;
 		case AST_KIND_FUNCTION_DECLARATION: print_storage_class(AST_AS(node, Ast_Function_Declaration)->storage_class); break;
 		case AST_KIND_PARAMETER: break;
+		case AST_KIND_RETURN: break;
 		case AST_KIND_TYPE_POINTER: break;
 	}
 }
@@ -450,6 +460,10 @@ void print_node(Ast_Base* node, int indent) {
 			if (AST_AS(node, Ast_Variable_Declaration)->type)
 				print_node(AST_AS(node, Ast_Variable_Declaration)->type, indent + 1);
 			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1);
+			break;
+		case AST_KIND_RETURN:
+			if (AST_AS(node, Ast_Control_Flow)->expr)
+				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1);
 			break;
 
 		case AST_KIND_TYPE_POINTER:

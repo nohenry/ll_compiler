@@ -83,6 +83,7 @@ typedef struct ll_typer {
 			*ty_void,
 			*ty_string; 
 	
+	LL_Type_Function* current_fn;
 	LL_Scope* current_scope, *root_scope;
 } LL_Typer;
 

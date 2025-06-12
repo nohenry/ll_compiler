@@ -251,6 +251,8 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 			typer->current_scope = var_scope->parent;
 
 			if (!ll_typer_implicit_cast_tofrom(cc, typer, init_type, declared_type)) {
+				assert(init_type != NULL);
+				assert(declared_type != NULL);
 				fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: variable initializer does not match declared type of variable! Expected ");
 				ll_print_type_raw(declared_type, stderr);
 				fprintf(stderr, " but got ");
@@ -309,6 +311,8 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 		stmt->type = fn_type;
 		fn_decl->ident->base.type = fn_type;
 
+		LL_Type_Function* last_fn = typer->current_fn;
+		typer->current_fn = (LL_Type_Function*)fn_type;
 
 		if (fn_decl->body) {
 			if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
@@ -317,6 +321,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 			ll_typer_type_statement(cc, typer, fn_decl->body);
 		}
 		typer->current_scope = fn_scope->parent;
+		typer->current_fn = last_fn;
 
 		break;
 	}
@@ -335,7 +340,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: symbol '" FMT_SV_FMT "' not found!\n", FMT_SV_ARG(AST_AS(expr, Ast_Ident)->str));
 		}
 		AST_AS(expr, Ast_Ident)->resolved_scope = scope;
-		printf("typer type %p\n", scope->ident->base.type);
+		printf("typer type %.*s - %p\n", scope->ident->str.len, scope->ident->str.ptr, scope->ident->base.type);
 		result = scope->ident->base.type;
 		break;
 	}
@@ -412,6 +417,12 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 			break;
 		}
 		case '&': {
+			if (expected_type && expected_type->kind == LL_TYPE_POINTER) {
+				LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)expected_type;
+				expr_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, ptr_type->element_type);
+			} else {
+				expr_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, NULL);
+			}
 			result = ll_typer_get_ptr_type(cc, typer, expr_type);
 			break;
 		}
@@ -464,6 +475,13 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		}
 
 		result = fn_type->return_type;
+		break;
+	}
+	case AST_KIND_RETURN: {
+		Ast_Control_Flow* cf = AST_AS(expr, Ast_Control_Flow);
+		if (cf->expr) ll_typer_type_expression(cc, typer, cf->expr, typer->current_fn->return_type);
+		result = NULL;
+
 		break;
 	}
 	default: fprintf(stderr, "\x1b[31;1mTODO:\x1b[0m type expression %d\n", expr->kind);

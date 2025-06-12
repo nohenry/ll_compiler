@@ -19,6 +19,8 @@ typedef enum {
 	AST_KIND_PARAMETER,
     AST_KIND_BLOCK,
 
+    AST_KIND_RETURN,
+
     AST_KIND_TYPE_POINTER,
 } Ast_Kind;
 
@@ -92,6 +94,11 @@ typedef struct {
     Ast_Base* expr;
 	Ast_List arguments;
 } Ast_Invoke;
+
+typedef struct {
+    Ast_Base base;
+    Ast_Base* expr;
+} Ast_Control_Flow;
 
 typedef struct {
     Ast_Base base;

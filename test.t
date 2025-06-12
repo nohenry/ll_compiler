@@ -3,6 +3,10 @@ void main() {
 	int d = 10;
 	int c = b + d;
 	int a = c + 45;
+	int* pa = &a;
+	int aa = *pa;
+	string s = "fdsf";
+
 	// int d = 56;
 	// int* pa = &a;
 	// int8 b = *pa;
@@ -14,11 +18,14 @@ void main() {
 	// int64 length = 120;
 	// int[length:] slice_with_variable_specified_sized_length_before;
 	
-	extern int printf(string fmt, ..args);
+	extern void printf(string fmt, ..args);
 	int b(int h, int k) {
 		// int c = h;
 	}
 
+	printf("foobar");
+
+	return aa;
 	// int bb = printf("hello", 1, 2, 3);
 	// int aa = b(123, 1);
 }

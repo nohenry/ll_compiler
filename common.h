@@ -41,6 +41,7 @@ extern String_View LL_KEYWORD_DO;
 extern String_View LL_KEYWORD_MATCH;
 extern String_View LL_KEYWORD_STRUCT;
 extern String_View LL_KEYWORD_EXTERN;
+extern String_View LL_KEYWORD_RETURN;
 
 extern String_View LL_KEYWORD_UINT8;
 extern String_View LL_KEYWORD_UINT16;

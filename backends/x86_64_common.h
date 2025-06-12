@@ -24,6 +24,8 @@ typedef enum {
 	X86_64_OPERAND_REGISTER_r13,
 	X86_64_OPERAND_REGISTER_r14,
 	X86_64_OPERAND_REGISTER_r15,
+
+	X86_64_OPERAND_REGISTER_invalid,
 } X86_64_Operand_Register;
 
 #define X86_64_OPERAND_REGISTER_xmm(n) ((n))
@@ -704,10 +706,10 @@ typedef enum {
 
 typedef struct {
 	uint8_t reg0, reg1, reg2, reg3;
-	uint8_t use_sib;
 	uint8_t scale, index;
 	int64_t displacement, immediate, relative;
 	uint8_t rep;
+	bool use_sib, rbp_is_rip;
 } X86_64_Instruction_Parameters;
 
 void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* b, X86_64_Variant_Kind variant, X86_64_Instruction_Variant instruction, X86_64_Instruction_Parameters parameters);

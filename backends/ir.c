@@ -13,14 +13,19 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 
 	switch (opcode) {
 	case LL_IR_OPCODE_RET: return 1;
+	case LL_IR_OPCODE_RETVALUE: return 2;
 	case LL_IR_OPCODE_STORE: return 3;
 	case LL_IR_OPCODE_LOAD: return 3;
 	case LL_IR_OPCODE_ADD: return 4;
 	case LL_IR_OPCODE_LEA: return 3;
-	case LL_IR_OPCODE_INVOKE: {
-		uint32_t count = opcode_list[1 + 2];
+    case LL_IR_OPCODE_INVOKEVALUE: {
+		uint32_t count = opcode_list[2];
 		return 4 + count;
-		break;
+    }
+	case LL_IR_OPCODE_INVOKE: {
+		uint32_t count = opcode_list[1];
+        printf("invoke vount %u\n", count);
+		return 3 + count;
 	}
 	}
 }
@@ -50,7 +55,7 @@ static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Blo
 		})
 
 #define FUNCTION() (&b->fns.items[b->current_function])
-#define BLOCK() (FUNCTION()->)
+#define BLOCK() (b->current_block)
 #define NEXTREG(type_) ({ 																				\
 			uint32_t reg = FUNCTION()->registers.count; 												\
 			arena_da_append(&cc->arena, &FUNCTION()->registers, ((LL_Ir_Register){ .type = type_ })); 	\
@@ -61,19 +66,27 @@ static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Blo
 void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i) {
 	LL_Ir_Opcode opcode = opcode_list[i];
 	LL_Ir_Operand* operands = &opcode_list[i + 1];
+	int offset = 0;
 
 	switch (opcode) {
 	case LL_IR_OPCODE_RET: printf(INDENT "ret"); break;
+	case LL_IR_OPCODE_RETVALUE: printf(INDENT "ret " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0])); break;
 	case LL_IR_OPCODE_STORE: printf(INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LOAD: printf(INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LEA: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_ADD: printf(INDENT OPERAND_FMT " = add " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_INVOKEVALUE:
+		offset = 1;
 	case LL_IR_OPCODE_INVOKE: {
-		uint32_t count = operands[2];
-		printf(INDENT OPERAND_FMT " = call " OPERAND_FMT " ", OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[0]));
+		uint32_t count = operands[1 + offset];
+		if (opcode == LL_IR_OPCODE_INVOKEVALUE) {
+			printf(INDENT OPERAND_FMT " = call " OPERAND_FMT " ", OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]));
+		} else {
+			printf(INDENT "call " OPERAND_FMT " ", OPERAND_FMT_VALUE(operands[0]));
+		}
 		for (uint32_t j = 0; j < count; ++j) {
 			if (j > 0) printf(", ");
-			printf(OPERAND_FMT, OPERAND_FMT_VALUE(operands[3 + j]));
+			printf(OPERAND_FMT, OPERAND_FMT_VALUE(operands[2 + offset + j]));
 		}
 		break;
 	}
@@ -147,37 +160,47 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 	}
 	case AST_KIND_FUNCTION_DECLARATION: {
 		Ast_Function_Declaration* fn_decl = AST_AS(stmt, Ast_Function_Declaration);
-		if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break;
 
 		LL_Ir_Function fn = {
 			.ident = fn_decl->ident,
 			.entry = arena_alloc(&cc->arena, sizeof(LL_Ir_Block)),
+			.exit = arena_alloc(&cc->arena, sizeof(LL_Ir_Block)),
+			.flags = 0,
 		};
 		memset(&fn.entry->ops, 0, sizeof(fn.entry->ops));
 		memset(&fn.entry->rops, 0, sizeof(fn.entry->rops));
 		fn.entry->next = fn.entry->prev = NULL;
-		fn.entry->did_return = false;
+		fn.entry->did_branch = false;
 
 		fn_decl->ir_index = b->fns.count;
+
+		if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
+			fn.flags |= LL_IR_FUNCTION_FLAG_EXTERN;
+		}
 		arena_da_append(&cc->arena, &b->fns, fn);
 
-		int32_t last_function = b->current_function;
-		LL_Ir_Block* last_block = b->current_block;
-		b->current_function = fn_decl->ir_index;
-		b->current_block = fn.entry;
 		if (fn_decl->body) {
+			int32_t last_function = b->current_function;
+			LL_Ir_Block* last_block = b->current_block;
+			b->current_function = fn_decl->ir_index;
+			b->current_block = fn.entry;
+
 			ir_generate_statement(cc, b, fn_decl->body);
+
+			b->current_block->next = fn.exit;
+			if (!b->current_block->did_branch) {
+				b->current_block = fn.exit;
+				IR_APPEND_OP(LL_IR_OPCODE_RET);
+			}
+			ir_gen_reverse_ops(cc, b, b->current_block);
+			b->current_block = last_block;
+			b->current_function = last_function;
 		}
-		if (!b->current_block->did_return) {
-			IR_APPEND_OP(LL_IR_OPCODE_RET);
-			/* printf("apojfds %d\n", b->current_block->op_length); */
-		}
-		ir_gen_reverse_ops(cc, b, b->current_block);
-		b->current_block = last_block;
-		b->current_function = last_function;
 		break;
 	}
-	default: break;
+	default:
+		ir_generate_expression(cc, b, stmt, false);
+		break;
 	}
 }
 
@@ -195,6 +218,14 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		}
 		assert(!lvalue);
 		break;
+	case AST_KIND_LITERAL_STRING: {
+		Ast_Literal* lit = AST_AS(expr, Ast_Literal);
+		assert((b->data_items.count & 0xF0000000u) == 0); // TODO: maybe support more
+		result = LL_IR_OPERAND_DATA_BIT | (uint32_t)b->data_items.count;
+		arena_da_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = lit->str.ptr, .len = lit->str.len }));
+		result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
+		break;
+	}
 	case AST_KIND_PRE_OP:
 		switch (AST_AS(expr, Ast_Operation)->op.kind) {
 		case '-': {
@@ -202,7 +233,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 			break;
 		}
 		case '*': {
-			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, true);
+			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
 			if (!lvalue) {
 				result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, result);
 			}
@@ -231,17 +262,28 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		Ast_Invoke* inv = AST_AS(expr, Ast_Invoke);
 
 		LL_Ir_Operand invokee = ir_generate_expression(cc, b, inv->expr, true);
+		LL_Type_Function* fn_type = (LL_Type_Function*)inv->base.type;
 
-		result = NEXTREG(((LL_Type_Function*)inv->base.type)->return_type);
 		LL_Ir_Operand ops[3 + inv->arguments.count];
-		ops[0] = invokee;
-		ops[1] = result;
-		ops[2] = inv->arguments.count;
-		for (i = 0; i < inv->arguments.count; ++i) {
-			ops[i + 3] = ir_generate_expression(cc, b, inv->arguments.items[i], false);
+
+		int offset, opcode;
+		if (fn_type->return_type && fn_type->return_type->kind != LL_TYPE_VOID) {
+			result = NEXTREG(fn_type->return_type);
+			ops[0] = result;
+			opcode = LL_IR_OPCODE_INVOKEVALUE;
+			offset = 1;
+		} else {
+			opcode = LL_IR_OPCODE_INVOKE;
+			offset = 0;
 		}
 
-		ir_append_op(cc, b, b->current_block, LL_IR_OPCODE_INVOKE, ops, 3 + inv->arguments.count);
+		ops[0 + offset] = invokee;
+		ops[1 + offset] = inv->arguments.count;
+		for (i = 0; i < inv->arguments.count; ++i) {
+			ops[i + 2 + offset] = ir_generate_expression(cc, b, inv->arguments.items[i], false);
+		}
+
+		ir_append_op(cc, b, b->current_block, opcode, ops, 2 + offset + inv->arguments.count);
 
 		break;
 	}
@@ -255,13 +297,24 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		case AST_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | AST_AS(decl, Ast_Parameter)->ir_index; break;
 		default: assert(false);
 		}
+		printf("%.*s - %p -- %u\n", ident->str.len, ident->str.ptr, ident->resolved_scope, (result & LL_IR_OPERAND_VALUE_MASK));
 
 		if (!lvalue) {
-			printf("type %p\n", ident->base.type);
 			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ident->base.type, result);
 		}
 		
 		break;
+	}
+	case AST_KIND_RETURN: {
+		Ast_Control_Flow* cf = AST_AS(expr, Ast_Control_Flow);
+		if (cf->expr) {
+			result = ir_generate_expression(cc, b, cf->expr, false);
+			IR_APPEND_OP(LL_IR_OPCODE_RETVALUE, result);
+		} else {
+			IR_APPEND_OP(LL_IR_OPCODE_RET);
+		}
+		BLOCK()->did_branch = true;
+		return 0;
 	}
 	default:
 		fprintf(stderr, "TODO: implement generate expr %d\n", expr->kind);

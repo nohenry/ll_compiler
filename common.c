@@ -93,6 +93,7 @@ String_View LL_KEYWORD_DO;
 String_View LL_KEYWORD_MATCH;
 String_View LL_KEYWORD_STRUCT;
 String_View LL_KEYWORD_EXTERN;
+String_View LL_KEYWORD_RETURN;
 
 String_View LL_KEYWORD_UINT;
 String_View LL_KEYWORD_UINT8;
@@ -122,6 +123,7 @@ Compiler_Context ll_compiler_context_create() {
 	LL_KEYWORD_MATCH = ll_intern_string(&result, str_lit("match"));
 	LL_KEYWORD_STRUCT = ll_intern_string(&result, str_lit("struct"));
 	LL_KEYWORD_EXTERN = ll_intern_string(&result, str_lit("extern"));
+	LL_KEYWORD_RETURN = ll_intern_string(&result, str_lit("return"));
 
 	LL_KEYWORD_UINT = ll_intern_string(&result, str_lit("uint"));
 	LL_KEYWORD_UINT8 = ll_intern_string(&result, str_lit("uint8"));

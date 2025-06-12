@@ -15,7 +15,23 @@
 typedef struct {
 	size_t count, capacity, starti;
 	uint8_t* items;
+	uint32_t free;
 } Linux_x86_64_Register_Queue;
+
+typedef struct {
+	size_t text_rel_byte_offset;
+	uint32_t data_item;
+} Linux_x86_64_Internal_Relocation;
+
+typedef struct {
+	size_t count, capacity;
+	Linux_x86_64_Internal_Relocation* items;
+} Linux_x86_64_Internal_Relocation_List;
+
+typedef struct {
+	size_t count, capacity;
+	Elf64_Rela* items;
+} Linux_x86_64_Relocation_List;
 
 typedef struct {
 	size_t count, capacity;
@@ -49,6 +65,9 @@ typedef struct {
 	Linux_x86_64_Elf_Local_List locals;
 	Linux_x86_64_Elf_Local_List registers;
 
+	Linux_x86_64_Internal_Relocation_List internal_relocations;
+	Linux_x86_64_Relocation_List relocations;
+
 	Linux_x86_64_Elf_Section* current_section;
 	Linux_x86_64_Elf_Section section_text;
 	Linux_x86_64_Elf_Section section_data;
@@ -63,9 +82,40 @@ typedef struct {
 	size_t size, alignment;
 } Linux_x86_64_Elf_Layout;
 
+typedef struct {
+    const X86_64_Operand_Register* registers;
+    uint8_t register_count, register_next;
+} Linux_x86_64_Elf_Call_Convention;
+
+const static X86_64_Operand_Register call_convention_registers_systemv[] = {
+    X86_64_OPERAND_REGISTER_rdi,
+    X86_64_OPERAND_REGISTER_rsi,
+    X86_64_OPERAND_REGISTER_rdx,
+    X86_64_OPERAND_REGISTER_rcx,
+    X86_64_OPERAND_REGISTER_r8,
+    X86_64_OPERAND_REGISTER_r9,
+};
+
+Linux_x86_64_Elf_Call_Convention linux_x64_64_call_convention_systemv() {
+    Linux_x86_64_Elf_Call_Convention result;
+    result.registers = call_convention_registers_systemv;
+    result.register_count = LEN(call_convention_registers_systemv);
+    result.register_next = 0;
+    return result;
+}
+
+X86_64_Operand_Register linux_x64_64_call_convention_next(Linux_x86_64_Elf_Call_Convention* cc) {
+    if (cc->register_next >= cc->register_count) {
+        return X86_64_OPERAND_REGISTER_invalid;
+    } else {
+        return cc->registers[cc->register_next++];
+    }
+}
+
 void linux_x64_64_register_queue_reset(Compiler_Context* cc, Linux_x86_64_Register_Queue* queue) {
 	queue->starti = 0;
 	queue->count = 0;
+	queue->free = 0xFFu;
 
 	for (size_t i = 0; i < x86_64_usable_gp_registers_count; ++i) {
 		arena_da_append(&cc->arena, queue, x86_64_usable_gp_registers[i]);
@@ -77,6 +127,7 @@ void linux_x64_64_register_queue_enqueue(Compiler_Context* cc, Linux_x86_64_Regi
 		queue->starti = 0;
 		queue->count = 0;
 	}
+	queue->free |= (uint32_t)(1u << reg);
 	if (queue->starti > 0) {
 		queue->items[--queue->starti] = reg;
 	} else {
@@ -85,8 +136,24 @@ void linux_x64_64_register_queue_enqueue(Compiler_Context* cc, Linux_x86_64_Regi
 }
 
 uint8_t linux_x64_64_register_queue_dequeue(Compiler_Context* cc, Linux_x86_64_Register_Queue* queue) {
-	assert(queue->starti < queue->count);
-	return queue->items[queue->starti++];
+	uint8_t result;
+	while (queue->starti < queue->count) {
+		result = queue->items[queue->starti++];
+		if (queue->free & (uint32_t)(1u << result)) {
+			queue->free &= ~(uint32_t)(1u << result);
+			return result;
+		}
+	}
+	return (uint8_t)-1;
+}
+
+
+static inline bool linux_x64_64_register_queue_is_free(Compiler_Context* cc, Linux_x86_64_Register_Queue* queue, uint8_t reg) {
+	return queue->free & (uint32_t)(1u << reg);
+}
+
+static inline void linux_x64_64_register_queue_use_reg(Compiler_Context* cc, Linux_x86_64_Register_Queue* queue, uint8_t reg) {
+	queue->free |= (uint32_t)(1u << reg);
 }
 
 void linux_x86_64_elf_append_op_segment_u8(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, uint8_t segment) {
@@ -115,7 +182,8 @@ static Linux_x86_64_Elf_Layout linux_x86_64_elf_get_layout(LL_Type* ty) {
 	case LL_TYPE_UINT: return (Linux_x86_64_Elf_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
 	case LL_TYPE_FLOAT: return (Linux_x86_64_Elf_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
 	case LL_TYPE_POINTER: return (Linux_x86_64_Elf_Layout) { .size = 8, .alignment = 8 };
-	default: return (Linux_x86_64_Elf_Layout) { .size = 0, .alignment = 0 };
+	case LL_TYPE_STRING: return (Linux_x86_64_Elf_Layout) { .size = 8, .alignment = 8 };
+	default: return (Linux_x86_64_Elf_Layout) { .size = 0, .alignment = 1 };
 	}
 }
 
@@ -182,12 +250,15 @@ void linux_x86_64_elf_init(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
 	b->w.append_u32 = (__typeof__(b->w.append_u32))linux_x86_64_elf_append_op_segment_u32;
 	b->w.append_u64 = (__typeof__(b->w.append_u64))linux_x86_64_elf_append_op_segment_u64;
 	memset(&b->ops, 0, sizeof(b->ops));
+	memset(&b->internal_relocations, 0, sizeof(b->internal_relocations));
+	memset(&b->relocations, 0, sizeof(b->relocations));
 
 	memset(&b->section_text, 0, sizeof(b->section_text));
 	b->section_text.name = str_lit(".text");
 	b->section_text.shdr.sh_type = SHT_PROGBITS;
 	b->section_text.shdr.sh_flags = SHF_ALLOC | SHF_EXECINSTR;
 	b->section_text.shdr.sh_addralign = 16;
+	b->section_text.shdr.sh_addr = 0;
 	b->section_text.index = 1;
 
 	memset(&b->section_data, 0, sizeof(b->section_data));
@@ -195,6 +266,7 @@ void linux_x86_64_elf_init(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
 	b->section_data.shdr.sh_type = SHT_PROGBITS;
 	b->section_data.shdr.sh_flags = SHF_ALLOC | SHF_WRITE;
 	b->section_data.shdr.sh_addralign = 1;
+	b->section_data.shdr.sh_addr = 0;
 	b->section_data.index = 2;
 
 	memset(&b->section_strtab, 0, sizeof(b->section_strtab));
@@ -235,6 +307,18 @@ void linux_x86_64_elf_init(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
 		sym.st_size = 0;
 		arena_da_append(&cc->arena, &b->symbols, sym);
 	}
+	{
+		sym.st_name = b->section_strtab.count;
+		arena_da_append_many(&cc->arena, &b->section_strtab, str_lit(".data").ptr, str_lit(".data").len);
+		arena_da_append(&cc->arena, &b->section_strtab, 0);
+
+		sym.st_info = ELF32_ST_INFO(STB_LOCAL, STT_SECTION);
+		sym.st_other = STV_DEFAULT;
+		sym.st_shndx = b->section_data.index;
+		sym.st_value = 0;
+		sym.st_size = 0;
+		arena_da_append(&cc->arena, &b->symbols, sym);
+	}
 }
 
 bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, char* filepath) {
@@ -260,6 +344,7 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 	Elf64_Ehdr* hdrptr = (Elf64_Ehdr*)b->ops.items;
 
 
+
 	Linux_x86_64_Elf_Section sections[] = {
 		{ 0 },
 	   	b->section_text, b->section_data,
@@ -269,10 +354,22 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 		   	.count = b->symbols.count * sizeof(Elf64_Sym),
 			.shdr = {
 				.sh_type = SHT_SYMTAB,
-				.sh_info = 3,
-				.sh_link = 4,
+				.sh_info = 4,
+				.sh_link = 5,
 				.sh_addralign = 8,
 				.sh_entsize = sizeof(Elf64_Sym),
+			}
+		},
+	   	{
+			.name = str_lit(".rela.text"),
+		   	.items = (uint8_t*)b->relocations.items,
+		   	.count = b->relocations.count * sizeof(Elf64_Rela),
+			.shdr = {
+				.sh_type = SHT_RELA,
+				.sh_info = 1,
+				.sh_link = 3,
+				.sh_addralign = 8,
+				.sh_entsize = sizeof(Elf64_Rela),
 			}
 		},
 		b->section_strtab
@@ -322,7 +419,7 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 		shdr.sh_name = sections[i].shdr.sh_name;
 		shdr.sh_type = sections[i].shdr.sh_type;
 		shdr.sh_flags = sections[i].shdr.sh_flags;
-		shdr.sh_addr = 0x00000;
+		shdr.sh_addr = sections[i].shdr.sh_addr;
 		shdr.sh_offset = i == 0 ? 0 : sections[i].file_offset;
 		shdr.sh_size = sections[i].count;
 		shdr.sh_link = sections[i].shdr.sh_link;
@@ -360,22 +457,36 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 		LL_Ir_Opcode opcode = (LL_Ir_Opcode)block->rops.items[i];
 		LL_Ir_Operand* operands = (LL_Ir_Operand*)&block->rops.items[i + 1];
 
-		ir_print_op(cc, bir, block->rops.items, i);
-		printf("\n");
+		/* ir_print_op(cc, bir, block->rops.items, i); */
+		/* printf("\n"); */
 
 		switch (opcode) {
 		case LL_IR_OPCODE_RET: break;
+		case LL_IR_OPCODE_RETVALUE: {
+			if (linux_x64_64_register_queue_is_free(cc, &b->register_queue, X86_64_OPERAND_REGISTER_rax)) {
+				linux_x64_64_register_queue_use_reg(cc, &b->register_queue, X86_64_OPERAND_REGISTER_rax);
+
+				if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
+					b->registers.items[OPD_VALUE(operands[1])] = X86_64_OPERAND_REGISTER_rax;
+				}
+			} else assert(false);
+			break;
+		}
 		case LL_IR_OPCODE_STORE:
 			if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
 				/* b->registers.items[OPD_VALUE(operands[1])] = linux_x86_64_elf_get_next_reg(cc, b); */
 				b->registers.items[OPD_VALUE(operands[1])] = linux_x64_64_register_queue_dequeue(cc, &b->register_queue);
-				printf("%x -> %x\n", OPD_VALUE(operands[1]), b->registers.items[OPD_VALUE(operands[1])]);
 			}
 			break;
 		case LL_IR_OPCODE_LOAD:
+			if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
+				b->registers.items[OPD_VALUE(operands[1])] = linux_x64_64_register_queue_dequeue(cc, &b->register_queue);
+			}
 			linux_x64_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
 			break;
-		case LL_IR_OPCODE_LEA: break;
+		case LL_IR_OPCODE_LEA:
+			linux_x64_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
+		   	break;
 		case LL_IR_OPCODE_ADD:
 			/* b->registers.items[OPD_VALUE(operands[0])] = linux_x86_64_elf_get_next_reg(cc, b); */
 			b->registers.items[OPD_VALUE(operands[0])] = linux_x64_64_register_queue_dequeue(cc, &b->register_queue);
@@ -397,8 +508,21 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 			linux_x64_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
 
 			break;
+		case LL_IR_OPCODE_INVOKEVALUE:
 		case LL_IR_OPCODE_INVOKE: {
-			uint32_t count = operands[2];
+			uint32_t count = operands[1];
+            printf("count: %u", count);
+            Linux_x86_64_Elf_Call_Convention callconv = linux_x64_64_call_convention_systemv();
+            for (uint32_t pi = 0; pi < count; ++pi) {
+                X86_64_Operand_Register reg = linux_x64_64_call_convention_next(&callconv);
+                printf("Making parameter register %d\n", reg);
+                if (linux_x64_64_register_queue_is_free(cc, &b->register_queue, reg)) {
+                    linux_x64_64_register_queue_use_reg(cc, &b->register_queue, reg);
+					b->registers.items[OPD_VALUE(operands[2 + pi])] = reg;
+                } else {
+                    assert(false);
+                }
+            }
 
 			break;
 		}
@@ -415,22 +539,31 @@ typedef struct {
 
 static X86_64_Variant_Kind linux_x86_64_get_variant(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Type* type, X86_64_Get_Variant_Params params) {
 	assert(!params.immediate || !params.mem_right);
-	if (type->width <= 8u) {
-		if (params.immediate) return X86_64_VARIANT_KIND_rm8_i8;
-		else if (params.mem_right) return X86_64_VARIANT_KIND_r8_rm8;
-		else return X86_64_VARIANT_KIND_rm8_r8;
-	} else if (type->width <= 16u) {
-		if (params.immediate) return X86_64_VARIANT_KIND_rm16_i16;
-		else if (params.mem_right) return X86_64_VARIANT_KIND_r16_rm16;
-		else return X86_64_VARIANT_KIND_rm16_r16;
-	} else if (type->width <= 32u) {
-		if (params.immediate) return X86_64_VARIANT_KIND_rm32_i32;
-		else if (params.mem_right) return X86_64_VARIANT_KIND_r32_rm32;
-		else return X86_64_VARIANT_KIND_rm32_r32;
-	} else if (type->width <= 64u) {
+	switch (type->kind) {
+	case LL_TYPE_STRING:
+	case LL_TYPE_POINTER:
 		if (params.immediate) return X86_64_VARIANT_KIND_rm64_i32;
 		else if (params.mem_right) return X86_64_VARIANT_KIND_r64_rm64;
 		else return X86_64_VARIANT_KIND_rm64_r64;
+	case LL_TYPE_INT:
+		if (type->width <= 8u) {
+			if (params.immediate) return X86_64_VARIANT_KIND_rm8_i8;
+			else if (params.mem_right) return X86_64_VARIANT_KIND_r8_rm8;
+			else return X86_64_VARIANT_KIND_rm8_r8;
+		} else if (type->width <= 16u) {
+			if (params.immediate) return X86_64_VARIANT_KIND_rm16_i16;
+			else if (params.mem_right) return X86_64_VARIANT_KIND_r16_rm16;
+			else return X86_64_VARIANT_KIND_rm16_r16;
+		} else if (type->width <= 32u) {
+			if (params.immediate) return X86_64_VARIANT_KIND_rm32_i32;
+			else if (params.mem_right) return X86_64_VARIANT_KIND_r32_rm32;
+			else return X86_64_VARIANT_KIND_rm32_r32;
+		} else if (type->width <= 64u) {
+			if (params.immediate) return X86_64_VARIANT_KIND_rm64_i32;
+			else if (params.mem_right) return X86_64_VARIANT_KIND_r64_rm64;
+			else return X86_64_VARIANT_KIND_rm64_r64;
+		}
+	default: break;
 	}
 	abort();
 	return (X86_64_Variant_Kind)-1;
@@ -445,6 +578,9 @@ static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf
 		params.displacement = -b->locals.items[OPD_VALUE(result)];
 
 		switch (type->kind) {
+		case LL_TYPE_POINTER:
+		case LL_TYPE_STRING:
+		case LL_TYPE_UINT:
 		case LL_TYPE_INT: {
 			/* TODO: max immeidiate is 28 bits */
 			switch (OPD_TYPE(src)) {
@@ -456,6 +592,12 @@ static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf
 				params.reg1 = b->registers.items[OPD_VALUE(src)];
 				X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) {}), params);
 				break;
+			case LL_IR_OPERAND_DATA_BIT: {
+				arena_da_append(&cc->tmp_arena, &b->internal_relocations, ((Linux_x86_64_Internal_Relocation) {  }));
+				/* X86_64_WRITE_INSTRUCTION(OPCODE_LEA, r64_rm64, params); */
+				/* X86_64_WRITE_INSTRUCTION(OPCODE_MOV, , params); */
+				break;
+			}
 			case LL_IR_OPERAND_LOCAL_BIT:
 				break;
 			case LL_IR_OPERAND_PARMAETER_BIT: {
@@ -474,6 +616,7 @@ static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf
 		params.reg0 = b->registers.items[OPD_VALUE(result)];
 
 		switch (type->kind) {
+		case LL_TYPE_STRING:
 		case LL_TYPE_ANYINT:
 		case LL_TYPE_UINT:
 		case LL_TYPE_INT: {
@@ -518,7 +661,31 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 		X86_64_Instruction_Parameters params = { 0 };
 
 		switch (opcode) {
-		case LL_IR_OPCODE_RET: break;
+		case LL_IR_OPCODE_RET:
+			params.relative = 0;
+			X86_64_WRITE_INSTRUCTION(OPCODE_JMP, rel32, params);
+		   	break;
+		case LL_IR_OPCODE_RETVALUE: {
+			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
+			switch (OPD_TYPE(operands[0])) {
+			case LL_IR_OPERAND_IMMEDIATE_BIT:
+				params.reg0 = X86_64_OPERAND_REGISTER_rax;
+				params.immediate = OPD_VALUE(operands[0]);
+				X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+				break;
+			case LL_IR_OPERAND_REGISTER_BIT:
+				if (b->registers.items[OPD_VALUE(operands[0])] != X86_64_OPERAND_REGISTER_rax) {
+					params.reg0 = X86_64_OPERAND_REGISTER_rax;
+					params.reg1 = b->registers.items[OPD_VALUE(operands[0])];
+					X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) {}), params);
+				}
+				break;
+			default: printf("TODO: handle return value\n"); break;
+			}
+			params.relative = 0;
+			X86_64_WRITE_INSTRUCTION(OPCODE_JMP, rel32, params);
+			break;
+		}
 		case LL_IR_OPCODE_STORE: {
 			linux_x86_64_elf_generate_mov(cc, b, bir, operands[0], operands[1]);
 		   	break;
@@ -536,7 +703,6 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 						if (LINUX_X86_64_REGISTERS_EQL(operands[1], operands[0])) {
 							params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
 							params.immediate = OPD_VALUE(operands[2]);
-							printf("add reg imm %x %d\n", params.reg0, params.displacement);
 							X86_64_WRITE_INSTRUCTION_DYN(OPCODE_ADD, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
 						}
 						break;
@@ -579,18 +745,102 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 		case LL_IR_OPCODE_LOAD: {
 			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
 			params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
-			params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-			params.displacement = -b->locals.items[OPD_VALUE(operands[1])];
+
+			switch (OPD_TYPE(operands[1])) {
+			case LL_IR_OPERAND_LOCAL_BIT: {
+				params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+				params.displacement = -b->locals.items[OPD_VALUE(operands[1])];
+				break;
+			}
+			case LL_IR_OPERAND_REGISTER_BIT: {
+				params.reg1 = b->registers.items[OPD_VALUE(operands[1])] | X86_64_REG_BASE;
+				break;
+			}
+			default: printf("todo: add load operands\n"); break;
+			}
+
 			X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
 			break;
 		}
+		case LL_IR_OPCODE_LEA: {
+			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
+			switch (type->kind) {
+			case LL_TYPE_STRING:
+			case LL_TYPE_ANYINT:
+			case LL_TYPE_INT: {
+				/* TODO: max immeidiate is 28 bits */
+				params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
+				switch (OPD_TYPE(operands[1])) {
+				case LL_IR_OPERAND_LOCAL_BIT: {
+					params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+					params.displacement = -b->locals.items[OPD_VALUE(operands[1])];
+					X86_64_WRITE_INSTRUCTION(OPCODE_LEA, r64_rm64, params);
+					break;
+				}
+				case LL_IR_OPERAND_DATA_BIT: {
+					params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
+					/* params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE; */
+					/* params.rbp_is_rip = true; */
+					params.immediate = 0;
+					X86_64_WRITE_INSTRUCTION(OPCODE_MOV, r64_i64, params);
+					/* arena_da_append(&cc->tmp_arena, &b->internal_relocations, ((Linux_x86_64_Internal_Relocation) { .data_item = OPD_VALUE(operands[1]), .text_rel_byte_offset = b->current_section->count - 4 /1* sizeof displacement *1/ })); */
+					arena_da_append(&cc->tmp_arena, &b->relocations, ((Elf64_Rela) { .r_offset = b->current_section->count - 8, .r_info = ELF64_R_INFO(3, R_X86_64_64), .r_addend = bir->data_items.items[OPD_VALUE(operands[1])].binary_offset }));
+					break;
+				}
+				default: printf("todo: add lea operands\n"); break;
+				}
+				break;
+			}
+			default: printf("todo: add lea types\n"); break;
+			}
+
+			break;
+		}
 		case LL_IR_OPCODE_INVOKE: {
-			uint32_t count = operands[2];
+			uint32_t invokee = operands[0];
+			uint32_t count = operands[1];
 			for (uint32_t j = 0; j < count; ++j) {
+			}
+
+			switch (OPD_TYPE(invokee)) {
+			case LL_IR_OPERAND_FUNCTION_BIT: {
+				Ast_Ident* ident = bir->fns.items[OPD_VALUE(invokee)].ident;
+				printf("fdsf %p\n", bir->fns.items[OPD_VALUE(invokee)].ident->resolved_scope);
+				printf("sdfdsf %d\n", bir->fns.items[OPD_VALUE(invokee)].flags);
+				if (bir->fns.items[OPD_VALUE(invokee)].flags & LL_IR_FUNCTION_FLAG_EXTERN) {
+					printf("%x\n", invokee);
+					params.relative = 0;
+
+					X86_64_WRITE_INSTRUCTION(OPCODE_CALL, rel32, params);
+
+					arena_da_append(&cc->tmp_arena, &b->relocations, ((Elf64_Rela) { .r_offset = b->current_section->count - 4, .r_info = ELF64_R_INFO(b->symbols.count, R_X86_64_PLT32), .r_addend = -4 }));
+
+					Elf64_Sym sym;
+					sym.st_name = b->section_strtab.count;
+					arena_da_append_many(&cc->arena, &b->section_strtab, ident->str.ptr, ident->str.len);
+					arena_da_append(&cc->arena, &b->section_strtab, 0);
+
+					sym.st_info = ELF32_ST_INFO(STB_GLOBAL, STT_FUNC);
+					sym.st_other = STV_DEFAULT;
+					sym.st_shndx = 0;
+					sym.st_value = 0;
+					sym.st_size = 0;
+					arena_da_append(&cc->arena, &b->symbols, sym);
+				}
+				break;
+			}
+			default: printf("handle inveok type"); break;
 			}
 
 		   	break;
 		}
+		/* case LL_IR_OPCODE_INVOKE: { */
+		/* 	uint32_t count = operands[2]; */
+		/* 	for (uint32_t j = 0; j < count; ++j) { */
+		/* 	} */
+
+		/*    	break; */
+		/* } */
 		default: printf("handle other op\n"); break;
 		}
 
@@ -602,9 +852,18 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir) {
 	Elf64_Sym sym;
 	int fi;
+
+	for (fi = 0; fi < bir->data_items.count; ++fi) {
+		bir->data_items.items[fi].binary_offset = b->section_data.count;
+		arena_da_append_many(&cc->arena, &b->section_data, bir->data_items.items[fi].ptr, bir->data_items.items[fi].len);
+		arena_da_append(&cc->arena, &b->section_data, 0);
+	}
+
 	for (fi = 0; fi < bir->fns.count; ++fi) {
 		LL_Ir_Function* fn = &bir->fns.items[fi];
 		LL_Ir_Block* block = fn->entry;
+		if (fn->flags & LL_IR_FUNCTION_FLAG_EXTERN) continue;
+		printf("ffffiiii %d\n", fi);
 		b->fn = fn;
 		b->next_reg = 0;
 
@@ -645,6 +904,24 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 		sym.st_size = b->current_section->count - function_offset;
 		arena_da_append(&cc->arena, &b->symbols, sym);
 	}
+
+	/* ---- process internal relocations ---- */
+
+	for (fi = 0; fi < b->internal_relocations.count; ++fi) {
+		uint32_t rel_offset = bir->data_items.items[b->internal_relocations.items[fi].data_item].binary_offset + b->section_text.count - b->internal_relocations.items[fi].text_rel_byte_offset;
+		uint32_t* dst_offset = (uint32_t*)&b->section_text.items[b->internal_relocations.items[fi].text_rel_byte_offset];
+		/* *dst_offset = rel_offset; */
+		*dst_offset = rel_offset;
+	}
+
+	/* for (fi = 0; fi < b->relocations.count; ++fi) { */
+	/* 	Elf64_Rela relocation = b->relocations.items[fi]; */
+	/* 	if (fi + 1 < b->relocations.count) { */
+	/* 		b->relocations.items[fi] = b->relocations.items[fi + 1]; */
+	/* 	} */
+	/* 	uint32_t* dst_offset = (uint32_t*)&b->section_text.items[relocation.r_address]; */
+	/* 	*dst_offset = rel_offset; */
+	/* } */
 
 	/* x86_64_run_tests(cc, b); */
 }

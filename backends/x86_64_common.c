@@ -1263,7 +1263,6 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 		uint32_t op##n = GET_OPERAND##n(instruction.operands);	\
 		switch (op##n >> 5u) {								\
 		case OPERANDS_TYPE_vex_vvvv:						\
-			printf("%x %x\n", vex, ((uint16_t)(~parameters.reg ## n & 0xFu) << 3u)); \
 			vex = vex & ~(uint16_t)(0xFu << 3u) | ((uint16_t)(~parameters.reg ## n & 0xFu) << 3u);	\
 			has_vex_vvvv = true; 							\
 			break;											\
@@ -1409,7 +1408,7 @@ DO_MODRM_ ##n : 											\
 						// TODO: i feel like this might be wrong, below too
 						assert((mod >> 6) == 0);
 						if (parameters.use_sib & X86_64_SIB_SCALE) {
-						} else {
+						} else if (!parameters.rbp_is_rip) {
 							mod |= 0x40u;
 						}
 					}
@@ -1434,6 +1433,9 @@ DO_MODRM_ ##n : 											\
 					X86_64_APPEND_OP_SEGMENT(sib);
 					X86_64_APPEND_OP_SEGMENT(PUN((int32_t)offset, uint32_t));
 				}
+			} else if (base_reg == X86_64_OPERAND_REGISTER_rbp && parameters.rbp_is_rip) {
+				X86_64_APPEND_OP_SEGMENT(mod);
+				X86_64_APPEND_OP_SEGMENT(PUN((int32_t)offset, uint32_t));
 			} else if (offset == 0 && base_reg != X86_64_OPERAND_REGISTER_rbp) {
 				X86_64_APPEND_OP_SEGMENT(mod);
 			} else if (offset >= INT8_MIN && offset <= INT8_MAX) {
@@ -2063,6 +2065,5 @@ X86_64_Instruction_Variant x86_64_get_variant(const X86_64_Instruction* inst, X8
 		MAKE_VARIANT(r64_rm32);
 	}
 #undef MAKE_VARIANT
-	printf("%x -> %x\n", result.opcode, result.operands);
 	return result;
 }
