@@ -1,10 +1,9 @@
-./main
+/main
 *.o
-./out.bin
-./out.s
-./test.s
-main
-out.bin
+/out.bin
+/out.s
+/test.s
+/out
 
 tags
 

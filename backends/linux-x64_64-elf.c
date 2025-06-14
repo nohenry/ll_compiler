@@ -115,7 +115,7 @@ X86_64_Operand_Register linux_x64_64_call_convention_next(Linux_x86_64_Elf_Call_
 void linux_x64_64_register_queue_reset(Compiler_Context* cc, Linux_x86_64_Register_Queue* queue) {
 	queue->starti = 0;
 	queue->count = 0;
-	queue->free = 0xFFu;
+	queue->free = 0xFFFFu;
 
 	for (size_t i = 0; i < x86_64_usable_gp_registers_count; ++i) {
 		arena_da_append(&cc->arena, queue, x86_64_usable_gp_registers[i]);
@@ -453,6 +453,7 @@ bool linux_x86_64_elf_write_to_file(Compiler_Context* cc, Linux_x86_64_Elf_Backe
 
 static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
 	size_t i;
+    uint32_t offset;
 	for (i = 0; i < block->rops.count; ) {
 		LL_Ir_Opcode opcode = (LL_Ir_Opcode)block->rops.items[i];
 		LL_Ir_Operand* operands = (LL_Ir_Operand*)&block->rops.items[i + 1];
@@ -485,6 +486,7 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 			linux_x64_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
 			break;
 		case LL_IR_OPCODE_LEA:
+            printf("enqueue r%d %d\n", OPD_VALUE(operands[0]), b->registers.items[OPD_VALUE(operands[0])]);
 			linux_x64_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
 		   	break;
 		case LL_IR_OPCODE_ADD:
@@ -509,16 +511,26 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 
 			break;
 		case LL_IR_OPCODE_INVOKEVALUE:
+            offset = 1;
 		case LL_IR_OPCODE_INVOKE: {
-			uint32_t count = operands[1];
-            printf("count: %u", count);
+			uint32_t count = operands[1 + offset];
             Linux_x86_64_Elf_Call_Convention callconv = linux_x64_64_call_convention_systemv();
+
             for (uint32_t pi = 0; pi < count; ++pi) {
                 X86_64_Operand_Register reg = linux_x64_64_call_convention_next(&callconv);
-                printf("Making parameter register %d\n", reg);
+
+                printf("next reg %d\n", reg);
                 if (linux_x64_64_register_queue_is_free(cc, &b->register_queue, reg)) {
                     linux_x64_64_register_queue_use_reg(cc, &b->register_queue, reg);
-					b->registers.items[OPD_VALUE(operands[2 + pi])] = reg;
+
+                    switch (OPD_TYPE(operands[2 + pi + offset])) {
+                        case LL_IR_OPERAND_REGISTER_BIT: 
+                            b->registers.items[OPD_VALUE(operands[2 + pi + offset])] = reg;
+                            break;
+                        case LL_IR_OPERAND_IMMEDIATE_BIT:
+                            break;
+                        default: printf("TODO: unhadnled argument operand\n");
+                    }
                 } else {
                     assert(false);
                 }
@@ -750,16 +762,22 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 			case LL_IR_OPERAND_LOCAL_BIT: {
 				params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
 				params.displacement = -b->locals.items[OPD_VALUE(operands[1])];
+                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
 				break;
 			}
 			case LL_IR_OPERAND_REGISTER_BIT: {
 				params.reg1 = b->registers.items[OPD_VALUE(operands[1])] | X86_64_REG_BASE;
+                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
 				break;
 			}
+            case LL_IR_OPERAND_IMMEDIATE_BIT: {
+                params.immediate = OPD_VALUE(operands[1]);
+                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+                break;
+            }
 			default: printf("todo: add load operands\n"); break;
 			}
 
-			X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
 			break;
 		}
 		case LL_IR_OPCODE_LEA: {
@@ -779,8 +797,6 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 				}
 				case LL_IR_OPERAND_DATA_BIT: {
 					params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
-					/* params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE; */
-					/* params.rbp_is_rip = true; */
 					params.immediate = 0;
 					X86_64_WRITE_INSTRUCTION(OPCODE_MOV, r64_i64, params);
 					/* arena_da_append(&cc->tmp_arena, &b->internal_relocations, ((Linux_x86_64_Internal_Relocation) { .data_item = OPD_VALUE(operands[1]), .text_rel_byte_offset = b->current_section->count - 4 /1* sizeof displacement *1/ })); */
@@ -799,7 +815,20 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 		case LL_IR_OPCODE_INVOKE: {
 			uint32_t invokee = operands[0];
 			uint32_t count = operands[1];
+            Linux_x86_64_Elf_Call_Convention callconv = linux_x64_64_call_convention_systemv();
+
 			for (uint32_t j = 0; j < count; ++j) {
+                switch (OPD_TYPE(operands[2 + j])) {
+                    case LL_IR_OPERAND_REGISTER_BIT: 
+                        linux_x64_64_call_convention_next(&callconv);
+                        break;
+                    case LL_IR_OPERAND_IMMEDIATE_BIT:
+                        params.reg0 = linux_x64_64_call_convention_next(&callconv);
+                        params.immediate = OPD_VALUE(operands[2 + j]);
+                        X86_64_WRITE_INSTRUCTION(OPCODE_MOV, rm64_i32, params);
+                        break;
+                    default: printf("TODO: unhadnled argument operand\n");
+                }
 			}
 
 			switch (OPD_TYPE(invokee)) {

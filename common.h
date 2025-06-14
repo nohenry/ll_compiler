@@ -12,6 +12,12 @@ typedef struct {
 	size_t len;
 } String_View;
 
+typedef struct {
+	size_t count;
+	size_t capacity;
+	char* items;
+} String_Builder;
+
 #define str_lit(str) ((String_View) { (str), (sizeof(str)-1)/sizeof((str)[0]) })
 #define EQL(a, b) (is_eql((a), (b), sizeof((a))))
 

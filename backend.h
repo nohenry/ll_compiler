@@ -7,12 +7,6 @@
 
 #define BACKEND_INDENT "    "
 
-typedef struct {
-	size_t count;
-	size_t capacity;
-	char* items;
-} String_Builder;
-
 typedef enum {
 	LL_BACKEND_IR,
 	LL_BACKEND_LINUX_X86_64_GAS,

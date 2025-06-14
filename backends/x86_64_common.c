@@ -1202,6 +1202,9 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 				rex |= 0x41u; 										\
 			} 														\
 			break;													\
+        case OPERANDS_TYPE_add_to_opcode:                           \
+            instruction.opcode += parameters.reg ## n;              \
+            break;                                                  \
 		default: break;												\
 		}
 

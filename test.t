@@ -1,4 +1,8 @@
 void main() {
+    void test_fun(int a, int b, int c, int d, int e) {
+
+    }
+
 	int b = 23 + 45;
 	int d = 10;
 	int c = b + d;
@@ -23,7 +27,8 @@ void main() {
 		// int c = h;
 	}
 
-	printf("foobar");
+	printf("\x1b[31;1mfoobar\x1b[0m\n");
+    test_fun(1, 2, 3, 4, 5);
 
 	return aa;
 	// int bb = printf("hello", 1, 2, 3);

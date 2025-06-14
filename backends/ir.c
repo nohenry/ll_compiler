@@ -19,12 +19,11 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 	case LL_IR_OPCODE_ADD: return 4;
 	case LL_IR_OPCODE_LEA: return 3;
     case LL_IR_OPCODE_INVOKEVALUE: {
-		uint32_t count = opcode_list[2];
+		uint32_t count = opcode_list[i + 1 + 2];
 		return 4 + count;
     }
 	case LL_IR_OPCODE_INVOKE: {
-		uint32_t count = opcode_list[1];
-        printf("invoke vount %u\n", count);
+		uint32_t count = opcode_list[i + 1 + 1];
 		return 3 + count;
 	}
 	}
@@ -91,8 +90,6 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 		break;
 	}
 	}
-
-	i += ir_get_op_count(cc, b, opcode_list, i);
 }
 
 static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block) {
@@ -262,7 +259,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		Ast_Invoke* inv = AST_AS(expr, Ast_Invoke);
 
 		LL_Ir_Operand invokee = ir_generate_expression(cc, b, inv->expr, true);
-		LL_Type_Function* fn_type = (LL_Type_Function*)inv->base.type;
+		LL_Type_Function* fn_type = (LL_Type_Function*)inv->expr->type;
 
 		LL_Ir_Operand ops[3 + inv->arguments.count];
 
@@ -281,6 +278,12 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		ops[1 + offset] = inv->arguments.count;
 		for (i = 0; i < inv->arguments.count; ++i) {
 			ops[i + 2 + offset] = ir_generate_expression(cc, b, inv->arguments.items[i], false);
+            switch (ops[i + 2 + offset] & LL_IR_OPERAND_TYPE_MASK) {
+            case LL_IR_OPERAND_IMMEDIATE_BIT:
+				ops[i + 2 + offset] = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, fn_type->parameters[i], (ops[i + 2 + offset] & LL_IR_OPERAND_VALUE_MASK));
+                break;
+            default: break;
+            }
 		}
 
 		ir_append_op(cc, b, b->current_block, opcode, ops, 2 + offset + inv->arguments.count);

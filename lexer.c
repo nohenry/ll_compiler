@@ -166,20 +166,91 @@ DONE_NUMBER:
             out->i64 = integral;
             return true;
         }
-		case '"':
+		case '"': {
+            bool needs_alloc = false;
+            String_Builder alloc_string = { 0 };
 			lexer->pos++;
+            size_t last_copied = lexer->pos;
 
 			out->kind = LL_TOKEN_KIND_STRING;
             out->str.ptr = lexer->source.ptr + lexer->pos;
             out->str.len = 0;
 
             while (lexer->pos < lexer->source.len && lexer->source.ptr[lexer->pos] != '"') {
+                switch (lexer->source.ptr[lexer->pos]) {
+                    case '\\':
+                        if (lexer->pos + 1 < lexer->source.len) {
+                            switch (lexer->source.ptr[lexer->pos + 1]) {
+                                case 'n':
+                                    arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied);
+                                    arena_sb_append_cstr(&cc->arena, &alloc_string, "\n");
+                                    last_copied = lexer->pos + 2;
+                                    lexer->pos++;
+                                    needs_alloc = true;
+                                    break;
+                                case 't':
+                                    arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied);
+                                    arena_sb_append_cstr(&cc->arena, &alloc_string, "\t");
+                                    last_copied = lexer->pos + 2;
+                                    lexer->pos++;
+                                    needs_alloc = true;
+                                    break;
+                                case 'r':
+                                    arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied);
+                                    arena_sb_append_cstr(&cc->arena, &alloc_string, "\r");
+                                    last_copied = lexer->pos + 2;
+                                    lexer->pos++;
+                                    needs_alloc = true;
+                                    break;
+                                case 'x': {
+                                    uint8_t b = 0;
+                                    arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied);
+                                    last_copied = lexer->pos + 4;
+                                    lexer->pos++;
+
+                                    if (lexer->pos + 2 >= lexer->source.len) {
+                                        fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: Expected a byte value after \\x\x1b[0m\n");
+                                        continue;
+                                    }
+                                    switch (lexer->source.ptr[lexer->pos + 1]) {
+                                        case '0' ... '9': b += 16 * (lexer->source.ptr[lexer->pos + 1] - '0'); break;
+                                        case 'a' ... 'f': b += 16 * (lexer->source.ptr[lexer->pos + 1] - 'a' + 0xa); break;
+                                        case 'A' ... 'F': b += 16 * (lexer->source.ptr[lexer->pos + 1] - 'A' + 0xa); break;
+                                        default:
+                                            fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: Expected a valid hex value after \\x\x1b[0m\n");
+                                            continue;
+                                    }
+                                    switch (lexer->source.ptr[lexer->pos + 2]) {
+                                        case '0' ... '9': b += (lexer->source.ptr[lexer->pos + 2] - '0'); break;
+                                        case 'a' ... 'f': b += (lexer->source.ptr[lexer->pos + 2] - 'a' + 0xa); break;
+                                        case 'A' ... 'F': b += (lexer->source.ptr[lexer->pos + 2] - 'A' + 0xa); break;
+                                        default:
+                                            fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: Expected a valid hex value after \\x\x1b[0m\n");
+                                            continue;
+                                    }
+                                    arena_da_append(&cc->arena, &alloc_string, b);
+                                    lexer->pos += 2;
+                                    needs_alloc = true;
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                }
 				lexer->pos++;
-				out->str.len++;
+                out->str.len++;
 			}
 			lexer->pos++; // for closing quote
 
+            if (needs_alloc) {
+                arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied - 1);
+                out->str.ptr = alloc_string.items;
+                out->str.len = alloc_string.count;
+                out->str = ll_intern_string(cc, out->str);
+            }
+
 			return true;
+        }
 
         case '(':
         case ')':
