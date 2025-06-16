@@ -20,6 +20,8 @@ typedef enum {
     AST_KIND_BLOCK,
 
     AST_KIND_RETURN,
+    AST_KIND_IF,
+    AST_KIND_FOR,
 
     AST_KIND_TYPE_POINTER,
 } Ast_Kind;
@@ -40,10 +42,13 @@ typedef struct {
 	struct ll_type* type;
 } Ast_Base;
 
+#define AST_IDENT_SYMBOL_INVALID ((int32_t)-1)
+
 typedef struct {
     Ast_Base base;
     String_View str;
 	struct scope_map* resolved_scope;
+	int32_t symbol_index;
 } Ast_Ident;
 
 typedef struct {
@@ -99,6 +104,21 @@ typedef struct {
     Ast_Base base;
     Ast_Base* expr;
 } Ast_Control_Flow;
+
+typedef struct {
+    Ast_Base base;
+    Ast_Base* init;
+    Ast_Base* cond;
+    Ast_Base* update;
+    Ast_Base* body;
+} Ast_Loop;
+
+typedef struct {
+    Ast_Base base;
+    Ast_Base* cond;
+    Ast_Base* body;
+    Ast_Base* else_clause;
+} Ast_If;
 
 typedef struct {
     Ast_Base base;

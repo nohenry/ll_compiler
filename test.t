@@ -1,15 +1,20 @@
 void main() {
-    void test_fun(int a, int b, int c, int d, int e) {
+    void test_fun(int a, int b, int c, int d) {
 
     }
+	extern void printf(string fmt, ..args);
 
-	int b = 23 + 45;
-	int d = 10;
-	int c = b + d;
-	int a = c + 45;
-	int* pa = &a;
-	int aa = *pa;
-	string s = "fdsf";
+	// int b = 23 + 45;
+	// int d = 10;
+	// int c = b + d;
+	// int a = c + 45;
+	// int* pa = &a;
+	// int aa = *pa;
+	// string s = "fdsf";
+
+	for int i = 0; i <= 20; i+=1 {
+		printf("\x1b[31;1mfoobar\x1b[0m %d\n", i);
+	}
 
 	// int d = 56;
 	// int* pa = &a;
@@ -22,15 +27,14 @@ void main() {
 	// int64 length = 120;
 	// int[length:] slice_with_variable_specified_sized_length_before;
 	
-	extern void printf(string fmt, ..args);
 	int b(int h, int k) {
 		// int c = h;
 	}
 
-	printf("\x1b[31;1mfoobar\x1b[0m\n");
-    test_fun(1, 2, 3, 4, 5);
+	// printf("\x1b[31;1mfoobar\x1b[0m %d\n", 1);
+    // test_fun(1, 2, 3, 4);
 
-	return aa;
+	// return aa;
 	// int bb = printf("hello", 1, 2, 3);
 	// int aa = b(123, 1);
 }

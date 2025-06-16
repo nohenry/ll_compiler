@@ -59,7 +59,13 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
     LL_Token tok;
     PEEK(&tok);
     if (tok.kind != kind) {
-        unexpected_token(cc, parser, file, line);
+
+		fprintf(stderr, "%s line %d: \x1b[31;1merror\x1b[0m\x1b[1m: expected token '", file, line);
+		lexer_print_token_kind(kind, stderr);
+		fprintf(stderr, "' (%d), but found '", tok.kind);
+		lexer_print_token_raw_to_fd(&tok, stderr);
+		fprintf(stderr, "' \x1b[0m\n", tok.kind);
+
         return false;
     } else {
         if (out != NULL)
@@ -103,6 +109,7 @@ START_SWITCH:
 		default:
 HANDLE_IDENT:
 			result = parser_parse_expression(cc, parser, 0, true);
+			if (result && (result->kind == AST_KIND_IF || result->kind == AST_KIND_FOR)) break;
 
 			PEEK(&token);
 			if (token.kind == LL_TOKEN_KIND_IDENT)
@@ -145,7 +152,7 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
 	}
 
 	if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
-	Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str }));
+	Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
 
 	return (Ast_Parameter) {
 		.base.kind = AST_KIND_PARAMETER,
@@ -162,7 +169,7 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 	}
 
 	if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return NULL;
-	Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str }));
+	Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
 
 	bool fn = false;
 	Ast_Parameter_List parameters = { 0 };
@@ -268,7 +275,7 @@ int get_postfix_precedence(LL_Token token) {
 
 Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int last_precedence, bool from_statement) {
 	LL_Token token;
-	Ast_Base *left, *right;
+	Ast_Base *left, *right, *body, *update;
 	PEEK(&token);
 	switch (token.kind) {
 	case '-':
@@ -283,6 +290,69 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 		CONSUME();
 		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '&', .right = parser_parse_expression(cc, parser, 140, false) }));
 		break;
+	case LL_TOKEN_KIND_IDENT:
+		if (token.str.ptr == LL_KEYWORD_IF.ptr) {
+			// parse if statement
+			CONSUME();
+			left = parser_parse_expression(cc, parser, 0, false);
+			PEEK(&token);
+			if (token.kind == '{') {
+				body = (Ast_Base*)parser_parse_block(cc, parser);
+			} else {
+				body = parser_parse_expression(cc, parser, 0, false);
+				EXPECT(';', &token);
+			}
+
+			// parse else clause
+			PEEK(&token);
+			if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_ELSE.ptr) {
+				CONSUME();
+				if (token.kind == '{') {
+					right = (Ast_Base*)parser_parse_block(cc, parser);
+				} else {
+					right = parser_parse_expression(cc, parser, 0, false);
+					EXPECT(';', &token);
+				}
+			} else {
+				right = NULL;
+			}
+
+			left = CREATE_NODE(AST_KIND_IF, ((Ast_If){ .cond = left, .body = body, .else_clause = right }));
+			return left;
+		} else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
+			CONSUME();
+			PEEK(&token);
+			if (token.kind == ';') {
+				left = NULL;
+				CONSUME();
+			} else {
+				left = parser_parse_declaration(cc, parser, NULL, 0);
+			}
+			PEEK(&token);
+			if (token.kind == ';') {
+				right = NULL;
+			} else {
+				right = parser_parse_expression(cc, parser, 0, false);
+			}
+			EXPECT(';', &token);
+
+			PEEK(&token);
+			if (token.kind == '{') {
+				update = NULL;
+				body = (Ast_Base*)parser_parse_block(cc, parser);
+			} else {
+				update = parser_parse_expression(cc, parser, 0, false);
+				PEEK(&token);
+				if (token.kind == '{') {
+					body = (Ast_Base*)parser_parse_block(cc, parser);
+				} else {
+					body = parser_parse_expression(cc, parser, 0, false);
+				}
+			}
+
+			left = CREATE_NODE(AST_KIND_FOR, ((Ast_Loop){ .init = left, .cond = right, .update = update, .body = body }));
+			return left;
+		}
 	default:
 		left = parser_parse_primary(cc, parser);
 		break;
@@ -367,7 +437,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
 			result = CREATE_NODE(AST_KIND_RETURN, ((Ast_Control_Flow){ .expr = result }));
 			break;
 		}
-        result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = pk.str }));
+        result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = pk.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
         break;
 
     default:
@@ -396,6 +466,8 @@ const char* get_node_kind(Ast_Base* node) {
 		case AST_KIND_FUNCTION_DECLARATION: return "Function_Declaration";
 		case AST_KIND_PARAMETER: return "Parameter";
 		case AST_KIND_RETURN: return "Return";
+		case AST_KIND_IF: return "If";
+		case AST_KIND_FOR: return "For";
 		case AST_KIND_TYPE_POINTER: return "Pointer";
 	}
 }
@@ -464,6 +536,24 @@ void print_node(Ast_Base* node, int indent) {
 		case AST_KIND_RETURN:
 			if (AST_AS(node, Ast_Control_Flow)->expr)
 				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1);
+			break;
+		case AST_KIND_IF:
+			if (AST_AS(node, Ast_If)->cond)
+				print_node(AST_AS(node, Ast_If)->cond, indent + 1);
+			if (AST_AS(node, Ast_If)->body)
+				print_node(AST_AS(node, Ast_If)->body, indent + 1);
+			if (AST_AS(node, Ast_If)->else_clause)
+				print_node(AST_AS(node, Ast_If)->else_clause, indent + 1);
+			break;
+		case AST_KIND_FOR:
+			if (AST_AS(node, Ast_Loop)->init)
+				print_node(AST_AS(node, Ast_Loop)->init, indent + 1);
+			if (AST_AS(node, Ast_Loop)->cond)
+				print_node(AST_AS(node, Ast_Loop)->cond, indent + 1);
+			if (AST_AS(node, Ast_Loop)->update)
+				print_node(AST_AS(node, Ast_Loop)->update, indent + 1);
+			if (AST_AS(node, Ast_Loop)->body)
+				print_node(AST_AS(node, Ast_Loop)->body, indent + 1);
 			break;
 
 		case AST_KIND_TYPE_POINTER:

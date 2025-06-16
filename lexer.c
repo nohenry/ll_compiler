@@ -287,6 +287,40 @@ void lexer_print_token_raw(LL_Token* token) {
 	lexer_print_token_raw_to_fd(token, stdout);
 }
 
+void lexer_print_token_kind(LL_Token_Kind kind, FILE* fd) {
+    switch (kind) {
+    case LL_TOKEN_KIND_IDENT:
+        fprintf(fd, "identifier");
+        break;
+    case LL_TOKEN_KIND_BUILTIN:
+        fprintf(fd, "builtin");
+        break;
+    case LL_TOKEN_KIND_INT:
+        fprintf(fd, "integer");
+        break;
+    case LL_TOKEN_KIND_STRING:
+        fprintf(fd, "string");
+        break;
+
+    case LL_TOKEN_KIND_ASSIGN_PLUS: fprintf(fd, "+="); break;
+    case LL_TOKEN_KIND_ASSIGN_MINUS: fprintf(fd, "-="); break;
+    case LL_TOKEN_KIND_ASSIGN_TIMES: fprintf(fd, "*="); break;
+    case LL_TOKEN_KIND_ASSIGN_DIVIDE: fprintf(fd, "/="); break;
+    case LL_TOKEN_KIND_ASSIGN_PERCENT: fprintf(fd, "%%="); break;
+
+    case LL_TOKEN_KIND_EQUALS: fprintf(fd, "=="); break;
+    case LL_TOKEN_KIND_NEQUALS: fprintf(fd, "=="); break;
+    case LL_TOKEN_KIND_LTE: fprintf(fd, "<="); break;
+    case LL_TOKEN_KIND_GTE: fprintf(fd, ">="); break;
+
+    case LL_TOKEN_KIND_RANGE: fprintf(fd, ".."); break;
+    
+    default:
+        fprintf(fd, "%c", (char)kind);
+        break;
+    }
+}
+
 
 void lexer_print_token_raw_to_fd(LL_Token* token, FILE* fd) {
     switch (token->kind) {

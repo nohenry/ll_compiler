@@ -40,7 +40,19 @@ typedef enum {
 	LL_IR_OPCODE_INVOKEVALUE,
 	LL_IR_OPCODE_LEA,
 
+	LL_IR_OPCODE_BRANCH,
+	LL_IR_OPCODE_BRANCH_COND,
+
 	LL_IR_OPCODE_ADD,
+	LL_IR_OPCODE_SUB,
+	LL_IR_OPCODE_MUL,
+	LL_IR_OPCODE_DIV,
+	LL_IR_OPCODE_LT,
+	LL_IR_OPCODE_LTE,
+	LL_IR_OPCODE_GT,
+	LL_IR_OPCODE_GTE,
+	LL_IR_OPCODE_EQ,
+	LL_IR_OPCODE_NEQ,
 } LL_Ir_Opcode;
 
 typedef struct {
@@ -54,23 +66,41 @@ typedef struct {
 } LL_Ir_Op_List;
 
 typedef struct ll_ir_block {
-	struct ll_ir_block *next, *prev;
+	uint32_t next, prev;
+	uint32_t ref1, ref2;
+	/* struct ll_ir_block *next, *prev; */
+	/* struct ll_ir_block *ref1, *ref2; */
 	LL_Ir_Op_List ops;
 	LL_Ir_Op_List rops;
 	bool did_branch;
+	uint32_t bi;
+	int64_t generated_offset;
+	int64_t fixup_offset;
 } LL_Ir_Block;
+
+typedef uint32_t LL_Ir_Block_Ref;
+
+typedef struct {
+	uint32_t count, capacity;
+	LL_Ir_Block* items;
+} LL_Ir_Block_List;
 
 typedef enum {
 	LL_IR_FUNCTION_FLAG_EXTERN = (1u << 0u),
 } LL_Ir_Function_Flags;
 
+#define LL_IR_FUNCTION_OFFSET_INVALID ((int64_t)-1)
+
 typedef struct {
 	Ast_Ident* ident;
-	LL_Ir_Block* entry;
-	LL_Ir_Block* exit;
+	LL_Ir_Block_Ref entry;
+	LL_Ir_Block_Ref exit;
 	LL_Ir_Local_List locals;
 	LL_Ir_Register_List registers;
 	LL_Ir_Function_Flags flags;
+	uint32_t block_count;
+
+	int64_t generated_offset;
 } LL_Ir_Function;
 
 typedef struct {
@@ -92,7 +122,8 @@ typedef struct {
 	LL_Ir_Function_List fns;
 	LL_Ir_Data_Item_List data_items;
 	int32_t current_function;
-	LL_Ir_Block* current_block, *return_block;
+	LL_Ir_Block_Ref current_block, return_block;
+	LL_Ir_Block_List blocks;
 } LL_Backend_Ir;
 
 #define OPERAND_FMT "%s%d"

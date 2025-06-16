@@ -5,6 +5,8 @@ typedef struct {
 	void (*append_u16)(Compiler_Context* cc, void* b, uint16_t value);
 	void (*append_u32)(Compiler_Context* cc, void* b, uint32_t value);
 	void (*append_u64)(Compiler_Context* cc, void* b, uint64_t value);
+
+	void (*append_many)(Compiler_Context* cc, void* b, uint8_t* bytes, uint64_t count);
 } X86_64_Machine_Code_Writer;
 
 typedef enum {
@@ -542,7 +544,7 @@ enum {
 };
 
 typedef enum {
-	OPERANDS_TYPE_modrm = 0,
+	OPERANDS_TYPE_modrm = 1,
 	OPERANDS_TYPE_modreg,
 	OPERANDS_TYPE_add_to_opcode,
 	OPERANDS_TYPE_imm,
@@ -712,6 +714,8 @@ typedef struct {
 	bool use_sib, rbp_is_rip;
 } X86_64_Instruction_Parameters;
 
+X86_64_Variant_Kind x86_64_get_inverse_compare(X86_64_Variant_Kind kind);
+void x86_64_write_nop(Compiler_Context* cc, X86_64_Machine_Code_Writer* b, uint8_t byte_count);
 void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* b, X86_64_Variant_Kind variant, X86_64_Instruction_Variant instruction, X86_64_Instruction_Parameters parameters);
 void x86_64_run_tests(Compiler_Context* cc, X86_64_Machine_Code_Writer* b);
 extern const X86_64_Instruction x86_64_instructions_table[];

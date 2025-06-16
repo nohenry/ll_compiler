@@ -13,6 +13,7 @@ int main() {
 
 	Ast_Base* root = parser_parse_file(&cc, &parser);
 	LL_Typer typer = ll_typer_create(&cc);
+	cc.typer = &typer;
 	ll_typer_run(&cc, &typer, root);
 
 	LL_Backend backend_ir = ll_backend_init(&cc, LL_BACKEND_IR);

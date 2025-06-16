@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
 FOOBAR:
 	printf("hello\n");
 	fb();
-	fc();
+
 	return (int)c;
 }
 

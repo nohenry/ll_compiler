@@ -1084,6 +1084,29 @@ const X86_64_Instruction x86_64_instructions_table[] = {
 
 const size_t x86_64_instructions_table_size = sizeof(x86_64_instructions_table);
 
+X86_64_Variant_Kind x86_64_get_inverse_compare(X86_64_Variant_Kind kind) {
+	switch (kind) {
+	case OPCODE_JO: return OPCODE_JNO;
+	case OPCODE_JNO: return OPCODE_JO;
+	case OPCODE_JA: return OPCODE_JBE;
+	case OPCODE_JAE: return OPCODE_JB;
+	case OPCODE_JB: return OPCODE_JAE;
+	case OPCODE_JBE: return OPCODE_JA;
+	case OPCODE_JC: return OPCODE_JAE;
+	case OPCODE_JE: return OPCODE_JNE;
+	case OPCODE_JNE: return OPCODE_JE;
+	case OPCODE_JS: return OPCODE_JNS;
+	case OPCODE_JNS: return OPCODE_JS;
+	case OPCODE_JPE: return OPCODE_JPO;
+	case OPCODE_JPO: return OPCODE_JPE;
+	case OPCODE_JG: return OPCODE_JLE;
+	case OPCODE_JGE: return OPCODE_JL;
+	case OPCODE_JL: return OPCODE_JGE;
+	case OPCODE_JLE: return OPCODE_JG;
+	default: assert(false);
+	}
+}
+
 static bool x86_64_uses_modrm(X86_64_Variant_Kind kind) {
 	switch (kind) {
 	case X86_64_VARIANT_KIND_rm8:
@@ -1138,6 +1161,25 @@ static bool x86_64_uses_modrm(X86_64_Variant_Kind kind) {
 
 	default: return false;
 	}
+}
+
+void x86_64_write_nop(Compiler_Context* cc, X86_64_Machine_Code_Writer* b, uint8_t byte_count) {
+#define WRITE_NOP(...) ({ 										\
+			uint8_t bytes[] = {__VA_ARGS__};					\
+			b->append_many(cc, (void*)b, bytes, LEN(bytes));	\
+		})
+	switch (byte_count) {
+	case 2: WRITE_NOP(0x66, 0x90); break;
+	case 3: WRITE_NOP(0x0F, 0x1F, 0x00); break;
+	case 4: WRITE_NOP(0x0F, 0x1F, 0x40, 0x00); break;
+	case 5: WRITE_NOP(0x0F, 0x1F, 0x44, 0x00, 0x00); break;
+	case 6: WRITE_NOP(0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00); break;
+	case 7: WRITE_NOP(0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00); break;
+	case 8: WRITE_NOP(0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00); break;
+	case 9: WRITE_NOP(0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00); break;
+	default: assert(false);
+	}
+#undef WRITE_NOP
 }
 
 void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* b, X86_64_Variant_Kind variant, X86_64_Instruction_Variant instruction, X86_64_Instruction_Parameters parameters) {
@@ -1197,6 +1239,13 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 #define SWITCH_OP(n)												\
 		uint32_t op##n = GET_OPERAND##n(instruction.operands);		\
 		switch (op##n >> 5u) {										\
+		case OPERANDS_TYPE_modr:									\
+		case OPERANDS_TYPE_modreg:									\
+			if ((parameters.reg ## n & 0xFu) >= X86_64_OPERAND_REGISTER_r8)	{ 	\
+				rex |= 0x44u; 										\
+			} 														\
+			break;													\
+		case OPERANDS_TYPE_modm:									\
 		case OPERANDS_TYPE_modrm:									\
 			if ((parameters.reg ## n & 0xFu) >= X86_64_OPERAND_REGISTER_r8)	{ 	\
 				rex |= 0x41u; 										\

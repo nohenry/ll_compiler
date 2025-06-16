@@ -3,9 +3,9 @@
 #include "../common.h"
 #include "../ast.h"
 
-static void ir_append_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block, LL_Ir_Opcode opcode, LL_Ir_Operand* operands, size_t operands_count) {
-	arena_da_append(&cc->arena, &block->ops, (uint32_t)opcode);
-	arena_da_append_many(&cc->arena, &block->ops, (uint32_t*)operands, operands_count);
+static void ir_append_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block_Ref block, LL_Ir_Opcode opcode, LL_Ir_Operand* operands, size_t operands_count) {
+	arena_da_append(&cc->arena, &b->blocks.items[block].ops, (uint32_t)opcode);
+	arena_da_append_many(&cc->arena, &b->blocks.items[block].ops, (uint32_t*)operands, operands_count);
 }
 
 size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i) {
@@ -16,7 +16,21 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 	case LL_IR_OPCODE_RETVALUE: return 2;
 	case LL_IR_OPCODE_STORE: return 3;
 	case LL_IR_OPCODE_LOAD: return 3;
+
+	case LL_IR_OPCODE_SUB:
+	case LL_IR_OPCODE_MUL:
+	case LL_IR_OPCODE_DIV:
+	case LL_IR_OPCODE_LT:
+	case LL_IR_OPCODE_LTE:
+	case LL_IR_OPCODE_GT:
+	case LL_IR_OPCODE_GTE:
+	case LL_IR_OPCODE_EQ:
+	case LL_IR_OPCODE_NEQ:
 	case LL_IR_OPCODE_ADD: return 4;
+
+	case LL_IR_OPCODE_BRANCH: return 2;
+	case LL_IR_OPCODE_BRANCH_COND: return 4;
+
 	case LL_IR_OPCODE_LEA: return 3;
     case LL_IR_OPCODE_INVOKEVALUE: {
 		uint32_t count = opcode_list[i + 1 + 2];
@@ -29,7 +43,8 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 	}
 }
 
-static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block) {
+static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block_Ref block_ref) {
+	LL_Ir_Block* block = &b->blocks.items[block_ref];
 	arena_da_reserve(&cc->arena, &block->rops, block->ops.count);
 
 	size_t i;
@@ -54,7 +69,7 @@ static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Blo
 		})
 
 #define FUNCTION() (&b->fns.items[b->current_function])
-#define BLOCK() (b->current_block)
+#define BLOCK() (&b->blocks.items[b->current_block])
 #define NEXTREG(type_) ({ 																				\
 			uint32_t reg = FUNCTION()->registers.count; 												\
 			arena_da_append(&cc->arena, &FUNCTION()->registers, ((LL_Ir_Register){ .type = type_ })); 	\
@@ -73,7 +88,19 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 	case LL_IR_OPCODE_STORE: printf(INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LOAD: printf(INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LEA: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+
 	case LL_IR_OPCODE_ADD: printf(INDENT OPERAND_FMT " = add " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_SUB: printf(INDENT OPERAND_FMT " = sub " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_MUL: printf(INDENT OPERAND_FMT " = mul " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_DIV: printf(INDENT OPERAND_FMT " = div " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_LT: printf(INDENT OPERAND_FMT " = lt " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_LTE: printf(INDENT OPERAND_FMT " = lte " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_GT: printf(INDENT OPERAND_FMT " = gt " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_GTE: printf(INDENT OPERAND_FMT " = gte " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+
+	case LL_IR_OPCODE_BRANCH: printf(INDENT "branch babs%u", operands[0] & LL_IR_OPERAND_VALUE_MASK); break;
+	case LL_IR_OPCODE_BRANCH_COND: printf(INDENT "branch_cond " OPERAND_FMT ", babs%u, babs%u", OPERAND_FMT_VALUE(operands[0]), operands[1] & LL_IR_OPERAND_VALUE_MASK, operands[2] & LL_IR_OPERAND_VALUE_MASK); break;
+
 	case LL_IR_OPCODE_INVOKEVALUE:
 		offset = 1;
 	case LL_IR_OPCODE_INVOKE: {
@@ -105,15 +132,15 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b) {
 	int fi;
 	for (fi = 0; fi < b->fns.count; ++fi) {
 		LL_Ir_Function* fn = &b->fns.items[fi];
-		LL_Ir_Block* block = fn->entry;
+		LL_Ir_Block_Ref block = fn->entry;
 		printf("function " FMT_SV_FMT ":\n", FMT_SV_ARG(fn->ident->str));
 
 		int bi = 0;
 		while (block) {
-			printf("b%d:\n", bi);
-			ir_print_block(cc, b, block);
+			printf("b%d(abs%d):\n", bi, block);
+			ir_print_block(cc, b, &b->blocks.items[block]);
 			bi++;
-			block = block->next;
+			block = b->blocks.items[block].next;
 		}
 		printf("\n");
 	}
@@ -122,11 +149,37 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b) {
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b) {
 	memset(b, 0, sizeof(*b));
 	b->current_function = -1;
+	arena_da_append(&cc->arena, &b->blocks, ((LL_Ir_Block){}));
 }
 
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath) {
 	ir_print(cc, b);
 	return false;
+}
+
+LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool append) {
+	LL_Ir_Block block;
+	LL_Ir_Block_Ref result = b->blocks.count;
+
+	memset(&block.ops, 0, sizeof(block.ops));
+	memset(&block.rops, 0, sizeof(block.rops));
+	block.did_branch = false;
+	block.bi = FUNCTION()->block_count;
+	FUNCTION()->block_count++; 
+	block.ref1 = block.ref2 = 0;
+	block.generated_offset = -1;
+
+	block.next = 0;
+	if (append) {
+		block.prev = FUNCTION()->exit;
+		b->blocks.items[FUNCTION()->exit].next = result;
+		FUNCTION()->exit = result;
+	} else {
+		block.prev = 0;
+	}
+	arena_da_append(&cc->arena, &b->blocks, block);
+
+	return result;
 }
 
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt) {
@@ -158,16 +211,19 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 	case AST_KIND_FUNCTION_DECLARATION: {
 		Ast_Function_Declaration* fn_decl = AST_AS(stmt, Ast_Function_Declaration);
 
+		LL_Ir_Block_Ref entry_block_ref = b->blocks.count;
+		LL_Ir_Block entry_block = { 0 };
+		entry_block.generated_offset = -1;
+		arena_da_append(&cc->arena, &b->blocks, entry_block);
+
 		LL_Ir_Function fn = {
 			.ident = fn_decl->ident,
-			.entry = arena_alloc(&cc->arena, sizeof(LL_Ir_Block)),
-			.exit = arena_alloc(&cc->arena, sizeof(LL_Ir_Block)),
+			.entry = entry_block_ref,
+			.exit = entry_block_ref,
 			.flags = 0,
+			.generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
+			.block_count = 1,
 		};
-		memset(&fn.entry->ops, 0, sizeof(fn.entry->ops));
-		memset(&fn.entry->rops, 0, sizeof(fn.entry->rops));
-		fn.entry->next = fn.entry->prev = NULL;
-		fn.entry->did_branch = false;
 
 		fn_decl->ir_index = b->fns.count;
 
@@ -178,20 +234,25 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 
 		if (fn_decl->body) {
 			int32_t last_function = b->current_function;
-			LL_Ir_Block* last_block = b->current_block;
+			LL_Ir_Block_Ref last_block = b->current_block;
 			b->current_function = fn_decl->ir_index;
 			b->current_block = fn.entry;
 
 			ir_generate_statement(cc, b, fn_decl->body);
 
-			b->current_block->next = fn.exit;
-			if (!b->current_block->did_branch) {
-				b->current_block = fn.exit;
+			if (!b->blocks.items[b->current_block].did_branch) {
+				b->current_block = FUNCTION()->exit;
 				IR_APPEND_OP(LL_IR_OPCODE_RET);
 			}
-			ir_gen_reverse_ops(cc, b, b->current_block);
 			b->current_block = last_block;
 			b->current_function = last_function;
+
+			last_block = FUNCTION()->exit;
+			while (last_block) {
+				ir_gen_reverse_ops(cc, b, last_block);
+				last_block = b->blocks.items[last_block].prev;
+			}
+
 		}
 		break;
 	}
@@ -248,8 +309,43 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 	case AST_KIND_BINARY_OP:
 		switch (AST_AS(expr, Ast_Operation)->op.kind) {
 		case '+': op = LL_IR_OPCODE_ADD; break;
+		case '-': op = LL_IR_OPCODE_SUB; break;
+		case '*': op = LL_IR_OPCODE_MUL; break;
+		case '/': op = LL_IR_OPCODE_DIV; break;
+
+		case '<': op = LL_IR_OPCODE_LT; break;
+		case LL_TOKEN_KIND_LTE: op = LL_IR_OPCODE_LTE; break;
+		case '>': op = LL_IR_OPCODE_GT; break;
+		case LL_TOKEN_KIND_GTE: op = LL_IR_OPCODE_GTE; break;
+		case LL_TOKEN_KIND_EQUALS: op = LL_IR_OPCODE_EQ; break;
+		case LL_TOKEN_KIND_NEQUALS: op = LL_IR_OPCODE_NEQ; break;
+
+		case LL_TOKEN_KIND_ASSIGN_PERCENT:
+			op = LL_IR_OPCODE_DIV;
+			goto DO_BIN_OP_ASSIGN_OP;
+		case LL_TOKEN_KIND_ASSIGN_DIVIDE:
+			op = LL_IR_OPCODE_DIV;
+			goto DO_BIN_OP_ASSIGN_OP;
+		case LL_TOKEN_KIND_ASSIGN_TIMES:
+			op = LL_IR_OPCODE_MUL;
+			goto DO_BIN_OP_ASSIGN_OP;
+		case LL_TOKEN_KIND_ASSIGN_MINUS:
+			op = LL_IR_OPCODE_SUB;
+			goto DO_BIN_OP_ASSIGN_OP;
+		case LL_TOKEN_KIND_ASSIGN_PLUS:
+			op = LL_IR_OPCODE_ADD;
+DO_BIN_OP_ASSIGN_OP:
+			r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+			r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+			r1 = IR_APPEND_OP_DST(op, expr->type, r1, r2);
+
+			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, true);
+			IR_APPEND_OP(LL_IR_OPCODE_STORE, result, r1);
+			return r1;
+
 		default: assert(false);
 		}
+
 		r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
 		r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
 		result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
@@ -277,10 +373,17 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		ops[0 + offset] = invokee;
 		ops[1 + offset] = inv->arguments.count;
 		for (i = 0; i < inv->arguments.count; ++i) {
+			LL_Type* parameter_type;
+			if (i >= fn_type->parameter_count - 1 && fn_type->is_variadic) {
+				parameter_type = cc->typer->ty_int32;
+			} else {
+				parameter_type = fn_type->parameters[i];
+			}
+
 			ops[i + 2 + offset] = ir_generate_expression(cc, b, inv->arguments.items[i], false);
             switch (ops[i + 2 + offset] & LL_IR_OPERAND_TYPE_MASK) {
             case LL_IR_OPERAND_IMMEDIATE_BIT:
-				ops[i + 2 + offset] = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, fn_type->parameters[i], (ops[i + 2 + offset] & LL_IR_OPERAND_VALUE_MASK));
+				ops[i + 2 + offset] = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, parameter_type, (ops[i + 2 + offset] & LL_IR_OPERAND_VALUE_MASK));
                 break;
             default: break;
             }
@@ -300,7 +403,6 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		case AST_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | AST_AS(decl, Ast_Parameter)->ir_index; break;
 		default: assert(false);
 		}
-		printf("%.*s - %p -- %u\n", ident->str.len, ident->str.ptr, ident->resolved_scope, (result & LL_IR_OPERAND_VALUE_MASK));
 
 		if (!lvalue) {
 			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ident->base.type, result);
@@ -317,6 +419,71 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 			IR_APPEND_OP(LL_IR_OPCODE_RET);
 		}
 		BLOCK()->did_branch = true;
+		return 0;
+	}
+	case AST_KIND_IF: {
+		Ast_If* iff = AST_AS(expr, Ast_If);
+		/* result = ir_generate_expression(cc, b, cf->expr, false); */
+
+		/* if (iff->body) { */
+		/* 	ll_typer_type_statement(cc, typer, iff->body); */
+		/* } */
+
+		/* if (iff->else_clause) { */
+		/* 	ll_typer_type_statement(cc, typer, iff->else_clause); */
+		/* } */
+
+		/* result = NULL; */
+		return 0;
+	}
+	case AST_KIND_FOR: {
+		Ast_Loop* loop = AST_AS(expr, Ast_Loop);
+		LL_Ir_Block_Ref cond_block = ir_create_block(cc, b, true);
+		LL_Ir_Block_Ref body_block = ir_create_block(cc, b, true);
+		LL_Ir_Block_Ref end_block = ir_create_block(cc, b, true);
+		b->blocks.items[end_block].ref1 = cond_block;
+		/* cond_block->ref1 = body_block; */
+
+		/* LL_Ir_Block* end_block = ir_create_block(cc, b, true); */
+
+		if (loop->init) ir_generate_statement(cc, b, loop->init);
+
+		if (loop->cond) {
+			b->current_block = cond_block;
+			result = ir_generate_expression(cc, b, loop->cond, false);
+			IR_APPEND_OP(LL_IR_OPCODE_BRANCH_COND, result, body_block, end_block);
+		}
+
+		b->current_block = body_block;
+		if (loop->body) {
+			ir_generate_statement(cc, b, loop->body);
+		}
+
+		if (loop->update) {
+			ir_generate_expression(cc, b, loop->update, false);
+			IR_APPEND_OP(LL_IR_OPCODE_BRANCH, cond_block);
+		}
+
+		b->current_block = end_block;
+
+		/* if (loop->cond) { */
+		/* 	result = ll_typer_type_expression(cc, typer, loop->cond, typer->ty_int32); */
+		/* 	switch (result->kind) { */
+		/* 	case LL_TYPE_POINTER: */
+		/* 	case LL_TYPE_ANYINT: */
+		/* 	case LL_TYPE_UINT: */
+		/* 	case LL_TYPE_INT: break; */
+		/* 	default: */
+		/* 		fprintf(stderr, "\x1b[31;1merror:\x1b[0m if statement condition should be boolean, integer or pointer\n"); */
+		/* 		break; */
+		/* 	} */
+		/* } */
+		/* if (loop->update) ll_typer_type_expression(cc, typer, loop->update, NULL); */
+
+		/* if (loop->body) { */
+		/* 	ll_typer_type_statement(cc, typer, loop->body); */
+		/* } */
+
 		return 0;
 	}
 	default:

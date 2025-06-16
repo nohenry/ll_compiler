@@ -36,6 +36,7 @@ typedef struct string_intern_map_entry {
 typedef struct {
     Arena arena, tmp_arena;
 	String_Intern_Map_Entry* string_interns[LL_DEFAULT_MAP_ENTRY_COUNT];
+	struct ll_typer* typer;
 } Compiler_Context;
 
 extern String_View LL_KEYWORD_CONST;

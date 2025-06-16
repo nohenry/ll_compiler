@@ -245,7 +245,6 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
 		if (var_decl->initializer) {
 
-			ll_print_type(declared_type);
 			typer->current_scope = (LL_Scope*)var_scope;
 			LL_Type* init_type = ll_typer_type_expression(cc, typer, var_decl->initializer, declared_type);
 			typer->current_scope = var_scope->parent;
@@ -340,7 +339,6 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: symbol '" FMT_SV_FMT "' not found!\n", FMT_SV_ARG(AST_AS(expr, Ast_Ident)->str));
 		}
 		AST_AS(expr, Ast_Ident)->resolved_scope = scope;
-		printf("typer type %.*s - %p\n", scope->ident->str.len, scope->ident->str.ptr, scope->ident->base.type);
 		result = scope->ident->base.type;
 		break;
 	}
@@ -359,15 +357,11 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		LL_Type* rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, NULL);
 
 		if (lhs_type->kind == LL_TYPE_ANYINT && rhs_type->kind == LL_TYPE_ANYINT && expected_type) {
-			printf("both\n");
-			ll_print_type(expected_type);
 			lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left, expected_type);
 			rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, expected_type);
 		} else if (lhs_type->kind == LL_TYPE_ANYINT || lhs_type->kind == LL_TYPE_ANYFLOAT) {
-			printf("left\n");
 			lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left, rhs_type);
 		} else if (rhs_type->kind == LL_TYPE_ANYINT || rhs_type->kind == LL_TYPE_ANYFLOAT) {
-			printf("right\n");
 			rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, lhs_type);
 		}
 
@@ -482,6 +476,55 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		if (cf->expr) ll_typer_type_expression(cc, typer, cf->expr, typer->current_fn->return_type);
 		result = NULL;
 
+		break;
+	}
+	case AST_KIND_IF: {
+		Ast_If* iff = AST_AS(expr, Ast_If);
+		result = ll_typer_type_expression(cc, typer, iff->cond, typer->ty_int32);
+		switch (result->kind) {
+		case LL_TYPE_POINTER:
+		case LL_TYPE_ANYINT:
+		case LL_TYPE_UINT:
+		case LL_TYPE_INT: break;
+		default:
+			fprintf(stderr, "\x1b[31;1merror:\x1b[0m if statement condition should be boolean, integer or pointer\n");
+			break;
+		}
+
+		if (iff->body) {
+			ll_typer_type_statement(cc, typer, iff->body);
+		}
+
+		if (iff->else_clause) {
+			ll_typer_type_statement(cc, typer, iff->else_clause);
+		}
+
+		result = NULL;
+		break;
+	}
+	case AST_KIND_FOR: {
+		Ast_Loop* loop = AST_AS(expr, Ast_Loop);
+		if (loop->init) ll_typer_type_statement(cc, typer, loop->init);
+
+		if (loop->cond) {
+			result = ll_typer_type_expression(cc, typer, loop->cond, typer->ty_int32);
+			switch (result->kind) {
+			case LL_TYPE_POINTER:
+			case LL_TYPE_ANYINT:
+			case LL_TYPE_UINT:
+			case LL_TYPE_INT: break;
+			default:
+				fprintf(stderr, "\x1b[31;1merror:\x1b[0m if statement condition should be boolean, integer or pointer\n");
+				break;
+			}
+		}
+		if (loop->update) ll_typer_type_expression(cc, typer, loop->update, NULL);
+
+		if (loop->body) {
+			ll_typer_type_statement(cc, typer, loop->body);
+		}
+
+		result = NULL;
 		break;
 	}
 	default: fprintf(stderr, "\x1b[31;1mTODO:\x1b[0m type expression %d\n", expr->kind);
