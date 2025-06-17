@@ -496,6 +496,7 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 				b->registers.items[OPD_VALUE(operands[1])] = linux_x64_64_register_queue_dequeue(cc, &b->register_queue);
 			}
 			break;
+		case LL_IR_OPCODE_CAST:
 		case LL_IR_OPCODE_LOAD:
 			if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
 				b->registers.items[OPD_VALUE(operands[1])] = linux_x64_64_register_queue_dequeue(cc, &b->register_queue);
@@ -505,8 +506,11 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 		case LL_IR_OPCODE_LEA:
 			linux_x64_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
 		   	break;
+		case LL_IR_OPCODE_AND:
+		case LL_IR_OPCODE_OR:
+		case LL_IR_OPCODE_XOR:
+		case LL_IR_OPCODE_SUB:
 		case LL_IR_OPCODE_ADD:
-			/* b->registers.items[OPD_VALUE(operands[0])] = linux_x86_64_elf_get_next_reg(cc, b); */
 			b->registers.items[OPD_VALUE(operands[0])] = linux_x64_64_register_queue_dequeue(cc, &b->register_queue);
 			if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
 				/* result and first operand can be the same */
@@ -518,7 +522,6 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 					/* result and second operand can be the same, if first operand isn't register */
 					b->registers.items[OPD_VALUE(operands[2])] = linux_x64_64_register_queue_dequeue(cc, &b->register_queue);
 				} else {
-					/* b->registers.items[OPD_VALUE(operands[2])] = linux_x86_64_elf_get_next_reg(cc, b); */
 					b->registers.items[OPD_VALUE(operands[2])] = b->registers.items[OPD_VALUE(operands[0])];
 				}
 			}
@@ -526,6 +529,30 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 			linux_x64_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
 
 			break;
+        case LL_IR_OPCODE_MUL: {
+            if (linux_x64_64_register_queue_is_free(cc, &b->register_queue, X86_64_OPERAND_REGISTER_rax)) {
+                linux_x64_64_register_queue_use_reg(cc, &b->register_queue, X86_64_OPERAND_REGISTER_rax);
+
+                b->registers.items[OPD_VALUE(operands[0])] = X86_64_OPERAND_REGISTER_rax;
+            }
+
+			if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
+				/* result and first operand can be the same */
+				b->registers.items[OPD_VALUE(operands[1])] = b->registers.items[OPD_VALUE(operands[0])];
+			} else assert(false);
+
+			if (OPD_TYPE(operands[2]) == LL_IR_OPERAND_REGISTER_BIT) {
+				if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
+					/* result and second operand can be the same, if first operand isn't register */
+					b->registers.items[OPD_VALUE(operands[2])] = linux_x64_64_register_queue_dequeue(cc, &b->register_queue);
+				} else {
+					b->registers.items[OPD_VALUE(operands[2])] = b->registers.items[OPD_VALUE(operands[0])];
+				}
+			}
+
+			linux_x64_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
+            break;
+        }
 		case LL_IR_OPCODE_INVOKEVALUE:
             offset = 1;
 		case LL_IR_OPCODE_INVOKE: {
@@ -577,6 +604,7 @@ static X86_64_Variant_Kind linux_x86_64_get_variant(Compiler_Context* cc, Linux_
 		if (params.immediate) return X86_64_VARIANT_KIND_rm64_i32;
 		else if (params.mem_right) return X86_64_VARIANT_KIND_r64_rm64;
 		else return X86_64_VARIANT_KIND_rm64_r64;
+	case LL_TYPE_UINT:
 	case LL_TYPE_INT:
 		if (type->width <= 8u) {
 			if (params.immediate) return X86_64_VARIANT_KIND_rm8_i8;
@@ -683,10 +711,145 @@ static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf
 	}
 }
 
+static void linux_x86_64_elf_generate_load_cast(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src, bool load) {
+    X86_64_Instruction_Parameters params;
+    uint32_t opcode;
+    X86_64_Variant_Kind kind;
+    LL_Type* from_type;
+    LL_Type* to_type = ir_get_operand_type(b->fn, result);
+
+    switch (OPD_TYPE(src)) {
+    case LL_IR_OPERAND_LOCAL_BIT: {
+        from_type = b->fn->locals.items[OPD_VALUE(src)].ident->base.type;
+        break;
+    }
+    case LL_IR_OPERAND_REGISTER_BIT: {
+        from_type = ir_get_operand_type(b->fn, src);
+        break;
+    }
+    case LL_IR_OPERAND_IMMEDIATE_BIT: {
+        from_type = to_type;
+        break;
+    }
+    default: printf("todo: add load operands\n"); break;
+    }
+
+    params.reg0 = b->registers.items[OPD_VALUE(result)];
+
+    if (to_type != from_type) {
+        switch (from_type->kind) {
+        case LL_TYPE_UINT:
+            switch (to_type->kind) {
+                case LL_TYPE_INT:
+                case LL_TYPE_UINT:
+                    if (from_type->width < to_type->width) {
+                        if (from_type->width <= 8) {
+                            opcode = OPCODE_MOVZX;
+                            if (to_type->width <= 16) {
+                                kind = X86_64_VARIANT_KIND_r16_rm8;
+                                break;
+                            } else if (to_type->width <= 32) {
+                                kind = X86_64_VARIANT_KIND_r32_rm8;
+                                break;
+                            } else if (to_type->width <= 64) {
+                                kind = X86_64_VARIANT_KIND_r64_rm8;
+                                break;
+                            }
+                        } else if (from_type->width <= 16) {
+                            opcode = OPCODE_MOVZX;
+                            if (to_type->width <= 32) {
+                                kind = X86_64_VARIANT_KIND_r32_rm16;
+                                break;
+                            } else if (to_type->width <= 64) {
+                                kind = X86_64_VARIANT_KIND_r64_rm16;
+                                break;
+                            }
+                        }
+                    }
+                    opcode = OPCODE_MOV;
+                    kind = linux_x86_64_get_variant(cc, b, bir, to_type, (X86_64_Get_Variant_Params) { .mem_right = true });
+                    break;
+                default: assert(false);
+            }
+            break;
+        case LL_TYPE_INT:
+            switch (to_type->kind) {
+            case LL_TYPE_UINT:
+            case LL_TYPE_INT:
+                if (from_type->width < to_type->width) {
+                    if (from_type->width <= 8) {
+                        opcode = OPCODE_MOVSX;
+                        if (to_type->width <= 16) {
+                            kind = X86_64_VARIANT_KIND_r16_rm8;
+                            break;
+                        } else if (to_type->width <= 32) {
+                            kind = X86_64_VARIANT_KIND_r32_rm8;
+                            break;
+                        } else if (to_type->width <= 64) {
+                            kind = X86_64_VARIANT_KIND_r64_rm8;
+                            break;
+                        }
+                    } else if (from_type->width <= 16) {
+                        opcode = OPCODE_MOVSX;
+                        if (to_type->width <= 32) {
+                            kind = X86_64_VARIANT_KIND_r32_rm16;
+                            break;
+                        } else if (to_type->width <= 64) {
+                            kind = X86_64_VARIANT_KIND_r64_rm16;
+                            break;
+                        }
+                    } else if (from_type->width <= 32) {
+                        opcode = OPCODE_MOVSXD;
+                        if (to_type->width <= 64) {
+                            kind = X86_64_VARIANT_KIND_r64_rm32;
+                            break;
+                        }
+                    }
+                }
+                opcode = OPCODE_MOV;
+                kind = linux_x86_64_get_variant(cc, b, bir, to_type, (X86_64_Get_Variant_Params) { .mem_right = true });
+                break;
+                default: assert(false);
+            }
+
+            break;
+        default: assert(false);
+        }
+    } else {
+        opcode = OPCODE_MOV;
+        kind = linux_x86_64_get_variant(cc, b, bir, to_type, (X86_64_Get_Variant_Params) { .mem_right = true });
+    }
+
+    switch (OPD_TYPE(src)) {
+    case LL_IR_OPERAND_LOCAL_BIT: {
+        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+        params.displacement = -b->locals.items[OPD_VALUE(src)];
+        X86_64_WRITE_INSTRUCTION_DYN(opcode, kind, params);
+        break;
+    }
+    case LL_IR_OPERAND_REGISTER_BIT: {
+        if (load) {
+            params.reg1 = b->registers.items[OPD_VALUE(src)] | X86_64_REG_BASE;
+        } else {
+            params.reg1 = b->registers.items[OPD_VALUE(src)];
+        }
+        X86_64_WRITE_INSTRUCTION_DYN(opcode, kind, params);
+        break;
+    }
+    case LL_IR_OPERAND_IMMEDIATE_BIT: {
+        params.immediate = OPD_VALUE(src);
+        X86_64_WRITE_INSTRUCTION_DYN(opcode, linux_x86_64_get_variant(cc, b, bir, to_type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+        break;
+    }
+    default: printf("todo: add load operands\n"); break;
+    }
+}
+
 #define LINUX_X86_64_REGISTERS_EQL(_a, _b) (b->registers.items[OPD_VALUE(_a)] == b->registers.items[OPD_VALUE(_b)])
 
 static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
 	size_t i;
+    int32_t opcode1, opcode2;
 
 	linux_x64_64_register_queue_reset(cc, &b->register_queue);
 	x86_64_allocate_physical_registers(cc, b, bir, block);
@@ -817,8 +980,16 @@ DO_OPCODE_COMPARE:
 			}
 			break;
 		}
+        case LL_IR_OPCODE_SUB:
+            opcode1 = OPCODE_SUB;
+            opcode2 = OPCODE_DEC;
+            goto DO_OPCODE_ARITHMETIC;
 		case LL_IR_OPCODE_ADD: {
-			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
+            LL_Type* type;
+            opcode1 = OPCODE_ADD;
+            opcode2 = OPCODE_INC;
+DO_OPCODE_ARITHMETIC:
+			type = ir_get_operand_type(b->fn, operands[0]);
 			switch (type->kind) {
 			case LL_TYPE_ANYINT:
 			case LL_TYPE_INT: {
@@ -830,10 +1001,10 @@ DO_OPCODE_COMPARE:
 						if (LINUX_X86_64_REGISTERS_EQL(operands[1], operands[0])) {
 							params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
 							if (OPD_VALUE(operands[2]) == 1) {
-								X86_64_WRITE_INSTRUCTION_DYN(OPCODE_INC, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .single = true }), params);
+								X86_64_WRITE_INSTRUCTION_DYN(opcode2, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .single = true }), params);
 							} else {
 								params.immediate = OPD_VALUE(operands[2]);
-								X86_64_WRITE_INSTRUCTION_DYN(OPCODE_ADD, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+								X86_64_WRITE_INSTRUCTION_DYN(opcode1, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
 							}
 						}
 						break;
@@ -841,7 +1012,7 @@ DO_OPCODE_COMPARE:
 						if (LINUX_X86_64_REGISTERS_EQL(operands[1], operands[0])) {
 							params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
 							params.reg1 = b->registers.items[OPD_VALUE(operands[2])];
-							X86_64_WRITE_INSTRUCTION_DYN(OPCODE_ADD, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) {}), params);
+							X86_64_WRITE_INSTRUCTION_DYN(opcode1, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) {}), params);
 						}
 						break;
 					default: printf("TODO: handle add other register rhs"); break;
@@ -854,17 +1025,17 @@ DO_OPCODE_COMPARE:
 						linux_x86_64_elf_generate_mov(cc, b, bir, operands[0], operands[1]);
 						params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
 						params.immediate = OPD_VALUE(operands[2]);
-						X86_64_WRITE_INSTRUCTION_DYN(OPCODE_ADD, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+						X86_64_WRITE_INSTRUCTION_DYN(opcode1, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
 						break;
 					case LL_IR_OPERAND_REGISTER_BIT:
 						if (OPD_VALUE(operands[2]) == 1) {
 							params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
-							X86_64_WRITE_INSTRUCTION_DYN(OPCODE_INC, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .single = true }), params);
+							X86_64_WRITE_INSTRUCTION_DYN(opcode2, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .single = true }), params);
 						} else {
 							params.immediate = OPD_VALUE(operands[2]);
 							if (LINUX_X86_64_REGISTERS_EQL(operands[1], operands[0])) {
 								params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
-								X86_64_WRITE_INSTRUCTION_DYN(OPCODE_ADD, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+								X86_64_WRITE_INSTRUCTION_DYN(opcode1, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
 							}
 						}
 						break;
@@ -878,31 +1049,43 @@ DO_OPCODE_COMPARE:
 			}
 			break;
 		}
-		case LL_IR_OPCODE_LOAD: {
+        case LL_IR_OPCODE_MUL: {
 			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
-			params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
+            params.reg0 = b->registers.items[OPD_VALUE(operands[2])];
 
-			switch (OPD_TYPE(operands[1])) {
-			case LL_IR_OPERAND_LOCAL_BIT: {
-				params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-				params.displacement = -b->locals.items[OPD_VALUE(operands[1])];
-                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
-				break;
-			}
-			case LL_IR_OPERAND_REGISTER_BIT: {
-				params.reg1 = b->registers.items[OPD_VALUE(operands[1])] | X86_64_REG_BASE;
-                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
-				break;
-			}
-            case LL_IR_OPERAND_IMMEDIATE_BIT: {
-                params.immediate = OPD_VALUE(operands[1]);
-                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+            switch (type->kind) {
+            case LL_TYPE_INT:
+                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_IMUL, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .single = true }), params);
+                break;
+            case LL_TYPE_UINT:
+                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MUL, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .single = true }), params);
                 break;
             }
-			default: printf("todo: add load operands\n"); break;
-			}
 
-			break;
+            break;
+        }
+        case LL_IR_OPCODE_DIV: {
+			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
+            params.reg0 = b->registers.items[OPD_VALUE(operands[2])];
+
+            switch (type->kind) {
+            case LL_TYPE_INT:
+                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_IDIV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .single = true }), params);
+                break;
+            case LL_TYPE_UINT:
+                X86_64_WRITE_INSTRUCTION_DYN(OPCODE_DIV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .single = true }), params);
+                break;
+            }
+
+            break;
+        }
+		case LL_IR_OPCODE_CAST: {
+            linux_x86_64_elf_generate_load_cast(cc, b, bir, operands[0], operands[1], false);
+            break;
+		}
+		case LL_IR_OPCODE_LOAD: {
+            linux_x86_64_elf_generate_load_cast(cc, b, bir, operands[0], operands[1], true);
+            break;
 		}
 		case LL_IR_OPCODE_LEA: {
 			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);

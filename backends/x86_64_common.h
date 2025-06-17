@@ -154,7 +154,9 @@ enum {
 	OPCODE_MOVSW,
 	OPCODE_MOVSD,
 	OPCODE_MOVSQ,
-	OPCODE_MOVXSD,
+	OPCODE_MOVSX,
+	OPCODE_MOVSXD,
+    OPCODE_MOVZX,
 
 	OPCODE_MUL,
 	OPCODE_NEG,
@@ -575,6 +577,8 @@ typedef struct {
 		/* rm8_r8, */ rm16_r16, /* rm32_r32, */ rm64_r64,
 		r16, r32, r64,
 		/* r8_rm8, */ r16_rm16, /* r32_rm32, */ r64_rm64,
+        r16_rm8, r32_rm8, r64_rm8,
+        r32_rm16, r64_rm16,
 		r8_i8, r16_i16, r32_i32, r64_i64,
 		rm8_i8, rm16_i16, rm32_i32, rm64_i32, rm16_i8, rm32_i8, rm64_i8,
 		i8, i16, i32,
@@ -642,6 +646,12 @@ typedef enum {
 	X86_64_VARIANT_KIND_r16_rm16,
 	X86_64_VARIANT_KIND_r32_rm32,
 	X86_64_VARIANT_KIND_r64_rm64,
+
+    X86_64_VARIANT_KIND_r16_rm8,
+    X86_64_VARIANT_KIND_r32_rm8,
+    X86_64_VARIANT_KIND_r64_rm8,
+    X86_64_VARIANT_KIND_r32_rm16,
+    X86_64_VARIANT_KIND_r64_rm16,
 
 	X86_64_VARIANT_KIND_r8_i8,
 	X86_64_VARIANT_KIND_r16_i16,

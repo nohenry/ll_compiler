@@ -5,17 +5,15 @@ static int fb();
 extern int fc();
 
 int main(int argc, char** argv) {
-	int a = 0x12;
-	int* b = &a;
-	char* c = "foo";
-	for (int i = 0; i < argv; ++i) {
-		if (argv[i][0] == 0x69) goto FOOBAR;
-	}
-FOOBAR:
-	printf("hello\n");
-	fb();
 
-	return (int)c;
+    register volatile unsigned long e = 0xFFFFFFFFF000;
+    register volatile unsigned int a = e;
+    register volatile unsigned long d = a;
+    printf("e: %lx\n", e);
+    printf("a: %x\n", a);
+    printf("d: %lx\n", d);
+
+	return (int)d;
 }
 
 

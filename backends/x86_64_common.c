@@ -369,10 +369,24 @@ const X86_64_Instruction x86_64_instructions_table[] = {
 		.rm128_r128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
 	},
 	[OPCODE_MOVSQ] 	= { .noarg = { .opcode = 0xA5u, .operands = 0x10u }, },
-	[OPCODE_MOVXSD] = {
+	[OPCODE_MOVSX] = {
+		.r16_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBEu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBEu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBEu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm16  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBFu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm16  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBFu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+	},
+	[OPCODE_MOVSXD] = {
 		.r16_rm16  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
 		.r32_rm32  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
 		.r64_rm64  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+	},
+	[OPCODE_MOVZX] = {
+		.r16_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB6u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB6u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB6u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r32_rm16  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB7u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm16  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB7u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
 	},
 	[OPCODE_MUL] = {
 		.rm8 		= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(4)) }, 
@@ -1157,6 +1171,12 @@ static bool x86_64_uses_modrm(X86_64_Variant_Kind kind) {
 	case X86_64_VARIANT_KIND_r32_rm256:
 	case X86_64_VARIANT_KIND_r64_rm32:
 	case X86_64_VARIANT_KIND_rm32_r64:
+
+    case X86_64_VARIANT_KIND_r16_rm8:
+    case X86_64_VARIANT_KIND_r32_rm8:
+    case X86_64_VARIANT_KIND_r64_rm8:
+    case X86_64_VARIANT_KIND_r32_rm16:
+    case X86_64_VARIANT_KIND_r64_rm16:
 		return true;
 
 	default: return false;
@@ -1214,6 +1234,8 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 	case X86_64_VARIANT_KIND_r128_rm64:
 	case X86_64_VARIANT_KIND_rm64_r128:
 	case X86_64_VARIANT_KIND_r64_rm128:
+	case X86_64_VARIANT_KIND_r64_rm8:
+	case X86_64_VARIANT_KIND_r64_rm16:
 		if (!(instruction.operands & 0x10))
 			rex |= 0x48;
 		break;
@@ -2086,6 +2108,12 @@ X86_64_Instruction_Variant x86_64_get_variant(const X86_64_Instruction* inst, X8
 		MAKE_VARIANT(rm32_i8);
 		MAKE_VARIANT(rm64_i8);
 
+		MAKE_VARIANT(r16_rm8);
+		MAKE_VARIANT(r32_rm8);
+		MAKE_VARIANT(r64_rm8);
+		MAKE_VARIANT(r32_rm16);
+		MAKE_VARIANT(r64_rm16);
+
 		MAKE_VARIANT(i8);
 		MAKE_VARIANT(i16);
 		MAKE_VARIANT(i32);
@@ -2115,6 +2143,7 @@ X86_64_Instruction_Variant x86_64_get_variant(const X86_64_Instruction* inst, X8
 		MAKE_VARIANT(r32_rm256);
 		MAKE_VARIANT(rm32_r64);
 		MAKE_VARIANT(r64_rm32);
+        default: assert(false);
 	}
 #undef MAKE_VARIANT
 	return result;

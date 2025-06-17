@@ -12,6 +12,10 @@ void main() {
 	// int aa = *pa;
 	// string s = "fdsf";
 
+    uint8 a = 2;
+    int32 b = a;
+    int c = a * b;
+
 	for int i = 0; i <= 20; i+=1 {
 		printf("\x1b[31;1mfoobar\x1b[0m %d\n", i);
 	}

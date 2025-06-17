@@ -339,7 +339,11 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: symbol '" FMT_SV_FMT "' not found!\n", FMT_SV_ARG(AST_AS(expr, Ast_Ident)->str));
 		}
 		AST_AS(expr, Ast_Ident)->resolved_scope = scope;
-		result = scope->ident->base.type;
+        if (expected_type) {
+            result = expected_type;
+        } else {
+            result = scope->ident->base.type;
+        }
 		break;
 	}
 	case AST_KIND_LITERAL_INT:

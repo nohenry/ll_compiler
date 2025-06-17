@@ -16,6 +16,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 	case LL_IR_OPCODE_RETVALUE: return 2;
 	case LL_IR_OPCODE_STORE: return 3;
 	case LL_IR_OPCODE_LOAD: return 3;
+	case LL_IR_OPCODE_CAST: return 3;
 
 	case LL_IR_OPCODE_SUB:
 	case LL_IR_OPCODE_MUL:
@@ -26,6 +27,9 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 	case LL_IR_OPCODE_GTE:
 	case LL_IR_OPCODE_EQ:
 	case LL_IR_OPCODE_NEQ:
+	case LL_IR_OPCODE_AND:
+	case LL_IR_OPCODE_OR:
+	case LL_IR_OPCODE_XOR:
 	case LL_IR_OPCODE_ADD: return 4;
 
 	case LL_IR_OPCODE_BRANCH: return 2;
@@ -88,6 +92,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 	case LL_IR_OPCODE_STORE: printf(INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LOAD: printf(INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LEA: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+	case LL_IR_OPCODE_CAST: printf(INDENT OPERAND_FMT " = cast " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 
 	case LL_IR_OPCODE_ADD: printf(INDENT OPERAND_FMT " = add " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
 	case LL_IR_OPCODE_SUB: printf(INDENT OPERAND_FMT " = sub " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
@@ -180,6 +185,34 @@ LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool app
 	arena_da_append(&cc->arena, &b->blocks, block);
 
 	return result;
+}
+
+LL_Ir_Operand ir_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* to_type, LL_Ir_Operand from, LL_Type* from_type) {
+    if (to_type == from_type) return from;
+
+    switch (from_type->kind) {
+    case LL_TYPE_INT:
+        switch (to_type->kind) {
+            case LL_TYPE_INT:
+            case LL_TYPE_UINT:
+                if (from_type->width == to_type->width) return from;
+                break;
+            default: fprintf(stderr, "\x1b[31;1mTODO\x1b[0m: handle cast types to\n"); break;
+        }
+        break;
+    case LL_TYPE_UINT:
+        switch (to_type->kind) {
+            case LL_TYPE_UINT:
+            case LL_TYPE_INT:
+                if (from_type->width == to_type->width) return from;
+                break;
+            default: fprintf(stderr, "\x1b[31;1mTODO\x1b[0m: handle cast types to\n"); break;
+        }
+        break;
+    default: fprintf(stderr, "\x1b[31;1mTODO\x1b[0m: handle cast types from\n"); break;
+    }
+
+    return IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, to_type, from);
 }
 
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt) {
@@ -347,7 +380,9 @@ DO_BIN_OP_ASSIGN_OP:
 		}
 
 		r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+        r1 = ir_generate_cast_if_needed(cc, b, expr->type, r1, AST_AS(expr, Ast_Operation)->left->type);
 		r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+        r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, AST_AS(expr, Ast_Operation)->right->type);
 		result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
 		break;
 	case AST_KIND_INVOKE: {
