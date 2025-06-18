@@ -39,6 +39,8 @@ typedef enum {
 	LL_TYPE_ANYINT,
 	LL_TYPE_FLOAT,
 	LL_TYPE_ANYFLOAT,
+	LL_TYPE_BOOL,
+	LL_TYPE_ANYBOOL,
 	LL_TYPE_STRING,
 	LL_TYPE_FUNCTION,
 	LL_TYPE_POINTER,
@@ -81,7 +83,8 @@ typedef struct ll_typer {
 			*ty_float16, *ty_float32, *ty_float64,
 			*ty_anyfloat,
 			*ty_void,
-			*ty_string; 
+			*ty_string,
+			*ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool;
 	
 	LL_Type_Function* current_fn;
 	LL_Scope* current_scope, *root_scope;

@@ -50,6 +50,14 @@ extern String_View LL_KEYWORD_STRUCT;
 extern String_View LL_KEYWORD_EXTERN;
 extern String_View LL_KEYWORD_RETURN;
 
+extern String_View LL_KEYWORD_BOOL;
+extern String_View LL_KEYWORD_BOOL8;
+extern String_View LL_KEYWORD_BOOL16;
+extern String_View LL_KEYWORD_BOOL32;
+extern String_View LL_KEYWORD_BOOL64;
+extern String_View LL_KEYWORD_TRUE;
+extern String_View LL_KEYWORD_FALSE;
+
 extern String_View LL_KEYWORD_UINT8;
 extern String_View LL_KEYWORD_UINT16;
 extern String_View LL_KEYWORD_UINT32;

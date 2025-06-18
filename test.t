@@ -12,12 +12,18 @@ void main() {
 	// int aa = *pa;
 	// string s = "fdsf";
 
-    uint8 a = 2;
-    int32 b = a;
-    int c = a * b;
+    // uint8 a = 2;
+    // int c = a * b;
 
 	for int i = 0; i <= 20; i+=1 {
 		printf("\x1b[31;1mfoobar\x1b[0m %d\n", i);
+	}
+    int32 b = 2;
+
+	if b > 1 {
+		printf("B is in fact true\n");
+	} else {
+		printf("B is not in fact true\n");
 	}
 
 	// int d = 56;

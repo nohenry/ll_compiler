@@ -307,6 +307,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 			PEEK(&token);
 			if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_ELSE.ptr) {
 				CONSUME();
+				PEEK(&token);
 				if (token.kind == '{') {
 					right = (Ast_Base*)parser_parse_block(cc, parser);
 				} else {

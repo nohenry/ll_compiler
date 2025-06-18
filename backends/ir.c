@@ -102,6 +102,11 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 	case LL_IR_OPCODE_LTE: printf(INDENT OPERAND_FMT " = lte " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
 	case LL_IR_OPCODE_GT: printf(INDENT OPERAND_FMT " = gt " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
 	case LL_IR_OPCODE_GTE: printf(INDENT OPERAND_FMT " = gte " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_EQ: printf(INDENT OPERAND_FMT " = eq " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_NEQ: printf(INDENT OPERAND_FMT " = neq " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_AND: printf(INDENT OPERAND_FMT " = and " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_OR: printf(INDENT OPERAND_FMT " = or " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+	case LL_IR_OPCODE_XOR: printf(INDENT OPERAND_FMT " = xor " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
 
 	case LL_IR_OPCODE_BRANCH: printf(INDENT "branch babs%u", operands[0] & LL_IR_OPERAND_VALUE_MASK); break;
 	case LL_IR_OPCODE_BRANCH_COND: printf(INDENT "branch_cond " OPERAND_FMT ", babs%u, babs%u", OPERAND_FMT_VALUE(operands[0]), operands[1] & LL_IR_OPERAND_VALUE_MASK, operands[2] & LL_IR_OPERAND_VALUE_MASK); break;
@@ -197,7 +202,7 @@ LL_Ir_Operand ir_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Ir* b,
             case LL_TYPE_UINT:
                 if (from_type->width == to_type->width) return from;
                 break;
-            default: fprintf(stderr, "\x1b[31;1mTODO\x1b[0m: handle cast types to\n"); break;
+            default: fprintf(stderr, "\x1b[31;1mTODO\x1b[0m: handle cast types to %d\n", to_type->kind); break;
         }
         break;
     case LL_TYPE_UINT:
@@ -206,7 +211,7 @@ LL_Ir_Operand ir_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Ir* b,
             case LL_TYPE_INT:
                 if (from_type->width == to_type->width) return from;
                 break;
-            default: fprintf(stderr, "\x1b[31;1mTODO\x1b[0m: handle cast types to\n"); break;
+            default: fprintf(stderr, "\x1b[31;1mTODO\x1b[0m: handle cast types to %d\n", to_type->kind); break;
         }
         break;
     default: fprintf(stderr, "\x1b[31;1mTODO\x1b[0m: handle cast types from\n"); break;
@@ -346,12 +351,29 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		case '*': op = LL_IR_OPCODE_MUL; break;
 		case '/': op = LL_IR_OPCODE_DIV; break;
 
-		case '<': op = LL_IR_OPCODE_LT; break;
-		case LL_TOKEN_KIND_LTE: op = LL_IR_OPCODE_LTE; break;
-		case '>': op = LL_IR_OPCODE_GT; break;
-		case LL_TOKEN_KIND_GTE: op = LL_IR_OPCODE_GTE; break;
-		case LL_TOKEN_KIND_EQUALS: op = LL_IR_OPCODE_EQ; break;
-		case LL_TOKEN_KIND_NEQUALS: op = LL_IR_OPCODE_NEQ; break;
+		case '<':
+			op = LL_IR_OPCODE_LT;
+			goto DO_BIN_OP_BOOLEAN;
+		case LL_TOKEN_KIND_LTE:
+			op = LL_IR_OPCODE_LTE;
+			goto DO_BIN_OP_BOOLEAN;
+		case '>':
+			op = LL_IR_OPCODE_GT;
+			goto DO_BIN_OP_BOOLEAN;
+		case LL_TOKEN_KIND_GTE:
+			op = LL_IR_OPCODE_GTE;
+			goto DO_BIN_OP_BOOLEAN;
+		case LL_TOKEN_KIND_EQUALS:
+		   	op = LL_IR_OPCODE_EQ;
+			goto DO_BIN_OP_BOOLEAN;
+		case LL_TOKEN_KIND_NEQUALS:
+			op = LL_IR_OPCODE_NEQ;
+			goto DO_BIN_OP_BOOLEAN;
+DO_BIN_OP_BOOLEAN:
+			r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+			r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+			result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
+			return result;
 
 		case LL_TOKEN_KIND_ASSIGN_PERCENT:
 			op = LL_IR_OPCODE_DIV;
@@ -458,17 +480,37 @@ DO_BIN_OP_ASSIGN_OP:
 	}
 	case AST_KIND_IF: {
 		Ast_If* iff = AST_AS(expr, Ast_If);
-		/* result = ir_generate_expression(cc, b, cf->expr, false); */
+		LL_Ir_Block_Ref body_block = ir_create_block(cc, b, true);
+		LL_Ir_Block_Ref else_block = ir_create_block(cc, b, true);
+		LL_Ir_Block_Ref end_block = iff->else_clause ? ir_create_block(cc, b, true) : else_block;
 
-		/* if (iff->body) { */
-		/* 	ll_typer_type_statement(cc, typer, iff->body); */
-		/* } */
+		b->blocks.items[body_block].ref1 = b->current_block;
+		b->blocks.items[end_block].ref1 = body_block;
+		if (else_block != end_block) {
+			b->blocks.items[else_block].ref1 = b->current_block;
+			b->blocks.items[end_block].ref2 = else_block;
+		}
 
-		/* if (iff->else_clause) { */
-		/* 	ll_typer_type_statement(cc, typer, iff->else_clause); */
-		/* } */
+		result = ir_generate_expression(cc, b, iff->cond, false);
+		if (ir_get_operand_type(FUNCTION(), result)->kind != LL_TYPE_BOOL) {
+			result = IR_APPEND_OP_DST(LL_IR_OPCODE_NEQ, cc->typer->ty_bool, result, 0);
+		}
+		IR_APPEND_OP(LL_IR_OPCODE_BRANCH_COND, result, body_block, else_block);
 
-		/* result = NULL; */
+		if (iff->body) {
+			b->current_block = body_block;
+			ir_generate_statement(cc, b, iff->body);
+			IR_APPEND_OP(LL_IR_OPCODE_BRANCH, end_block);
+		}
+
+		if (iff->else_clause) {
+			b->current_block = else_block;
+			ir_generate_statement(cc, b, iff->else_clause);
+			IR_APPEND_OP(LL_IR_OPCODE_BRANCH, end_block);
+		}
+
+		b->current_block = end_block;
+
 		return 0;
 	}
 	case AST_KIND_FOR: {

@@ -37,6 +37,13 @@ LL_Typer ll_typer_create(Compiler_Context* cc) {
 	result.ty_float64 = create_type(((LL_Type){ .kind = LL_TYPE_FLOAT, .width = 64 }));
 	result.ty_anyfloat = create_type(((LL_Type){ .kind = LL_TYPE_ANYFLOAT }));
 
+	result.ty_bool8 = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 8 }));
+	result.ty_bool16 = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 16 }));
+	result.ty_bool32 = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 32 }));
+	result.ty_bool64 = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 64 }));
+	result.ty_bool = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 1 }));
+	result.ty_anybool = create_type(((LL_Type){ .kind = LL_TYPE_ANYBOOL }));
+
 	result.ty_string = create_type(((LL_Type){ .kind = LL_TYPE_STRING }));
 
 	return result;
@@ -97,6 +104,7 @@ bool ll_type_eql(LL_Type* a, LL_Type* b) {
 	case LL_TYPE_INT: return a->width == b->width;
 	case LL_TYPE_UINT: return a->width == b->width;
 	case LL_TYPE_FLOAT: return a->width == b->width;
+	case LL_TYPE_BOOL: return a->width == b->width;
 	case LL_TYPE_POINTER: {
 		LL_Type_Pointer *fa = (LL_Type_Pointer*)a, *fb = (LL_Type_Pointer*)b;
 		return fa->element_type == fb->element_type;
@@ -184,6 +192,11 @@ LL_Type* ll_typer_implicit_cast_tofrom(Compiler_Context* cc, LL_Typer* typer, LL
 		if (to->kind == LL_TYPE_INT) return to;
 		else if (to->kind == LL_TYPE_UINT) return to;
 		else if (to->kind == LL_TYPE_FLOAT) return to;
+	} else if (from->kind == LL_TYPE_BOOL) {
+		if (to->kind == LL_TYPE_BOOL) return to;
+	} else if (to->kind == LL_TYPE_BOOL) {
+		if (from->kind == LL_TYPE_BOOL) return to;
+		else if (from->kind == LL_TYPE_ANYBOOL) return to;
 	}
 
 	return NULL;
@@ -216,6 +229,12 @@ LL_Type* ll_typer_implicit_cast_leftright(Compiler_Context* cc, LL_Typer* typer,
 		if (rhs->kind == LL_TYPE_FLOAT) return rhs;
 	} else if (lhs->kind == LL_TYPE_FLOAT && rhs->kind == LL_TYPE_FLOAT) {
 		return create_type(((LL_Type){ .kind = LL_TYPE_FLOAT, .width = max(lhs->width, rhs->width) }));
+	} else if (lhs == typer->ty_anybool) {
+		if (rhs->kind == LL_TYPE_BOOL) return rhs;
+	} else if (rhs == typer->ty_anybool) {
+		if (lhs->kind == LL_TYPE_BOOL) return lhs;
+	} else if (lhs->kind == LL_TYPE_BOOL && rhs->kind == LL_TYPE_BOOL) {
+		return create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = max(lhs->width, rhs->width) }));
 	}
 
 	return NULL;
@@ -334,13 +353,18 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 	LL_Type* result;
 	switch (expr->kind) {
 	case AST_KIND_IDENT: {
+		if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
+			return expected_type ? expected_type : typer->ty_anybool;
+		}
 		LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS(expr, Ast_Ident)->str);
 		if (!scope) {
 			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: symbol '" FMT_SV_FMT "' not found!\n", FMT_SV_ARG(AST_AS(expr, Ast_Ident)->str));
 		}
 		AST_AS(expr, Ast_Ident)->resolved_scope = scope;
         if (expected_type) {
-            result = expected_type;
+            result = ll_typer_implicit_cast_tofrom(cc, typer, expected_type, scope->ident->base.type);
+			if (!result)
+				result = scope->ident->base.type;
         } else {
             result = scope->ident->base.type;
         }
@@ -348,7 +372,14 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 	}
 	case AST_KIND_LITERAL_INT:
 		if (expected_type) {
-			result = expected_type;
+			switch (expected_type->kind) {
+			case LL_TYPE_UINT:
+			case LL_TYPE_INT:
+			case LL_TYPE_FLOAT:
+				result = expected_type;
+				break;
+			default: break;
+			}
 		} else {
 			result = typer->ty_anyint;
 		}
@@ -357,20 +388,47 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		result = typer->ty_string;
 		break;
 	case AST_KIND_BINARY_OP: {
-		LL_Type* lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left, NULL);
-		LL_Type* rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, NULL);
+		Ast_Operation* opr = AST_AS(expr, Ast_Operation);
+		LL_Type* lhs_type = ll_typer_type_expression(cc, typer, opr->left, NULL);
+		LL_Type* rhs_type = ll_typer_type_expression(cc, typer, opr->right, NULL);
 
 		if (lhs_type->kind == LL_TYPE_ANYINT && rhs_type->kind == LL_TYPE_ANYINT && expected_type) {
-			lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left, expected_type);
-			rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, expected_type);
+			lhs_type = ll_typer_type_expression(cc, typer, opr->left, expected_type);
+			rhs_type = ll_typer_type_expression(cc, typer, opr->right, expected_type);
 		} else if (lhs_type->kind == LL_TYPE_ANYINT || lhs_type->kind == LL_TYPE_ANYFLOAT) {
-			lhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->left, rhs_type);
+			lhs_type = ll_typer_type_expression(cc, typer, opr->left, rhs_type);
 		} else if (rhs_type->kind == LL_TYPE_ANYINT || rhs_type->kind == LL_TYPE_ANYFLOAT) {
-			rhs_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, lhs_type);
+			rhs_type = ll_typer_type_expression(cc, typer, opr->right, lhs_type);
 		}
 
+		switch (opr->op.kind) {
+		case '+':
+		case '-':
+		case '*':
+		case '/':
+		case LL_TOKEN_KIND_ASSIGN_PERCENT:
+		case LL_TOKEN_KIND_ASSIGN_DIVIDE:
+		case LL_TOKEN_KIND_ASSIGN_TIMES:
+		case LL_TOKEN_KIND_ASSIGN_MINUS:
+		case LL_TOKEN_KIND_ASSIGN_PLUS:
+			result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+			break;
 
-		result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+		case '>':
+		case '<':
+		case LL_TOKEN_KIND_GTE:
+		case LL_TOKEN_KIND_LTE:
+		case LL_TOKEN_KIND_EQUALS:
+		case LL_TOKEN_KIND_NEQUALS:
+			result = typer->ty_bool;
+			break;
+		default: 
+			fprintf(stderr, "Error: Invalid binary operation '");
+			lexer_print_token_raw_to_fd(&opr->op, stderr);
+			fprintf(stderr, "'\n");
+			break;
+		}
+
 		if (!result) {
 			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: types of operands to operation do not match! Found left type was ");
 			ll_print_type_raw(lhs_type, stderr);
@@ -484,16 +542,20 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 	}
 	case AST_KIND_IF: {
 		Ast_If* iff = AST_AS(expr, Ast_If);
-		result = ll_typer_type_expression(cc, typer, iff->cond, typer->ty_int32);
+		result = ll_typer_type_expression(cc, typer, iff->cond, typer->ty_bool);
 		switch (result->kind) {
+		case LL_TYPE_ANYBOOL:
+		case LL_TYPE_BOOL:
 		case LL_TYPE_POINTER:
 		case LL_TYPE_ANYINT:
 		case LL_TYPE_UINT:
-		case LL_TYPE_INT: break;
+		case LL_TYPE_INT:
+			break;
 		default:
 			fprintf(stderr, "\x1b[31;1merror:\x1b[0m if statement condition should be boolean, integer or pointer\n");
 			break;
 		}
+		ll_print_type(result);
 
 		if (iff->body) {
 			ll_typer_type_statement(cc, typer, iff->body);
@@ -513,6 +575,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		if (loop->cond) {
 			result = ll_typer_type_expression(cc, typer, loop->cond, typer->ty_int32);
 			switch (result->kind) {
+			case LL_TYPE_BOOL:
+			case LL_TYPE_ANYBOOL:
 			case LL_TYPE_POINTER:
 			case LL_TYPE_ANYINT:
 			case LL_TYPE_UINT:
@@ -544,22 +608,28 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 	switch (typename->kind) {
 	case AST_KIND_IDENT:
 		if (string_view_starts_with(AST_AS(typename, Ast_Ident)->str, str_lit("int"))) {
-			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT8.ptr) return typer->ty_int8;
+			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT.ptr) return typer->ty_int32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT8.ptr) return typer->ty_int8;
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT16.ptr) return typer->ty_int16;
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT32.ptr) return typer->ty_int32;
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT64.ptr) return typer->ty_int64;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT.ptr) return typer->ty_int32;
+		} else if (string_view_starts_with(AST_AS(typename, Ast_Ident)->str, str_lit("bool"))) {
+			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL.ptr) return typer->ty_bool;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL8.ptr) return typer->ty_bool8;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL16.ptr) return typer->ty_bool16;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL32.ptr) return typer->ty_bool32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL64.ptr) return typer->ty_bool64;
 		} else if (string_view_starts_with(AST_AS(typename, Ast_Ident)->str, str_lit("uint"))) {
-			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT8.ptr) return typer->ty_uint8;
+			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT.ptr) return typer->ty_uint32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT8.ptr) return typer->ty_uint8;
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT16.ptr) return typer->ty_uint16;
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT32.ptr) return typer->ty_uint32;
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT64.ptr) return typer->ty_uint64;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT.ptr) return typer->ty_uint32;
 		} else if (string_view_starts_with(AST_AS(typename, Ast_Ident)->str, str_lit("float"))) {
-			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT16.ptr) return typer->ty_float16;
+			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT.ptr) return typer->ty_float32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT16.ptr) return typer->ty_float16;
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT32.ptr) return typer->ty_float32;
 			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT64.ptr) return typer->ty_float64;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT.ptr) return typer->ty_float32;
 		} else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_STRING.ptr) {
 			return typer->ty_string;
 		} else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_VOID.ptr) {
@@ -590,6 +660,8 @@ void ll_print_type_raw(LL_Type* type, FILE* fd) {
 	case LL_TYPE_FLOAT: fprintf(stderr, "float%zu", type->width); break;
 	case LL_TYPE_ANYFLOAT: fprintf(stderr, "anyfloat"); break;
 	case LL_TYPE_STRING: fprintf(stderr, "string"); break;
+	case LL_TYPE_BOOL: fprintf(stderr, "bool%zu", type->width); break;
+	case LL_TYPE_ANYBOOL: fprintf(stderr, "anybool"); break;
 	case LL_TYPE_POINTER: {
 		LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
 		ll_print_type_raw(ptr_type->element_type, fd);

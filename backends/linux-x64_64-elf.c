@@ -604,6 +604,7 @@ static X86_64_Variant_Kind linux_x86_64_get_variant(Compiler_Context* cc, Linux_
 		if (params.immediate) return X86_64_VARIANT_KIND_rm64_i32;
 		else if (params.mem_right) return X86_64_VARIANT_KIND_r64_rm64;
 		else return X86_64_VARIANT_KIND_rm64_r64;
+	case LL_TYPE_BOOL:
 	case LL_TYPE_UINT:
 	case LL_TYPE_INT:
 		if (type->width <= 8u) {
@@ -712,7 +713,7 @@ static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf
 }
 
 static void linux_x86_64_elf_generate_load_cast(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src, bool load) {
-    X86_64_Instruction_Parameters params;
+    X86_64_Instruction_Parameters params = { 0 };
     uint32_t opcode;
     X86_64_Variant_Kind kind;
     LL_Type* from_type;
@@ -740,40 +741,42 @@ static void linux_x86_64_elf_generate_load_cast(Compiler_Context* cc, Linux_x86_
         switch (from_type->kind) {
         case LL_TYPE_UINT:
             switch (to_type->kind) {
-                case LL_TYPE_INT:
-                case LL_TYPE_UINT:
-                    if (from_type->width < to_type->width) {
-                        if (from_type->width <= 8) {
-                            opcode = OPCODE_MOVZX;
-                            if (to_type->width <= 16) {
-                                kind = X86_64_VARIANT_KIND_r16_rm8;
-                                break;
-                            } else if (to_type->width <= 32) {
-                                kind = X86_64_VARIANT_KIND_r32_rm8;
-                                break;
-                            } else if (to_type->width <= 64) {
-                                kind = X86_64_VARIANT_KIND_r64_rm8;
-                                break;
-                            }
-                        } else if (from_type->width <= 16) {
-                            opcode = OPCODE_MOVZX;
-                            if (to_type->width <= 32) {
-                                kind = X86_64_VARIANT_KIND_r32_rm16;
-                                break;
-                            } else if (to_type->width <= 64) {
-                                kind = X86_64_VARIANT_KIND_r64_rm16;
-                                break;
-                            }
-                        }
-                    }
-                    opcode = OPCODE_MOV;
-                    kind = linux_x86_64_get_variant(cc, b, bir, to_type, (X86_64_Get_Variant_Params) { .mem_right = true });
-                    break;
-                default: assert(false);
+			case LL_TYPE_BOOL:
+			case LL_TYPE_INT:
+			case LL_TYPE_UINT:
+				if (from_type->width < to_type->width) {
+					if (from_type->width <= 8) {
+						opcode = OPCODE_MOVZX;
+						if (to_type->width <= 16) {
+							kind = X86_64_VARIANT_KIND_r16_rm8;
+							break;
+						} else if (to_type->width <= 32) {
+							kind = X86_64_VARIANT_KIND_r32_rm8;
+							break;
+						} else if (to_type->width <= 64) {
+							kind = X86_64_VARIANT_KIND_r64_rm8;
+							break;
+						}
+					} else if (from_type->width <= 16) {
+						opcode = OPCODE_MOVZX;
+						if (to_type->width <= 32) {
+							kind = X86_64_VARIANT_KIND_r32_rm16;
+							break;
+						} else if (to_type->width <= 64) {
+							kind = X86_64_VARIANT_KIND_r64_rm16;
+							break;
+						}
+					}
+				}
+				opcode = OPCODE_MOV;
+				kind = linux_x86_64_get_variant(cc, b, bir, to_type, (X86_64_Get_Variant_Params) { .mem_right = true });
+				break;
+			default: assert(false);
             }
             break;
         case LL_TYPE_INT:
             switch (to_type->kind) {
+			case LL_TYPE_BOOL:
             case LL_TYPE_UINT:
             case LL_TYPE_INT:
                 if (from_type->width < to_type->width) {
@@ -809,7 +812,7 @@ static void linux_x86_64_elf_generate_load_cast(Compiler_Context* cc, Linux_x86_
                 opcode = OPCODE_MOV;
                 kind = linux_x86_64_get_variant(cc, b, bir, to_type, (X86_64_Get_Variant_Params) { .mem_right = true });
                 break;
-                default: assert(false);
+			default: assert(false);
             }
 
             break;
@@ -856,9 +859,12 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 	block->generated_offset = (int64_t)b->section_text.count;
 
 	if (block->ref1) {
-		printf("fixup block ref -> %u\n", block->ref1);
 		int32_t* dst_offset = (int32_t*)&b->section_text.items[bir->blocks.items[block->ref1].fixup_offset];
 		*dst_offset = (int32_t)(block->generated_offset - bir->blocks.items[block->ref1].fixup_offset - 4);
+	}
+	if (block->ref2) {
+		int32_t* dst_offset = (int32_t*)&b->section_text.items[bir->blocks.items[block->ref2].fixup_offset];
+		*dst_offset = (int32_t)(block->generated_offset - bir->blocks.items[block->ref2].fixup_offset - 4);
 	}
 
 	for (i = 0; i < block->ops.count; ) {
@@ -891,7 +897,6 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 				X86_64_WRITE_INSTRUCTION(x86_64_get_inverse_compare(b->registers.items[OPD_VALUE(operands[0])]), rel32, params);
 				bir->blocks.items[operands[1]].ref1 = 0;
 				bir->blocks.items[operands[2]].ref1 = bir->blocks.items[operands[1]].prev;
-				printf("block ref -> %u\n", bir->blocks.items[operands[2]].ref1);
 			} else if (operands[2] == block->next) {
 				// else block is next
 				X86_64_WRITE_INSTRUCTION(b->registers.items[OPD_VALUE(operands[0])], rel32, params);
@@ -950,6 +955,8 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 DO_OPCODE_COMPARE:
 			type = ir_get_operand_type(b->fn, operands[0]);
 			switch (type->kind) {
+			case LL_TYPE_ANYBOOL:
+			case LL_TYPE_BOOL:
 			case LL_TYPE_ANYINT:
 			case LL_TYPE_INT: {
 				/* TODO: max immeidiate is 28 bits */
