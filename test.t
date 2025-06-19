@@ -18,13 +18,7 @@ void main() {
 	for int i = 0; i <= 20; i+=1 {
 		printf("\x1b[31;1mfoobar\x1b[0m %d\n", i);
 	}
-    int32 b = 2;
-
-	if b > 1 {
-		printf("B is in fact true\n");
-	} else {
-		printf("B is not in fact true\n");
-	}
+    int32[2] b = 2;
 
 	// int d = 56;
 	// int* pa = &a;

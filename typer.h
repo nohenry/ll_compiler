@@ -44,6 +44,7 @@ typedef enum {
 	LL_TYPE_STRING,
 	LL_TYPE_FUNCTION,
 	LL_TYPE_POINTER,
+	LL_TYPE_ARRAY,
 } LL_Type_Kind;
 
 typedef struct ll_type {
@@ -61,6 +62,12 @@ typedef struct {
 	LL_Type base;
 	LL_Type* element_type;
 } LL_Type_Pointer;
+
+
+typedef struct {
+	LL_Type base;
+	LL_Type* element_type;
+} LL_Type_Array;
 
 typedef struct {
 	LL_Type base;

@@ -359,41 +359,6 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 		break;
 	}
 	
-	PEEK(&token);
-	switch (token.kind) {
-		case '(': {
-			CONSUME();
-
-			Ast_List arguments = { 0 };
-			PEEK(&token);
-			while (token.kind != ')') {
-				arena_da_append(&cc->arena, &arguments, parser_parse_expression(cc, parser, 0, false));
-
-				PEEK(&token);
-				if (token.kind != ')') {
-					EXPECT(',', &token);
-					PEEK(&token);
-					continue;
-				}
-			}
-
-			CONSUME();
-
-			left = CREATE_NODE(AST_KIND_INVOKE, ((Ast_Invoke){ .expr = left, .arguments = arguments }));
-
-			break;
-		}
-		case '*': {
-			if (!from_statement) break;
-			CONSUME();
-			
-			left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
-
-			break;
-		}
-		default: break;
-	}
-
 	while (PEEK(&token)) {
 		int precedence = get_binary_precedence(token, from_statement);
 		if (precedence == 0 || precedence < last_precedence) break;
@@ -401,6 +366,59 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 
 		right = parser_parse_expression(cc, parser, precedence, false);
         left = CREATE_NODE(AST_KIND_BINARY_OP, ((Ast_Operation){ .left = left, .right = right, .op = token.kind }));
+	}
+
+	while (PEEK(&token)) {
+		switch (token.kind) {
+			case '(': {
+				CONSUME();
+
+				Ast_List arguments = { 0 };
+				PEEK(&token);
+				while (token.kind != ')') {
+					arena_da_append(&cc->arena, &arguments, parser_parse_expression(cc, parser, 0, false));
+
+					PEEK(&token);
+					if (token.kind != ')') {
+						EXPECT(',', &token);
+						PEEK(&token);
+						continue;
+					}
+				}
+
+				CONSUME();
+
+				left = CREATE_NODE(AST_KIND_INVOKE, ((Ast_Invoke){ .expr = left, .arguments = arguments }));
+
+				continue;
+			}
+			case '*': {
+				if (!from_statement) break;
+				CONSUME();
+				
+				left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
+
+				continue;
+			}
+			case '[': {
+				CONSUME();
+				PEEK(&token);
+
+				if (token.kind == ']') {
+					CONSUME();
+					right = NULL;
+				} else {
+					right = parser_parse_expression(cc, parser, 0, false);
+					EXPECT(']', &token);
+				}
+
+				left = CREATE_NODE(AST_KIND_INDEX, ((Ast_Operation){ .left = left, .right = right }));
+				continue;
+			}
+			default: break;
+		}
+
+		break;
 	}
 
     return left;
@@ -469,6 +487,7 @@ const char* get_node_kind(Ast_Base* node) {
 		case AST_KIND_RETURN: return "Return";
 		case AST_KIND_IF: return "If";
 		case AST_KIND_FOR: return "For";
+		case AST_KIND_INDEX: return "Index";
 		case AST_KIND_TYPE_POINTER: return "Pointer";
 	}
 }
@@ -486,6 +505,7 @@ void print_node_value(Ast_Base* node) {
 		case AST_KIND_FUNCTION_DECLARATION: print_storage_class(AST_AS(node, Ast_Function_Declaration)->storage_class); break;
 		case AST_KIND_PARAMETER: break;
 		case AST_KIND_RETURN: break;
+		case AST_KIND_INDEX: break;
 		case AST_KIND_TYPE_POINTER: break;
 	}
 }
@@ -555,6 +575,12 @@ void print_node(Ast_Base* node, int indent) {
 				print_node(AST_AS(node, Ast_Loop)->update, indent + 1);
 			if (AST_AS(node, Ast_Loop)->body)
 				print_node(AST_AS(node, Ast_Loop)->body, indent + 1);
+			break;
+
+		case AST_KIND_INDEX:
+			print_node(AST_AS(node, Ast_Operation)->left, indent + 1);
+			if (AST_AS(node, Ast_Operation)->right)
+				print_node(AST_AS(node, Ast_Operation)->right, indent + 1);
 			break;
 
 		case AST_KIND_TYPE_POINTER:

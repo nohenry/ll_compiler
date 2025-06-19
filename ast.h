@@ -23,6 +23,7 @@ typedef enum {
     AST_KIND_IF,
     AST_KIND_FOR,
 
+	AST_KIND_INDEX,
     AST_KIND_TYPE_POINTER,
 } Ast_Kind;
 

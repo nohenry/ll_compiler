@@ -125,10 +125,9 @@ bool ll_type_eql(LL_Type* a, LL_Type* b) {
 }
 
 LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type) {
-	LL_Type_Pointer ptr_type = {
-		.base = { .kind = LL_TYPE_POINTER },
-		.element_type = element_type,
-	};
+	LL_Type_Pointer ptr_type = { 0 };
+	ptr_type.base.kind = LL_TYPE_POINTER;
+	ptr_type.element_type = element_type;
 
 
 	LL_Type* res;
@@ -144,14 +143,32 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
 	return res;
 }
 
+LL_Type* ll_typer_get_array_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type, size_t size) {
+	LL_Type_Array array_type = { 0 };
+	array_type.base.kind = LL_TYPE_ARRAY;
+	array_type.base.width = size;
+	array_type.element_type = element_type;
+
+	LL_Type* res;
+    LL_Type** t = MAP_GET(typer->interned_types, (LL_Type*)&array_type, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
+
+	if (t) {
+		res = *t;
+	} else {
+		res = arena_memdup(&cc->arena, &array_type, sizeof(array_type));
+		MAP_PUT(typer->interned_types, res, res, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
+	}
+
+	return res;
+}
+
 LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* return_type, LL_Type** parameter_types, size_t parameter_count, bool is_variadic) {
-	LL_Type_Function fn_type = {
-		.base = { .kind = LL_TYPE_FUNCTION },
-		.return_type = return_type,
-		.parameter_count = parameter_count,
-		.parameters = parameter_types,
-		.is_variadic = is_variadic,
-	};
+	LL_Type_Function fn_type = { 0 };
+	fn_type.base.kind = LL_TYPE_FUNCTION;
+	fn_type.return_type = return_type;
+	fn_type.parameter_count = parameter_count;
+	fn_type.parameters = parameter_types;
+	fn_type.is_variadic = is_variadic;
 
 	LL_Type* res;
     LL_Type** t = MAP_GET(typer->interned_types, (LL_Type*)&fn_type, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
@@ -641,6 +658,11 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 		return NULL;
 	case AST_KIND_TYPE_POINTER: {
 		result = ll_typer_get_ptr_type(cc, typer, ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Type_Pointer)->element));
+		break;
+	}
+	case AST_KIND_INDEX: {
+		LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Operation)->left);
+		result = ll_typer_get_array_type(cc, typer, element_type, 0);
 		break;
 	}
 
