@@ -18,8 +18,11 @@ typedef enum {
 	AST_KIND_FUNCTION_DECLARATION,
 	AST_KIND_PARAMETER,
     AST_KIND_BLOCK,
+	AST_KIND_CONST,
 
     AST_KIND_RETURN,
+    AST_KIND_BREAK,
+    AST_KIND_CONTINUE,
     AST_KIND_IF,
     AST_KIND_FOR,
 
@@ -72,8 +75,13 @@ typedef struct {
     Ast_Parameter* items;
 } Ast_Parameter_List;
 
+typedef enum {
+	AST_BLOCK_FLAG_EXPR = (1u << 0u),
+} Ast_Block_Flags;
+
 typedef struct {
     Ast_Base base;
+	Ast_Block_Flags flags;
 
     size_t count;
     size_t capacity;
@@ -100,6 +108,11 @@ typedef struct {
     Ast_Base* expr;
 	Ast_List arguments;
 } Ast_Invoke;
+
+typedef struct {
+	Ast_Base base;
+	Ast_Base* expr;
+} Ast_Marker;
 
 typedef struct {
     Ast_Base base;

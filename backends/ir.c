@@ -2,6 +2,7 @@
 #include "ir.h"
 #include "../common.h"
 #include "../ast.h"
+#include "../eval.h"
 
 static void ir_append_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block_Ref block, LL_Ir_Opcode opcode, LL_Ir_Operand* operands, size_t operands_count) {
 	arena_da_append(&cc->arena, &b->blocks.items[block].ops, (uint32_t)opcode);
@@ -143,7 +144,12 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b) {
 	for (fi = 0; fi < b->fns.count; ++fi) {
 		LL_Ir_Function* fn = &b->fns.items[fi];
 		LL_Ir_Block_Ref block = fn->entry;
-		printf("function " FMT_SV_FMT ":\n", FMT_SV_ARG(fn->ident->str));
+
+		if (fn->ident) {
+			printf("function " FMT_SV_FMT ":\n", FMT_SV_ARG(fn->ident->str));
+		} else {
+			printf("function:\n");
+		}
 
 		int bi = 0;
 		while (block) {
@@ -159,6 +165,8 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b) {
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b) {
 	memset(b, 0, sizeof(*b));
 	b->current_function = -1;
+	// first function is used for const eval
+	arena_da_append(&cc->arena, &b->fns, ((LL_Ir_Function){}));
 	arena_da_append(&cc->arena, &b->blocks, ((LL_Ir_Block){}));
 }
 
@@ -169,7 +177,7 @@ bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath) {
 
 LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool append) {
 	LL_Ir_Block block;
-	LL_Ir_Block_Ref result = b->blocks.count;
+	LL_Ir_Block_Ref result = b->free_block ? b->free_block : b->blocks.count;
 
 	memset(&block.ops, 0, sizeof(block.ops));
 	memset(&block.rops, 0, sizeof(block.rops));
@@ -187,7 +195,13 @@ LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool app
 	} else {
 		block.prev = 0;
 	}
-	arena_da_append(&cc->arena, &b->blocks, block);
+
+	if (b->free_block) {
+		b->free_block = b->blocks.items[b->free_block].next;
+		memcpy(&b->blocks.items[b->free_block], &block, sizeof(block));
+	} else {
+		arena_da_append(&cc->arena, &b->blocks, block);
+	}
 
 	return result;
 }
@@ -218,6 +232,24 @@ LL_Ir_Operand ir_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Ir* b,
     }
 
     return IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, to_type, from);
+}
+
+LL_Ir_Operand ir_generate_lhs_load_if_needed(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* type, LL_Ir_Operand value) {
+	switch (LL_IR_OPERAND_TYPE_MASK & value) {
+	case LL_IR_OPERAND_IMMEDIATE_BIT:
+		if (b->flags & LL_BACKEND_IR_FLAG_LHS_IMMEDIATE) return value;
+		return IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, type, value);
+	default: return value;
+	}
+}
+
+LL_Ir_Operand ir_generate_rhs_load_if_needed(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* type, LL_Ir_Operand value) {
+	switch (LL_IR_OPERAND_TYPE_MASK & value) {
+	case LL_IR_OPERAND_IMMEDIATE_BIT:
+		if (b->flags & LL_BACKEND_IR_FLAG_RHS_IMMEDIATE) return value;
+		return IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, type, value);
+	default: return value;
+	}
 }
 
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt) {
@@ -282,8 +314,6 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 				b->current_block = FUNCTION()->exit;
 				IR_APPEND_OP(LL_IR_OPCODE_RET);
 			}
-			b->current_block = last_block;
-			b->current_function = last_function;
 
 			last_block = FUNCTION()->exit;
 			while (last_block) {
@@ -291,6 +321,8 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 				last_block = b->blocks.items[last_block].prev;
 			}
 
+			b->current_block = last_block;
+			b->current_function = last_function;
 		}
 		break;
 	}
@@ -306,6 +338,28 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 	int i;
 
 	switch (expr->kind) {
+	case AST_KIND_BLOCK: {
+		LL_Ir_Operand last_block_value = b->block_value;
+
+		Ast_Ident* block_ident = arena_alloc(&cc->arena, sizeof(Ast_Ident));
+		block_ident->base.type = expr->type;
+		block_ident->str.ptr = arena_sprintf(&cc->arena, "block_result\n");
+		block_ident->str.len = strlen(block_ident->str.ptr);
+		LL_Ir_Local var = {
+			.ident = block_ident,
+		};
+		uint32_t index = FUNCTION()->locals.count;
+		arena_da_append(&cc->arena, &FUNCTION()->locals, var);
+		b->block_value = LL_IR_OPERAND_LOCAL_BIT | index;
+
+		for (i = 0; i < AST_AS(expr, Ast_Block)->count; ++i) {
+			ir_generate_expression(cc, b, AST_AS(expr, Ast_Block)->items[i], false);
+		}
+
+		result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, b->block_value);
+		b->block_value = last_block_value;
+		break;
+	}
 	case AST_KIND_LITERAL_INT:
 		if (AST_AS(expr, Ast_Literal)->i64 >= 0 && AST_AS(expr, Ast_Literal)->i64 <= 0xFFFFFFF) {
 			return AST_AS(expr, Ast_Literal)->i64;
@@ -324,6 +378,8 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 	}
 	case AST_KIND_PRE_OP:
 		switch (AST_AS(expr, Ast_Operation)->op.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 		case '-': {
 			/* assert(false); */
 			break;
@@ -340,12 +396,15 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
 			break;
 		}
+#pragma GCC diagnostic push
 		default: break;
 		}
 
 		break;
 	case AST_KIND_BINARY_OP:
 		switch (AST_AS(expr, Ast_Operation)->op.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 		case '+': op = LL_IR_OPCODE_ADD; break;
 		case '-': op = LL_IR_OPCODE_SUB; break;
 		case '*': op = LL_IR_OPCODE_MUL; break;
@@ -371,7 +430,9 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 			goto DO_BIN_OP_BOOLEAN;
 DO_BIN_OP_BOOLEAN:
 			r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+			r1 = ir_generate_lhs_load_if_needed(cc, b, AST_AS(expr, Ast_Operation)->left->type, r1);
 			r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+			r2 = ir_generate_lhs_load_if_needed(cc, b, AST_AS(expr, Ast_Operation)->right->type, r2);
 			result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
 			return result;
 
@@ -391,20 +452,31 @@ DO_BIN_OP_BOOLEAN:
 			op = LL_IR_OPCODE_ADD;
 DO_BIN_OP_ASSIGN_OP:
 			r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+			r1 = ir_generate_cast_if_needed(cc, b, expr->type, r1, AST_AS(expr, Ast_Operation)->left->type);
+			r1 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r1);
+
 			r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+			r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, AST_AS(expr, Ast_Operation)->right->type);
+			r2 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r2);
+
 			r1 = IR_APPEND_OP_DST(op, expr->type, r1, r2);
 
 			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, true);
 			IR_APPEND_OP(LL_IR_OPCODE_STORE, result, r1);
 			return r1;
 
+#pragma GCC diagnostic pop
 		default: assert(false);
 		}
 
 		r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
         r1 = ir_generate_cast_if_needed(cc, b, expr->type, r1, AST_AS(expr, Ast_Operation)->left->type);
+		r1 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r1);
+
 		r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
         r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, AST_AS(expr, Ast_Operation)->right->type);
+		r2 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r2);
+
 		result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
 		break;
 	case AST_KIND_INVOKE: {
@@ -452,6 +524,16 @@ DO_BIN_OP_ASSIGN_OP:
 	}
 	case AST_KIND_IDENT: {
 		Ast_Ident* ident = AST_AS(expr, Ast_Ident);
+		
+		if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr) {
+			assert(!lvalue);
+			result = LL_IR_OPERAND_IMMEDIATE_BIT | 0u;
+			break;
+		} else if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
+			assert(!lvalue);
+			result = LL_IR_OPERAND_IMMEDIATE_BIT | 1u;
+			break;
+		}
 
 		Ast_Base* decl = ident->resolved_scope->decl;
 		switch (decl->kind) {
@@ -467,6 +549,12 @@ DO_BIN_OP_ASSIGN_OP:
 		
 		break;
 	}
+	case AST_KIND_CONST: {
+		Ast_Marker* cf = AST_AS(expr, Ast_Marker);
+		LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, b, cf->expr);
+		result = value.uval;
+		break;
+	}
 	case AST_KIND_RETURN: {
 		Ast_Control_Flow* cf = AST_AS(expr, Ast_Control_Flow);
 		if (cf->expr) {
@@ -476,6 +564,21 @@ DO_BIN_OP_ASSIGN_OP:
 			IR_APPEND_OP(LL_IR_OPCODE_RET);
 		}
 		BLOCK()->did_branch = true;
+		return 0;
+	}
+	case AST_KIND_BREAK: {
+		Ast_Control_Flow* cf = AST_AS(expr, Ast_Control_Flow);
+		if (cf->expr) {
+			result = ir_generate_expression(cc, b, cf->expr, false);
+			
+			IR_APPEND_OP(LL_IR_OPCODE_STORE, b->block_value, result);
+			/* if (result == LL_IR_OPERAND_REGISTER_BIT) { */
+			/* 	b->block_value = result; */
+			/* } else { */
+			/* 	/1* b->block_value = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, cf->expr->type, result); *1/ */
+			/* 	b->block_value = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, cf->expr->type, result); */
+			/* } */
+		}
 		return 0;
 	}
 	case AST_KIND_IF: {
@@ -492,7 +595,10 @@ DO_BIN_OP_ASSIGN_OP:
 		}
 
 		result = ir_generate_expression(cc, b, iff->cond, false);
-		if (ir_get_operand_type(FUNCTION(), result)->kind != LL_TYPE_BOOL) {
+		if ((result & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_IMMEDIATE_BIT) {
+			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, cc->typer->ty_bool, result);
+			result = IR_APPEND_OP_DST(LL_IR_OPCODE_NEQ, cc->typer->ty_bool, result, 0);
+		} else if (ir_get_operand_type(FUNCTION(), result)->kind != LL_TYPE_BOOL) {
 			result = IR_APPEND_OP_DST(LL_IR_OPCODE_NEQ, cc->typer->ty_bool, result, 0);
 		}
 		IR_APPEND_OP(LL_IR_OPCODE_BRANCH_COND, result, body_block, else_block);

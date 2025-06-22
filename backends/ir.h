@@ -13,6 +13,9 @@ typedef uint32_t LL_Ir_Operand;
 #define LL_IR_OPERAND_FUNCTION_BIT 0x40000000u
 #define LL_IR_OPERAND_DATA_BIT 0x50000000u
 
+#define OPD_VALUE(operand) ((operand) & LL_IR_OPERAND_VALUE_MASK)
+#define OPD_TYPE(operand) ((operand) & LL_IR_OPERAND_TYPE_MASK)
+
 typedef struct {
 	Ast_Ident* ident;
 } LL_Ir_Local;
@@ -123,12 +126,22 @@ typedef struct {
 	LL_Ir_Data_Item* items;
 } LL_Ir_Data_Item_List;
 
-typedef struct {
+typedef enum {
+	LL_BACKEND_IR_FLAG_RHS_IMMEDIATE = (1u << 0u),
+	LL_BACKEND_IR_FLAG_LHS_IMMEDIATE = (1u << 1u),
+} LL_Backend_Ir_Flags;
+
+typedef struct ll_backend_ir {
 	LL_Ir_Function_List fns;
 	LL_Ir_Data_Item_List data_items;
 	int32_t current_function;
 	LL_Ir_Block_Ref current_block, return_block;
 	LL_Ir_Block_List blocks;
+
+	LL_Ir_Block_Ref free_block;
+	LL_Ir_Operand block_value;
+
+	LL_Backend_Ir_Flags flags;
 } LL_Backend_Ir;
 
 #define OPERAND_FMT "%s%d"

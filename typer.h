@@ -94,6 +94,7 @@ typedef struct ll_typer {
 			*ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool;
 	
 	LL_Type_Function* current_fn;
+	LL_Type* block_type;
 	LL_Scope* current_scope, *root_scope;
 } LL_Typer;
 

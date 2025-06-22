@@ -94,6 +94,8 @@ String_View LL_KEYWORD_MATCH;
 String_View LL_KEYWORD_STRUCT;
 String_View LL_KEYWORD_EXTERN;
 String_View LL_KEYWORD_RETURN;
+String_View LL_KEYWORD_BREAK;
+String_View LL_KEYWORD_CONTINUE;
 
 String_View LL_KEYWORD_BOOL;
 String_View LL_KEYWORD_BOOL8;
@@ -132,6 +134,16 @@ Compiler_Context ll_compiler_context_create() {
 	LL_KEYWORD_STRUCT = ll_intern_string(&result, str_lit("struct"));
 	LL_KEYWORD_EXTERN = ll_intern_string(&result, str_lit("extern"));
 	LL_KEYWORD_RETURN = ll_intern_string(&result, str_lit("return"));
+	LL_KEYWORD_BREAK = ll_intern_string(&result, str_lit("break"));
+	LL_KEYWORD_CONTINUE = ll_intern_string(&result, str_lit("continue"));
+
+	LL_KEYWORD_BOOL = ll_intern_string(&result, str_lit("bool"));
+	LL_KEYWORD_BOOL8 = ll_intern_string(&result, str_lit("bool8"));
+	LL_KEYWORD_BOOL16 = ll_intern_string(&result, str_lit("bool16"));
+	LL_KEYWORD_BOOL32 = ll_intern_string(&result, str_lit("bool32"));
+	LL_KEYWORD_BOOL64 = ll_intern_string(&result, str_lit("bool64"));
+	LL_KEYWORD_TRUE = ll_intern_string(&result, str_lit("true"));
+	LL_KEYWORD_FALSE = ll_intern_string(&result, str_lit("false"));
 
 	LL_KEYWORD_UINT = ll_intern_string(&result, str_lit("uint"));
 	LL_KEYWORD_UINT8 = ll_intern_string(&result, str_lit("uint8"));

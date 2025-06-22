@@ -1,8 +1,9 @@
 void main() {
-    void test_fun(int a, int b, int c, int d) {
-
-    }
 	extern void printf(string fmt, ..args);
+    void test_fun(int a, int b, int c, int d) {
+		int aa = d * 2;
+		printf("Hello test_fun %d\n", aa);
+    }
 
 	// int b = 23 + 45;
 	// int d = 10;
@@ -18,7 +19,16 @@ void main() {
 	for int i = 0; i <= 20; i+=1 {
 		printf("\x1b[31;1mfoobar\x1b[0m %d\n", i);
 	}
-    int32[2] b = 2;
+
+	int f = const do {
+		if true {
+			break 6;
+		} else {
+			break 9;
+		}
+	};
+
+	test_fun(3, 4, 5, 6);
 
 	// int d = 56;
 	// int* pa = &a;
@@ -31,9 +41,6 @@ void main() {
 	// int64 length = 120;
 	// int[length:] slice_with_variable_specified_sized_length_before;
 	
-	int b(int h, int k) {
-		// int c = h;
-	}
 
 	// printf("\x1b[31;1mfoobar\x1b[0m %d\n", 1);
     // test_fun(1, 2, 3, 4);

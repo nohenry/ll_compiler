@@ -5,6 +5,7 @@
 #include "common.h"
 #include "typer.h"
 #include "lexer.h"
+#include "eval.h"
 
 #define create_type(type) ({\
 			__typeof__(type) t = type; \
@@ -368,7 +369,20 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
 LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr, LL_Type* expected_type) {
 	LL_Type* result;
+	size_t i;
 	switch (expr->kind) {
+	case AST_KIND_BLOCK: {
+		LL_Type* last_block_type = typer->block_type;
+		typer->block_type = expected_type;
+
+		for (i = 0; i < AST_AS(expr, Ast_Block)->count; ++i) {
+			ll_typer_type_statement(cc, typer, AST_AS(expr, Ast_Block)->items[i]);
+		}
+
+		result = typer->block_type;
+		typer->block_type = last_block_type;
+		break;
+	}
 	case AST_KIND_IDENT: {
 		if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
 			return expected_type ? expected_type : typer->ty_anybool;
@@ -395,7 +409,9 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 			case LL_TYPE_FLOAT:
 				result = expected_type;
 				break;
-			default: break;
+			default:
+				result = typer->ty_anyint;
+				break;
 			}
 		} else {
 			result = typer->ty_anyint;
@@ -419,6 +435,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		}
 
 		switch (opr->op.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 		case '+':
 		case '-':
 		case '*':
@@ -439,6 +457,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		case LL_TOKEN_KIND_NEQUALS:
 			result = typer->ty_bool;
 			break;
+#pragma GCC diagnostic pop
 		default: 
 			fprintf(stderr, "Error: Invalid binary operation '");
 			lexer_print_token_raw_to_fd(&opr->op, stderr);
@@ -461,6 +480,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		LL_Type* expr_type;
 		result = NULL;
 		switch (AST_AS(expr, Ast_Operation)->op.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 		case '-': {
 			expr_type = ll_typer_type_expression(cc, typer, AST_AS(expr, Ast_Operation)->right, expected_type);
 			switch (expr_type->kind) {
@@ -499,6 +520,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 			result = ll_typer_get_ptr_type(cc, typer, expr_type);
 			break;
 		}
+#pragma GCC diagnostic pop
 		default: break;
 		}
 
@@ -550,9 +572,21 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		result = fn_type->return_type;
 		break;
 	}
+	case AST_KIND_CONST: {
+		Ast_Marker* cf = AST_AS(expr, Ast_Marker);
+		result = ll_typer_type_expression(cc, typer, cf->expr, expected_type);
+		break;
+	}
 	case AST_KIND_RETURN: {
 		Ast_Control_Flow* cf = AST_AS(expr, Ast_Control_Flow);
 		if (cf->expr) ll_typer_type_expression(cc, typer, cf->expr, typer->current_fn->return_type);
+		result = NULL;
+
+		break;
+	}
+	case AST_KIND_BREAK: {
+		Ast_Control_Flow* cf = AST_AS(expr, Ast_Control_Flow);
+		if (cf->expr) ll_typer_type_expression(cc, typer, cf->expr, typer->block_type);
 		result = NULL;
 
 		break;
@@ -662,7 +696,8 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 	}
 	case AST_KIND_INDEX: {
 		LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Operation)->left);
-		result = ll_typer_get_array_type(cc, typer, element_type, 0);
+		LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Operation)->right);
+		result = ll_typer_get_array_type(cc, typer, element_type, value.uval);
 		break;
 	}
 
@@ -688,6 +723,12 @@ void ll_print_type_raw(LL_Type* type, FILE* fd) {
 		LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
 		ll_print_type_raw(ptr_type->element_type, fd);
 		fprintf(stderr, "*");
+		break;
+	}
+	case LL_TYPE_ARRAY: {
+		LL_Type_Array* array_type = (LL_Type_Array*)type;
+		ll_print_type_raw(array_type->element_type, fd);
+		fprintf(stderr, "[%zu]", array_type->base.width);
 		break;
 	}
 	case LL_TYPE_FUNCTION: {
@@ -760,6 +801,7 @@ void ll_scope_print(LL_Scope* scope, int indent) {
 	case LL_SCOPE_KIND_LOCAL: printf("Local"); break;
 	case LL_SCOPE_KIND_FUNCTION: printf("Function"); break;
 	case LL_SCOPE_KIND_PACKAGE: printf("Module"); break;
+	case LL_SCOPE_KIND_PARAMETER: printf("Parmeter"); break;
 	}
 	if (scope->ident)
 		printf(" '" FMT_SV_FMT "'", FMT_SV_ARG(scope->ident->str));

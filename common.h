@@ -37,6 +37,8 @@ typedef struct {
     Arena arena, tmp_arena;
 	String_Intern_Map_Entry* string_interns[LL_DEFAULT_MAP_ENTRY_COUNT];
 	struct ll_typer* typer;
+	struct ll_eval_context* eval_context;
+	struct ll_backend_ir* bir;
 } Compiler_Context;
 
 extern String_View LL_KEYWORD_CONST;
@@ -49,6 +51,8 @@ extern String_View LL_KEYWORD_MATCH;
 extern String_View LL_KEYWORD_STRUCT;
 extern String_View LL_KEYWORD_EXTERN;
 extern String_View LL_KEYWORD_RETURN;
+extern String_View LL_KEYWORD_BREAK;
+extern String_View LL_KEYWORD_CONTINUE;
 
 extern String_View LL_KEYWORD_BOOL;
 extern String_View LL_KEYWORD_BOOL8;
@@ -177,4 +181,10 @@ bool ll_type_eql(struct ll_type* a, struct ll_type* b);
 static inline uint64_t align_forward(uint64_t offset, uint64_t alignment) {
       return ((offset + alignment - 1) & (~(alignment - 1)));
 }
+
+#define TODO(fmt, ...) do { \
+		fprintf(stderr, "\x1b[31;1mTODO\x1b[0m(%s:%d): ", __FILE__, __LINE__); \
+		fprintf(stderr, fmt, ## __VA_ARGS__); \
+		fprintf(stderr, "\n"); \
+	} while (0)
 

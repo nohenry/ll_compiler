@@ -64,7 +64,7 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
 		lexer_print_token_kind(kind, stderr);
 		fprintf(stderr, "' (%d), but found '", tok.kind);
 		lexer_print_token_raw_to_fd(&tok, stderr);
-		fprintf(stderr, "' \x1b[0m\n", tok.kind);
+		fprintf(stderr, "' \x1b[0m\n");
 
         return false;
     } else {
@@ -89,9 +89,13 @@ Ast_Base* parser_parse_statement(Compiler_Context* cc, LL_Parser* parser) {
 
 START_SWITCH:
 	switch (token.kind) {
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 		case '{':
 			result = (Ast_Base*)parser_parse_block(cc, parser);
 			break;
+#pragma GCC diagnostic pop
 		case LL_TOKEN_KIND_IDENT:
 			while (PEEK(&token) && token.kind == LL_TOKEN_KIND_IDENT) {
 				if (token.str.ptr == LL_KEYWORD_EXTERN.ptr) {
@@ -124,9 +128,17 @@ HANDLE_IDENT:
 
 Ast_Block* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
 	LL_Token token;
+	Ast_Block block = { .base.kind = AST_KIND_BLOCK };
+
+	PEEK(&token);
+	if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
+		CONSUME();
+		block.flags |= AST_BLOCK_FLAG_EXPR;
+		EXPECT('{', &token);
+	}
+
 	CONSUME();
 	PEEK(&token);
-	Ast_Block block = { .base.kind = AST_KIND_BLOCK };
 
 	while (token.kind != '}') {
 		arena_da_append(&cc->arena, &block, parser_parse_statement(cc, parser));
@@ -177,6 +189,8 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 
 	PEEK(&token);
 	switch (token.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 		case '(':
 			fn = true;
 			CONSUME();
@@ -210,6 +224,7 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 			body_or_init = parser_parse_expression(cc, parser, 0, false);
 			EXPECT(';', &token);
 			break;
+#pragma GCC diagnostic pop
 		default:
 			body_or_init = NULL;
 			EXPECT(';', &token);
@@ -236,6 +251,8 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 
 int get_binary_precedence(LL_Token token, bool from_statement) {
 	switch (token.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 		case '=':
 		case LL_TOKEN_KIND_ASSIGN_PLUS:
 		case LL_TOKEN_KIND_ASSIGN_MINUS:
@@ -261,14 +278,18 @@ int get_binary_precedence(LL_Token token, bool from_statement) {
 		case '/':
 		case '%':
 			return from_statement ? 0 : 130;
+#pragma GCC diagnostic pop
 		default: return 0;
 	}
 }
 
 int get_postfix_precedence(LL_Token token) {
 	switch (token.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 		case '*':
 			return 150;
+#pragma GCC diagnostic pop
 		default: return 0;
 	}
 }
@@ -278,6 +299,8 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 	Ast_Base *left, *right, *body, *update;
 	PEEK(&token);
 	switch (token.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 	case '-':
 		CONSUME();
 		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '-', .right = parser_parse_expression(cc, parser, 140, false) }));
@@ -290,13 +313,14 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 		CONSUME();
 		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '&', .right = parser_parse_expression(cc, parser, 140, false) }));
 		break;
+#pragma GCC diagnostic pop
 	case LL_TOKEN_KIND_IDENT:
 		if (token.str.ptr == LL_KEYWORD_IF.ptr) {
 			// parse if statement
 			CONSUME();
 			left = parser_parse_expression(cc, parser, 0, false);
 			PEEK(&token);
-			if (token.kind == '{') {
+			if (token.kind == '{' || (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr)) {
 				body = (Ast_Base*)parser_parse_block(cc, parser);
 			} else {
 				body = parser_parse_expression(cc, parser, 0, false);
@@ -353,6 +377,14 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 
 			left = CREATE_NODE(AST_KIND_FOR, ((Ast_Loop){ .init = left, .cond = right, .update = update, .body = body }));
 			return left;
+		} else if (token.str.ptr == LL_KEYWORD_DO.ptr) {
+			left = (Ast_Base*)parser_parse_block(cc, parser);
+			return left;
+		} else if (token.str.ptr == LL_KEYWORD_CONST.ptr) {
+			CONSUME();
+			left = parser_parse_expression(cc, parser, 0, false);
+			left = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = left }));
+			return left;
 		}
 	default:
 		left = parser_parse_primary(cc, parser);
@@ -370,6 +402,8 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 
 	while (PEEK(&token)) {
 		switch (token.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 			case '(': {
 				CONSUME();
 
@@ -415,6 +449,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 				left = CREATE_NODE(AST_KIND_INDEX, ((Ast_Operation){ .left = left, .right = right }));
 				continue;
 			}
+#pragma GCC diagnostic pop
 			default: break;
 		}
 
@@ -430,11 +465,14 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
     PEEK(&pk);
 
     switch (pk.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
     case '(':
         CONSUME();
         result = parser_parse_expression(cc, parser, 0, false);
         EXPECT(')', NULL);
         break;
+#pragma GCC diagnostic pop
     
     case LL_TOKEN_KIND_INT:
         result = CREATE_NODE(AST_KIND_LITERAL_INT, ((Ast_Literal){ .i64 = pk.i64 }));
@@ -454,6 +492,20 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
 				result = parser_parse_expression(cc, parser, 0, false);
 			else result = NULL;
 			result = CREATE_NODE(AST_KIND_RETURN, ((Ast_Control_Flow){ .expr = result }));
+			break;
+		} else if (pk.str.ptr == LL_KEYWORD_BREAK.ptr) {
+			PEEK(&pk);
+			if (pk.kind != ';')
+				result = parser_parse_expression(cc, parser, 0, false);
+			else result = NULL;
+			result = CREATE_NODE(AST_KIND_BREAK, ((Ast_Control_Flow){ .expr = result }));
+			break;
+		} else if (pk.str.ptr == LL_KEYWORD_CONTINUE.ptr) {
+			PEEK(&pk);
+			if (pk.kind != ';')
+				result = parser_parse_expression(cc, parser, 0, false);
+			else result = NULL;
+			result = CREATE_NODE(AST_KIND_CONTINUE, ((Ast_Control_Flow){ .expr = result }));
 			break;
 		}
         result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = pk.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
@@ -481,10 +533,13 @@ const char* get_node_kind(Ast_Base* node) {
 		case AST_KIND_PRE_OP: return "Prefix_Operator";
 		case AST_KIND_INVOKE: return "Invoke";
 		case AST_KIND_BLOCK: return "Block";
+		case AST_KIND_CONST: return "Const";
 		case AST_KIND_VARIABLE_DECLARATION: return "Variable_Declaration";
 		case AST_KIND_FUNCTION_DECLARATION: return "Function_Declaration";
 		case AST_KIND_PARAMETER: return "Parameter";
 		case AST_KIND_RETURN: return "Return";
+		case AST_KIND_BREAK: return "Break";
+		case AST_KIND_CONTINUE: return "Continue";
 		case AST_KIND_IF: return "If";
 		case AST_KIND_FOR: return "For";
 		case AST_KIND_INDEX: return "Index";
@@ -534,6 +589,9 @@ void print_node(Ast_Base* node, int indent) {
 			}
 			break;
 
+		case AST_KIND_CONST:
+			print_node(AST_AS(node, Ast_Marker)->expr, indent + 1);
+			break;
 		case AST_KIND_VARIABLE_DECLARATION:
 			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->type, indent + 1);
 			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1);
@@ -555,6 +613,14 @@ void print_node(Ast_Base* node, int indent) {
 			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1);
 			break;
 		case AST_KIND_RETURN:
+			if (AST_AS(node, Ast_Control_Flow)->expr)
+				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1);
+			break;
+		case AST_KIND_BREAK:
+			if (AST_AS(node, Ast_Control_Flow)->expr)
+				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1);
+			break;
+		case AST_KIND_CONTINUE:
 			if (AST_AS(node, Ast_Control_Flow)->expr)
 				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1);
 			break;

@@ -181,7 +181,7 @@ const X86_64_Instruction x86_64_instructions_table[] = {
 	X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_AND, 0x20u, 4u),
 	X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_SUB, 0x24u, 5u),
 	X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_XOR, 0x30u, 6u),
-	X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_CMP, 0x34u, 7u),
+	X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_CMP, 0x38u, 7u),
 	[OPCODE_CALL] = {
 		.rel32		= { .opcode = 0xE8, .operands = MAKE_OPERANDS(imm) },
 		.rm64		= { .opcode = 0xFF, .operands = MAKE_OPERANDS(mod_rm(2)) | 0x10u },

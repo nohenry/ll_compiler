@@ -4,6 +4,7 @@
 #include "common.h"
 #include "parser.h"
 #include "typer.h"
+#include "eval.h"
 #include "backend.h"
 #include "backends/x86_64_common.h"
 
@@ -13,10 +14,15 @@ int main() {
 
 	Ast_Base* root = parser_parse_file(&cc, &parser);
 	LL_Typer typer = ll_typer_create(&cc);
+	LL_Eval_Context eval_context = {};
+	LL_Backend backend_ir = ll_backend_init(&cc, LL_BACKEND_IR);
+
 	cc.typer = &typer;
+	cc.eval_context = &eval_context;
+	cc.bir = backend_ir.backend;
+
 	ll_typer_run(&cc, &typer, root);
 
-	LL_Backend backend_ir = ll_backend_init(&cc, LL_BACKEND_IR);
 	ll_backend_generate_statement(&cc, &backend_ir, root);
 	ll_backend_write_to_file(&cc, &backend_ir, "");
 
