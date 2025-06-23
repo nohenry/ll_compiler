@@ -1074,11 +1074,15 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 			break;
 		}
 		case LL_IR_OPCODE_STORE: {
-			collapse1 = x86_64_get_collapse(cc, b, bir, OPD_VALUE(operands[1]));
-			if ((collapse1->op_collapse & COLLAPSE_KIND_MEM) && collapse1->op_did_collapse) {
-			} else {
-				linux_x86_64_elf_generate_mov(cc, b, bir, operands[0], operands[1], true);
-			}
+            if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
+                collapse1 = x86_64_get_collapse(cc, b, bir, OPD_VALUE(operands[1]));
+                if ((collapse1->op_collapse & COLLAPSE_KIND_MEM) && collapse1->op_did_collapse) {
+                } else {
+                    linux_x86_64_elf_generate_mov(cc, b, bir, operands[0], operands[1], true);
+                }
+            } else {
+                linux_x86_64_elf_generate_mov(cc, b, bir, operands[0], operands[1], true);
+            }
 		   	break;
 		}
 

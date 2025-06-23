@@ -10,16 +10,22 @@
     "Programming Languages"
   ],
   "contributes": {
-    "languages": [{
-      "id": "tlang",
-      "aliases": [],
-      "extensions": [".t"],
-      "configuration": "./language-configuration.json"
-    }],
-    "grammars": [{
-      "language": "tlang",
-      "scopeName": "source.t",
-      "path": "syntaxes/tlang.tmLanguage.json"
-    }]
+    "languages": [
+      {
+        "id": "tlang",
+        "aliases": [],
+        "extensions": [
+          ".t"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tlang",
+        "scopeName": "source.t",
+        "path": "syntaxes/tlang.tmLanguage.json"
+      }
+    ]
   }
 }

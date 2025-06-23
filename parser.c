@@ -296,6 +296,64 @@ int get_postfix_precedence(LL_Token token) {
 	}
 }
 
+Ast_Base* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
+	LL_Token token;
+    Ast_Base *expr1, *expr2;
+    Ast_Initializer result = { 0 };
+    CONSUME(); // consume {
+
+    PEEK(&token);
+    while (token.kind != '}') {
+        expr1 = parser_parse_primary(cc, parser);
+        PEEK(&token);
+        if (token.kind == '=') {
+            CONSUME();
+            expr2 = parser_parse_expression(cc, parser, 0, false);
+            expr1 = CREATE_NODE(AST_KIND_KEY_VALUE, ((Ast_Key_Value) { .key = expr1, .value = expr2 }));
+        }
+
+        arena_da_append(&cc->arena, &result, expr1);
+        
+        PEEK(&token);
+        if (token.kind != '}') {
+            EXPECT(',', &token);
+            PEEK(&token);
+            continue;
+        }
+    }
+
+    EXPECT('}', &token);
+    return CREATE_NODE(AST_KIND_INITIALIZER, result);
+}
+
+Ast_Base* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser) {
+	LL_Token token;
+    Ast_Base *expr1, *expr2;
+    Ast_Initializer result = { 0 };
+    CONSUME(); // consume [
+
+    PEEK(&token);
+    while (token.kind != ']') {
+        expr1 = parser_parse_primary(cc, parser);
+        if (token.kind == '=') {
+            CONSUME();
+            expr2 = parser_parse_expression(cc, parser, 0, false);
+            expr1 = CREATE_NODE(AST_KIND_KEY_VALUE, ((Ast_Key_Value) { .key = expr1, .value = expr2 }));
+        }
+        arena_da_append(&cc->arena, &result, expr1);
+        
+        PEEK(&token);
+        if (token.kind != ']') {
+            EXPECT(',', &token);
+            PEEK(&token);
+            continue;
+        }
+    }
+
+    EXPECT(']', &token);
+    return CREATE_NODE(AST_KIND_ARRAY_INITIALIZER, result);
+}
+
 Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int last_precedence, bool from_statement) {
 	LL_Token token;
 	Ast_Base *left, *right, *body, *update;
@@ -471,6 +529,12 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
         CONSUME();
         result = parser_parse_expression(cc, parser, 0, false);
         EXPECT(')', NULL);
+        break;
+    case '{':
+        result = parser_parse_initializer(cc, parser);
+        break;
+    case '[':
+        result = parser_parse_array_initializer(cc, parser);
         break;
 #pragma GCC diagnostic pop
     

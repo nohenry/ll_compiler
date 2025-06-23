@@ -420,6 +420,46 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 	case AST_KIND_LITERAL_STRING:
 		result = typer->ty_string;
 		break;
+    case AST_KIND_ARRAY_INITIALIZER: {
+		Ast_Initializer* init = AST_AS(expr, Ast_Initializer);
+        uint8_t* provided_elements = alloca(init->count * sizeof(*provided_elements));
+        memset(provided_elements, 0, init->count * sizeof(*provided_elements));
+
+        if (expected_type) {
+            assert(expected_type->kind == LL_TYPE_ARRAY);
+            LL_Type_Array* arr_type = (LL_Type_Array*)expected_type;
+            uint32_t element_index = 0;
+            for (i = 0; i < init->count; ++i, ++element_index) {
+                LL_Type* provided_type;
+                if (init->items[i]->kind == AST_KIND_KEY_VALUE) {
+                    Ast_Key_Value* kv = AST_AS(expr, Ast_Key_Value);
+                    LL_Eval_Value key = ll_eval_node(cc, cc->eval_context, cc->bir, kv->key);
+                    element_index = (uint32_t)key.uval;
+                    provided_type = ll_typer_type_expression(cc, typer, kv->value, arr_type->element_type);
+                } else {
+                    provided_type = ll_typer_type_expression(cc, typer, init->items[i], arr_type->element_type);
+                }
+
+                if (provided_elements[element_index]) {
+                    fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: a value for the index %u was provided more than once\n", element_index);
+                }
+
+                provided_elements[element_index] = 1u;
+
+                if (!ll_typer_implicit_cast_tofrom(cc, typer, provided_type, arr_type->element_type)) {
+                    assert(provided_type != NULL);
+                    assert(arr_type->element_type != NULL);
+                    fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: array initializer element does not match declared type of array! Expected ");
+                    ll_print_type_raw(arr_type->element_type, stderr);
+                    fprintf(stderr, " but got ");
+                    ll_print_type_raw(provided_type, stderr);
+                    fprintf(stderr, "\n");
+                }
+            }
+            result = expected_type;
+        } else assert(false);
+        break;
+    }
 	case AST_KIND_BINARY_OP: {
 		Ast_Operation* opr = AST_AS(expr, Ast_Operation);
 		LL_Type* lhs_type = ll_typer_type_expression(cc, typer, opr->left, NULL);

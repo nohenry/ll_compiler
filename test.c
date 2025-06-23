@@ -5,15 +5,9 @@ static int fb();
 extern int fc();
 
 int main(int argc, char** argv) {
+	int array[5] = { 1, 2, 3, 4, 5 };
 
-    register volatile unsigned long e = 0xFFFFFFFFF000;
-    register volatile unsigned int a = e;
-    register volatile unsigned long d = a;
-    printf("e: %lx\n", e);
-    printf("a: %x\n", a);
-    printf("d: %lx\n", d);
-
-	return (int)d;
+	return (int)array[4];
 }
 
 

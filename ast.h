@@ -19,6 +19,9 @@ typedef enum {
 	AST_KIND_PARAMETER,
     AST_KIND_BLOCK,
 	AST_KIND_CONST,
+	AST_KIND_INITIALIZER,
+	AST_KIND_ARRAY_INITIALIZER,
+	AST_KIND_KEY_VALUE,
 
     AST_KIND_RETURN,
     AST_KIND_BREAK,
@@ -70,8 +73,8 @@ typedef struct {
 } Ast_Parameter;
 
 typedef struct {
-    size_t count;
-    size_t capacity;
+    uint32_t count;
+    uint32_t capacity;
     Ast_Parameter* items;
 } Ast_Parameter_List;
 
@@ -83,8 +86,8 @@ typedef struct {
     Ast_Base base;
 	Ast_Block_Flags flags;
 
-    size_t count;
-    size_t capacity;
+    uint32_t count;
+    uint32_t capacity;
     Ast_Base** items;
 } Ast_Block;
 
@@ -108,6 +111,20 @@ typedef struct {
     Ast_Base* expr;
 	Ast_List arguments;
 } Ast_Invoke;
+
+typedef struct {
+    Ast_Base base;
+    Ast_Base* key;
+    Ast_Base* value;
+} Ast_Key_Value;
+
+typedef struct {
+    Ast_Base base;
+
+    uint32_t count;
+    uint32_t capacity;
+    Ast_Base** items;
+} Ast_Initializer;
 
 typedef struct {
 	Ast_Base base;

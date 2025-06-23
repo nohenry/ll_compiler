@@ -5,7 +5,7 @@ void main() {
 		printf("Hello test_fun %d\n", aa);
     }
 	int i = 0;
-	int[2] array;
+	int[2] array = [0, 1, 2, 3];
 	array[0] = 20;
 	array[1] = 10;
 	int* p = &array[0];
