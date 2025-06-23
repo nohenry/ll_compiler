@@ -1512,15 +1512,18 @@ DO_MODRM_ ##n : 											\
 				X86_64_APPEND_OP_SEGMENT(PUN((int32_t)offset, uint32_t));
 			} else if (offset == 0 && base_reg != X86_64_OPERAND_REGISTER_rbp) {
 				X86_64_APPEND_OP_SEGMENT(mod);
-			} else if (offset >= INT8_MIN && offset <= INT8_MAX) {
+			} else if (offset >= INT8_MIN && (int8_t)offset <= INT8_MAX) {
 				mod |= 0x40;
 				X86_64_APPEND_OP_SEGMENT(mod);
 				X86_64_APPEND_OP_SEGMENT(PUN((int8_t)offset, uint8_t));
-			} else if (offset >= INT32_MIN && offset <= INT32_MAX) {
+			} else if (offset >= INT32_MIN && (int32_t)offset <= INT32_MAX) {
 				mod |= 0x80;
 				X86_64_APPEND_OP_SEGMENT(mod);
 				X86_64_APPEND_OP_SEGMENT(PUN((int32_t)offset, uint32_t));
-			} else assert(false);
+			} else {
+				printf("bruh %d\n", offset);
+				assert(false);
+			}
 		} else {
 			/* if (!has_vex_vvvv) { */
 				// TODO: do we need this?

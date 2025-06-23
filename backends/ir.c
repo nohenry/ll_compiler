@@ -37,6 +37,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 	case LL_IR_OPCODE_BRANCH_COND: return 4;
 
 	case LL_IR_OPCODE_LEA: return 3;
+	case LL_IR_OPCODE_LEA_INDEX: return 5;
     case LL_IR_OPCODE_INVOKEVALUE: {
 		uint32_t count = opcode_list[i + 1 + 2];
 		return 4 + count;
@@ -93,6 +94,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 	case LL_IR_OPCODE_STORE: printf(INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LOAD: printf(INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LEA: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+	case LL_IR_OPCODE_LEA_INDEX: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT " + " OPERAND_FMT " * " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2]), OPERAND_FMT_VALUE(operands[3])); break;
 	case LL_IR_OPCODE_CAST: printf(INDENT OPERAND_FMT " = cast " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 
 	case LL_IR_OPCODE_ADD: printf(INDENT OPERAND_FMT " = add " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
@@ -315,10 +317,10 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 				IR_APPEND_OP(LL_IR_OPCODE_RET);
 			}
 
-			last_block = FUNCTION()->exit;
-			while (last_block) {
-				ir_gen_reverse_ops(cc, b, last_block);
-				last_block = b->blocks.items[last_block].prev;
+			LL_Ir_Block_Ref next_block = FUNCTION()->exit;
+			while (next_block) {
+				ir_gen_reverse_ops(cc, b, next_block);
+				next_block = b->blocks.items[next_block].prev;
 			}
 
 			b->current_block = last_block;
@@ -393,7 +395,9 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		}
 		case '&': {
 			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, true);
-			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
+			if (AST_AS(expr, Ast_Operation)->right->kind != AST_KIND_INDEX) {
+				result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
+			}
 			break;
 		}
 #pragma GCC diagnostic push
@@ -457,12 +461,18 @@ DO_BIN_OP_ASSIGN_OP:
 
 			r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
 			r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, AST_AS(expr, Ast_Operation)->right->type);
-			r2 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r2);
 
 			r1 = IR_APPEND_OP_DST(op, expr->type, r1, r2);
 
 			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, true);
 			IR_APPEND_OP(LL_IR_OPCODE_STORE, result, r1);
+			return r1;
+		case '=':
+			printf("append assign %d\n", b->current_block);
+			result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, true);
+			r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+			r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, AST_AS(expr, Ast_Operation)->right->type);
+			IR_APPEND_OP(LL_IR_OPCODE_STORE, result, r2);
 			return r1;
 
 #pragma GCC diagnostic pop
@@ -522,9 +532,29 @@ DO_BIN_OP_ASSIGN_OP:
 
 		break;
 	}
+	case AST_KIND_INDEX: {
+		Ast_Operation* op = AST_AS(expr, Ast_Operation);
+
+		LL_Ir_Operand lvalue_op;
+		if (op->left->type->kind == LL_TYPE_POINTER) {
+			printf("doing pointer\n");
+			lvalue_op = ir_generate_expression(cc, b, op->left, false);
+		} else {
+			lvalue_op = ir_generate_expression(cc, b, op->left, true);
+		}
+		LL_Ir_Operand rvalue_op = ir_generate_expression(cc, b, op->right, false);
+
+		result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, expr->type, lvalue_op, rvalue_op, 4);
+
+		if (!lvalue) {
+			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, result);
+		}
+
+		break;
+	}
 	case AST_KIND_IDENT: {
 		Ast_Ident* ident = AST_AS(expr, Ast_Ident);
-		
+
 		if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr) {
 			assert(!lvalue);
 			result = LL_IR_OPERAND_IMMEDIATE_BIT | 0u;
@@ -570,7 +600,7 @@ DO_BIN_OP_ASSIGN_OP:
 		Ast_Control_Flow* cf = AST_AS(expr, Ast_Control_Flow);
 		if (cf->expr) {
 			result = ir_generate_expression(cc, b, cf->expr, false);
-			
+
 			IR_APPEND_OP(LL_IR_OPCODE_STORE, b->block_value, result);
 			/* if (result == LL_IR_OPERAND_REGISTER_BIT) { */
 			/* 	b->block_value = result; */

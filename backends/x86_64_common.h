@@ -721,7 +721,7 @@ typedef struct {
 	uint8_t scale, index;
 	int64_t displacement, immediate, relative;
 	uint8_t rep;
-	bool use_sib, rbp_is_rip;
+	uint8_t use_sib, rbp_is_rip;
 } X86_64_Instruction_Parameters;
 
 X86_64_Variant_Kind x86_64_get_inverse_compare(X86_64_Variant_Kind kind);

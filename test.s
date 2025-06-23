@@ -16,6 +16,7 @@ main:                                   # @main
 	movq mm1, mm3
 	movq xmm1, xmm3
 	movdqa xmm1, xmm4
+	lea rcx, [rcx+rax*1]
 
 	xor	eax, eax
 	pop	rbp

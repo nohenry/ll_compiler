@@ -155,7 +155,7 @@ Linux_x86_64_Parameter linux_x86_64_call_convention_next(Linux_x86_64_Elf_Backen
 	Linux_x86_64_Parameter result;
 	result.reg = linux_x86_64_call_convention_next_reg(b, cc);
 	if (result.reg != X86_64_OPERAND_REGISTER_invalid) {
-		result.is_reg = true;	
+		result.is_reg = true;
 	} else {
 		result.is_reg = false;
 		result.stack_offset = linux_x86_64_call_convention_next_mem (b, cc);
@@ -241,12 +241,17 @@ void linux_x86_64_elf_append_op_many(Compiler_Context* cc, Linux_x86_64_Elf_Back
 }
 
 static Linux_x86_64_Elf_Layout linux_x86_64_elf_get_layout(LL_Type* ty) {
+	Linux_x86_64_Elf_Layout sub_layout;
 	switch (ty->kind) {
 	case LL_TYPE_INT: return (Linux_x86_64_Elf_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
 	case LL_TYPE_UINT: return (Linux_x86_64_Elf_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
 	case LL_TYPE_FLOAT: return (Linux_x86_64_Elf_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
 	case LL_TYPE_POINTER: return (Linux_x86_64_Elf_Layout) { .size = 8, .alignment = 8 };
 	case LL_TYPE_STRING: return (Linux_x86_64_Elf_Layout) { .size = 8, .alignment = 8 };
+	case LL_TYPE_ARRAY: {
+		sub_layout = linux_x86_64_elf_get_layout(((LL_Type_Array*)ty)->element_type);
+		return (Linux_x86_64_Elf_Layout) { .size = sub_layout.alignment * ty->width, .alignment = sub_layout.alignment };
+	}
 	default: return (Linux_x86_64_Elf_Layout) { .size = 0, .alignment = 1 };
 	}
 }
@@ -574,6 +579,19 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 		case LL_IR_OPCODE_LEA:
 			linux_x86_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
 		   	break;
+		case LL_IR_OPCODE_LEA_INDEX:
+			linux_x86_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
+
+			if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
+				b->registers.items[OPD_VALUE(operands[1])] = linux_x86_64_register_queue_dequeue(cc, &b->register_queue);
+				x86_64_reset_collapse(cc, b, bir, i, OPD_VALUE(operands[1]));
+			}
+
+			if (OPD_TYPE(operands[2]) == LL_IR_OPERAND_REGISTER_BIT) {
+				b->registers.items[OPD_VALUE(operands[2])] = linux_x86_64_register_queue_dequeue(cc, &b->register_queue);
+				x86_64_reset_collapse(cc, b, bir, i, OPD_VALUE(operands[2]));
+			}
+		   	break;
 		case LL_IR_OPCODE_AND:
 		case LL_IR_OPCODE_OR:
 		case LL_IR_OPCODE_XOR:
@@ -726,7 +744,7 @@ static X86_64_Variant_Kind linux_x86_64_get_variant(Compiler_Context* cc, Linux_
 	return (X86_64_Variant_Kind)-1;
 }
 
-static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src) {
+static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src, bool store) {
 	X86_64_Instruction_Parameters params = { 0 };
 	LL_Type* type = ir_get_operand_type(b->fn, result);
 	switch (OPD_TYPE(result)) {
@@ -771,6 +789,9 @@ static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf
 	}
 	case LL_IR_OPERAND_REGISTER_BIT: {
 		params.reg0 = b->registers.items[OPD_VALUE(result)];
+		if (store) {
+			params.reg0 |= X86_64_REG_BASE;
+		}
 
 		switch (type->kind) {
 		case LL_TYPE_STRING:
@@ -907,7 +928,6 @@ static void linux_x86_64_elf_generate_load_cast(Compiler_Context* cc, Linux_x86_
     } else {
         opcode = OPCODE_MOV;
         kind = linux_x86_64_get_variant(cc, b, bir, to_type, (X86_64_Get_Variant_Params) { .mem_right = true });
-		
     }
 
     switch (OPD_TYPE(src)) {
@@ -1057,7 +1077,7 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 			collapse1 = x86_64_get_collapse(cc, b, bir, OPD_VALUE(operands[1]));
 			if ((collapse1->op_collapse & COLLAPSE_KIND_MEM) && collapse1->op_did_collapse) {
 			} else {
-				linux_x86_64_elf_generate_mov(cc, b, bir, operands[0], operands[1]);
+				linux_x86_64_elf_generate_mov(cc, b, bir, operands[0], operands[1], true);
 			}
 		   	break;
 		}
@@ -1297,11 +1317,74 @@ DO_OPCODE_ARITHMETIC:
 					arena_da_append(&cc->tmp_arena, &b->relocations, ((Elf64_Rela) { .r_offset = b->current_section->count - 8, .r_info = ELF64_R_INFO(3, R_X86_64_64), .r_addend = bir->data_items.items[OPD_VALUE(operands[1])].binary_offset }));
 					break;
 				}
-				default: printf("todo: add lea operands\n"); break;
+				default: TODO("add lea operands"); break;
 				}
 				break;
 			}
-			default: printf("todo: add lea types\n"); break;
+			default: TODO("add lea types"); ll_print_type_raw(type, stderr); break;
+			}
+
+			break;
+		}
+		case LL_IR_OPCODE_LEA_INDEX: {
+			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
+			switch (type->kind) {
+			case LL_TYPE_STRING:
+			case LL_TYPE_ANYINT:
+			case LL_TYPE_INT: {
+				/* TODO: max immeidiate is 28 bits */
+				params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
+
+
+				switch (OPD_TYPE(operands[2])) {
+				case LL_IR_OPERAND_IMMEDIATE_BIT: {
+					/* params.use_sib = true; */
+					params.displacement = (OPD_VALUE(operands[2]) * OPD_VALUE(operands[3]));
+					break;
+				}
+				case LL_IR_OPERAND_REGISTER_BIT: {
+					params.use_sib = 1 | X86_64_SIB_INDEX | X86_64_SIB_SCALE;
+					params.index = b->registers.items[OPD_VALUE(operands[2])];
+					printf("%x\n", params.use_sib);
+
+					switch (OPD_VALUE(operands[3])) {
+					case 1: params.scale = 0; break;
+					case 2: params.scale = 1; break;
+					case 4: params.scale = 2; break;
+					case 8: params.scale = 3; break;
+					default: TODO("add index size"); break;
+					}
+
+					break;
+				}
+				default: TODO("add lea operands"); break;
+				}
+
+				switch (OPD_TYPE(operands[1])) {
+				case LL_IR_OPERAND_REGISTER_BIT: {
+					params.reg1 = b->registers.items[OPD_VALUE(operands[1])] | X86_64_REG_BASE;
+					X86_64_WRITE_INSTRUCTION(OPCODE_LEA, r64_rm64, params);
+					break;
+				}
+				case LL_IR_OPERAND_LOCAL_BIT: {
+					params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+					params.displacement += -b->locals.items[OPD_VALUE(operands[1])];
+					X86_64_WRITE_INSTRUCTION(OPCODE_LEA, r64_rm64, params);
+					break;
+				}
+				case LL_IR_OPERAND_DATA_BIT: {
+					params.reg0 = b->registers.items[OPD_VALUE(operands[0])];
+					params.immediate = 0;
+					X86_64_WRITE_INSTRUCTION(OPCODE_MOV, r64_i64, params);
+					/* arena_da_append(&cc->tmp_arena, &b->internal_relocations, ((Linux_x86_64_Internal_Relocation) { .data_item = OPD_VALUE(operands[1]), .text_rel_byte_offset = b->current_section->count - 4 /1* sizeof displacement *1/ })); */
+					arena_da_append(&cc->tmp_arena, &b->relocations, ((Elf64_Rela) { .r_offset = b->current_section->count - 8, .r_info = ELF64_R_INFO(3, R_X86_64_64), .r_addend = bir->data_items.items[OPD_VALUE(operands[1])].binary_offset }));
+					break;
+				}
+				default: TODO("add lea operands"); break;
+				}
+				break;
+			}
+			default: TODO("add lea types"); break;
 			}
 
 			break;

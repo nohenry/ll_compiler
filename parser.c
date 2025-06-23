@@ -288,6 +288,8 @@ int get_postfix_precedence(LL_Token token) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
 		case '*':
+		case '[':
+		case '(':
 			return 150;
 #pragma GCC diagnostic pop
 		default: return 0;
@@ -392,68 +394,66 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 	}
 	
 	while (PEEK(&token)) {
-		int precedence = get_binary_precedence(token, from_statement);
-		if (precedence == 0 || precedence < last_precedence) break;
-		CONSUME();
+		int bin_precedence = get_binary_precedence(token, from_statement);
+		int post_precedence = get_postfix_precedence(token);
 
-		right = parser_parse_expression(cc, parser, precedence, false);
-        left = CREATE_NODE(AST_KIND_BINARY_OP, ((Ast_Operation){ .left = left, .right = right, .op = token.kind }));
-	}
-
-	while (PEEK(&token)) {
-		switch (token.kind) {
+		if (bin_precedence != 0 && bin_precedence >= last_precedence) {
+			CONSUME();
+			right = parser_parse_expression(cc, parser, bin_precedence, false);
+			left = CREATE_NODE(AST_KIND_BINARY_OP, ((Ast_Operation){ .left = left, .right = right, .op = token.kind }));
+		} else if (post_precedence != 0 && post_precedence >= last_precedence) {
+			switch (token.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
-			case '(': {
-				CONSUME();
-
-				Ast_List arguments = { 0 };
-				PEEK(&token);
-				while (token.kind != ')') {
-					arena_da_append(&cc->arena, &arguments, parser_parse_expression(cc, parser, 0, false));
-
-					PEEK(&token);
-					if (token.kind != ')') {
-						EXPECT(',', &token);
-						PEEK(&token);
-						continue;
-					}
-				}
-
-				CONSUME();
-
-				left = CREATE_NODE(AST_KIND_INVOKE, ((Ast_Invoke){ .expr = left, .arguments = arguments }));
-
-				continue;
-			}
-			case '*': {
-				if (!from_statement) break;
-				CONSUME();
-				
-				left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
-
-				continue;
-			}
-			case '[': {
-				CONSUME();
-				PEEK(&token);
-
-				if (token.kind == ']') {
+				case '(': {
 					CONSUME();
-					right = NULL;
-				} else {
-					right = parser_parse_expression(cc, parser, 0, false);
-					EXPECT(']', &token);
+
+					Ast_List arguments = { 0 };
+					PEEK(&token);
+					while (token.kind != ')') {
+						arena_da_append(&cc->arena, &arguments, parser_parse_expression(cc, parser, 0, false));
+
+						PEEK(&token);
+						if (token.kind != ')') {
+							EXPECT(',', &token);
+							PEEK(&token);
+							continue;
+						}
+					}
+
+					CONSUME();
+
+					left = CREATE_NODE(AST_KIND_INVOKE, ((Ast_Invoke){ .expr = left, .arguments = arguments }));
+
+					break;
 				}
+				case '*': {
+					if (!from_statement) break;
+					CONSUME();
+					
+					left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
 
-				left = CREATE_NODE(AST_KIND_INDEX, ((Ast_Operation){ .left = left, .right = right }));
-				continue;
-			}
+					break;
+				}
+				case '[': {
+					CONSUME();
+					PEEK(&token);
+
+					if (token.kind == ']') {
+						CONSUME();
+						right = NULL;
+					} else {
+						right = parser_parse_expression(cc, parser, 0, false);
+						EXPECT(']', &token);
+					}
+
+					left = CREATE_NODE(AST_KIND_INDEX, ((Ast_Operation){ .left = left, .right = right }));
+					break;
+				}
 #pragma GCC diagnostic pop
-			default: break;
-		}
-
-		break;
+				default: assert(false); break;
+			}
+		} else break;
 	}
 
     return left;

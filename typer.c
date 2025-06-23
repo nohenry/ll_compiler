@@ -446,6 +446,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		case LL_TOKEN_KIND_ASSIGN_TIMES:
 		case LL_TOKEN_KIND_ASSIGN_MINUS:
 		case LL_TOKEN_KIND_ASSIGN_PLUS:
+		case '=':
 			result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
 			break;
 
@@ -570,6 +571,31 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 		}
 
 		result = fn_type->return_type;
+		break;
+	}
+	case AST_KIND_INDEX: {
+		Ast_Operation* cf = AST_AS(expr, Ast_Operation);
+		result = ll_typer_type_expression(cc, typer, cf->left, NULL);
+		ll_typer_type_expression(cc, typer, cf->right, typer->ty_int32);
+
+		fprintf(stderr, "foo baar tyype ");
+		ll_print_type_raw(cf->left->type, stderr);
+		fprintf(stderr, "\n");
+
+		switch (result->kind) {
+		case LL_TYPE_ARRAY:
+			result = ((LL_Type_Array*)result)->element_type;
+			break;
+		case LL_TYPE_POINTER:
+			result = ((LL_Type_Pointer*)result)->element_type;
+			break;
+		default:
+			fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: index expression requires an array or pointer type on the left, but found type ");
+			ll_print_type_raw(result, stderr);
+			fprintf(stderr, "\n");
+			break;
+		}
+
 		break;
 	}
 	case AST_KIND_CONST: {

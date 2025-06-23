@@ -4,6 +4,13 @@ void main() {
 		int aa = d * 2;
 		printf("Hello test_fun %d\n", aa);
     }
+	int i = 0;
+	int[2] array;
+	array[0] = 20;
+	array[1] = 10;
+	int* p = &array[0];
+	int j = p[i];
+	printf("j is %d\n", j);
 
 	// int b = 23 + 45;
 	// int d = 10;
@@ -16,17 +23,17 @@ void main() {
     // uint8 a = 2;
     // int c = a * b;
 
-	for int i = 0; i <= 20; i+=1 {
-		printf("\x1b[31;1mfoobar\x1b[0m %d\n", i);
-	}
+	// for int i = 0; i <= 20; i+=1 {
+	// 	printf("\x1b[31;1mfoobar\x1b[0m %d\n", i);
+	// }
 
-	int f = const do {
-		if true {
-			break 6;
-		} else {
-			break 9;
-		}
-	};
+	// int f = const do {
+	// 	if true {
+	// 		break 6;
+	// 	} else {
+	// 		break 9;
+	// 	}
+	// };
 
 	test_fun(3, 4, 5, 6);
 
