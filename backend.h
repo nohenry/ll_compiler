@@ -14,8 +14,14 @@ typedef enum {
 } LL_Backend_Kind;
 
 typedef struct {
+	size_t size, alignment;
+} LL_Backend_Layout;
+
+typedef struct {
 	LL_Backend_Kind kind;
 	void* backend;
+
+	LL_Backend_Layout (*get_layout)(LL_Type* ty);
 } LL_Backend;
 
 LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind);

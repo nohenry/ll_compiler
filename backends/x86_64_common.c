@@ -1521,7 +1521,6 @@ DO_MODRM_ ##n : 											\
 				X86_64_APPEND_OP_SEGMENT(mod);
 				X86_64_APPEND_OP_SEGMENT(PUN((int32_t)offset, uint32_t));
 			} else {
-				printf("bruh %d\n", offset);
 				assert(false);
 			}
 		} else {

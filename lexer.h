@@ -42,9 +42,11 @@ typedef struct {
 	bool has_peeked_token;
 } LL_Lexer;
 
+
 bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
 void lexer_consume(Compiler_Context *cc, LL_Lexer* lexer);
 bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
 void lexer_print_token_raw(LL_Token* token);
+void lexer_print_token_kind(LL_Token_Kind, FILE* fd);
 void lexer_print_token_raw_to_fd(LL_Token* token, FILE* fd);
 void lexer_print_token(LL_Token* token);

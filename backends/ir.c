@@ -16,6 +16,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 	case LL_IR_OPCODE_RET: return 1;
 	case LL_IR_OPCODE_RETVALUE: return 2;
 	case LL_IR_OPCODE_STORE: return 3;
+	case LL_IR_OPCODE_MEMCOPY: return 4;
 	case LL_IR_OPCODE_LOAD: return 3;
 	case LL_IR_OPCODE_CAST: return 3;
 
@@ -74,7 +75,7 @@ static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Blo
 			dst; \
 		})
 
-#define FUNCTION() (&b->fns.items[b->current_function])
+#define FUNCTION() ((b->current_function & CURRENT_CONST_STACK) ? (&b->const_stack.items[b->current_function & CURRENT_INDEX]) : (&b->fns.items[b->current_function & CURRENT_INDEX]))
 #define BLOCK() (&b->blocks.items[b->current_block])
 #define NEXTREG(type_) ({ 																				\
 			uint32_t reg = FUNCTION()->registers.count; 												\
@@ -92,6 +93,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 	case LL_IR_OPCODE_RET: printf(INDENT "ret"); break;
 	case LL_IR_OPCODE_RETVALUE: printf(INDENT "ret " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0])); break;
 	case LL_IR_OPCODE_STORE: printf(INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+	case LL_IR_OPCODE_MEMCOPY: printf(INDENT "memcpy " OPERAND_FMT ", " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
 	case LL_IR_OPCODE_LOAD: printf(INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LEA: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 	case LL_IR_OPCODE_LEA_INDEX: printf(INDENT OPERAND_FMT " = lea " OPERAND_FMT " + " OPERAND_FMT " * " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2]), OPERAND_FMT_VALUE(operands[3])); break;
@@ -275,7 +277,15 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 
 		if (var_decl->initializer) {
 			LL_Ir_Operand op = ir_generate_expression(cc, b, var_decl->initializer, false);
-			IR_APPEND_OP(LL_IR_OPCODE_STORE, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op);
+
+			switch (var_decl->ident->base.type->kind) {
+			case LL_TYPE_ARRAY:
+				IR_APPEND_OP(LL_IR_OPCODE_MEMCOPY, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op, );
+				break;
+			default:
+				IR_APPEND_OP(LL_IR_OPCODE_STORE, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op);
+				break;
+			}
 		}
 
 		break;
@@ -530,6 +540,21 @@ DO_BIN_OP_ASSIGN_OP:
 
 		ir_append_op(cc, b, b->current_block, opcode, ops, 2 + offset + inv->arguments.count);
 
+		break;
+	}
+	case AST_KIND_ARRAY_INITIALIZER: {
+		Ast_Initializer* lit = AST_AS(expr, Ast_Initializer);
+		assert((b->data_items.count & 0xF0000000u) == 0); // TODO: maybe support more
+
+		for (i = 0; i < lit->count; ++i) {
+		}
+
+		/* LL_Backend_Layout layout = bir->get_layout(lit->type); */
+		/* void* data_ptr = arena_alloc(&cc->arena, layout.size); */
+
+		/* result = LL_IR_OPERAND_DATA_BIT | (uint32_t)b->data_items.count; */
+		/* arena_da_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = lit->str.ptr, .len = lit->str.len })); */
+		/* result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result); */
 		break;
 	}
 	case AST_KIND_INDEX: {

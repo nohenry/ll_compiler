@@ -15,7 +15,6 @@ typedef struct {
 } LL_Eval_Registers;
 
 typedef struct ll_eval_context {
-	LL_Ir_Function* fn;
 	LL_Ir_Block_Ref next_block;
 	LL_Eval_Registers locals;
 	LL_Eval_Registers registers;

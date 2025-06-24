@@ -2,9 +2,11 @@
 #include "eval.h"
 #include "backends/ir.h"
 
+#define FUNCTION() (&bir->const_stack.items[bir->current_function & CURRENT_INDEX])
+
 static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand lvalue, LL_Eval_Value rvalue) {
 	LL_Type* type;
-	type = ir_get_operand_type(b->fn, lvalue);
+	type = ir_get_operand_type(FUNCTION(), lvalue);
 
 	switch (OPD_TYPE(lvalue)) {
 	case LL_IR_OPERAND_LOCAL_BIT: {
@@ -45,7 +47,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
 		result.uval = OPD_VALUE(lvalue);
 		break;
 	case LL_IR_OPERAND_LOCAL_BIT: {
-		type = ir_get_operand_type(b->fn, lvalue);
+		type = ir_get_operand_type(FUNCTION(), lvalue);
 		switch (type->kind) {
 		case LL_TYPE_ANYBOOL:
 		case LL_TYPE_BOOL:
@@ -61,7 +63,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
 		break;
 	}
 	case LL_IR_OPERAND_REGISTER_BIT: {
-		type = ir_get_operand_type(b->fn, lvalue);
+		type = ir_get_operand_type(FUNCTION(), lvalue);
 		switch (type->kind) {
 		case LL_TYPE_ANYBOOL:
 		case LL_TYPE_BOOL:
@@ -85,15 +87,15 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
 static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src, bool load) {
     uint32_t opcode;
     LL_Type* from_type;
-    LL_Type* to_type = ir_get_operand_type(b->fn, result);
+    LL_Type* to_type = ir_get_operand_type(FUNCTION(), result);
 
     switch (OPD_TYPE(src)) {
     case LL_IR_OPERAND_LOCAL_BIT: {
-        from_type = b->fn->locals.items[OPD_VALUE(src)].ident->base.type;
+        from_type = FUNCTION()->locals.items[OPD_VALUE(src)].ident->base.type;
         break;
     }
     case LL_IR_OPERAND_REGISTER_BIT: {
-        from_type = ir_get_operand_type(b->fn, src);
+        from_type = ir_get_operand_type(FUNCTION(), src);
         break;
     }
     case LL_IR_OPERAND_IMMEDIATE_BIT: {
@@ -181,7 +183,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 		}
 
 #define DO_OP(op) \
-			type = ir_get_operand_type(b->fn, operands[0]); \
+			type = ir_get_operand_type(FUNCTION(), operands[0]); \
 			switch (type->kind) { \
 			case LL_TYPE_INT: \
 				b->registers.items[OPD_VALUE(operands[0])].uval = (b->registers.items[OPD_VALUE(operands[1])].ival op b->registers.items[OPD_VALUE(operands[2])].ival) ? 1 : 0; \
@@ -203,7 +205,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 		case LL_IR_OPCODE_LT: DO_OP(<); break;
 #undef DO_OP
 #define DO_OP(op) \
-			type = ir_get_operand_type(b->fn, operands[0]); \
+			type = ir_get_operand_type(FUNCTION(), operands[0]); \
 			switch (type->kind) { \
 			case LL_TYPE_INT: \
 				b->registers.items[OPD_VALUE(operands[0])].ival = ll_eval_get_value(cc, b, bir, operands[1]).ival op ll_eval_get_value(cc, b, bir, operands[2]).ival; \
@@ -262,25 +264,21 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 		.block_count = 1,
 	};
 
-	memcpy(&bir->fns.items[0], &fn, sizeof(fn));
+	arena_da_append(&cc->arena, &bir->const_stack, fn);
+	/* memcpy(&bir->fns.items[0], &fn, sizeof(fn)); */
 
 	int32_t last_function = bir->current_function;
 	LL_Ir_Block_Ref last_block = bir->current_block;
-	bir->current_function = 0;
+	bir->current_function = CURRENT_CONST_STACK | (bir->const_stack.count - 1); // top of stack is current
 	bir->current_block = fn.entry;
-	b->fn = &bir->fns.items[0];
 
 	result_op = ir_generate_expression(cc, bir, expr, false);
 
-	bir->current_block = last_block;
-	bir->current_function = last_function;
-	bir->free_block = fn.entry;
-
 	b->registers.count = 0;
-	arena_da_reserve(&cc->arena, &b->registers, bir->fns.items[0].registers.count);
+	arena_da_reserve(&cc->arena, &b->registers, FUNCTION()->registers.count);
 
 	b->locals.count = 0;
-	arena_da_reserve(&cc->arena, &b->locals, bir->fns.items[0].locals.count);
+	arena_da_reserve(&cc->arena, &b->locals, FUNCTION()->locals.count);
 
 	LL_Ir_Block_Ref current_block = fn.entry;
 	while (current_block) {
@@ -288,6 +286,10 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 		ll_eval_block(cc, b, bir, &bir->blocks.items[current_block]);
 		current_block = b->next_block;
 	}
+
+	bir->current_block = last_block;
+	bir->current_function = last_function;
+	bir->free_block = fn.entry;
 
 	switch (OPD_TYPE(result_op)) {
 	case LL_IR_OPERAND_IMMEDIATE_BIT: result.ival = OPD_VALUE(result_op); break;

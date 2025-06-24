@@ -596,6 +596,9 @@ const char* get_node_kind(Ast_Base* node) {
 		case AST_KIND_BINARY_OP: return "Binary_Operator";
 		case AST_KIND_PRE_OP: return "Prefix_Operator";
 		case AST_KIND_INVOKE: return "Invoke";
+		case AST_KIND_INITIALIZER: return "Initializer";
+		case AST_KIND_ARRAY_INITIALIZER: return "Array_Initializer";
+		case AST_KIND_KEY_VALUE: return "Key_Value";
 		case AST_KIND_BLOCK: return "Block";
 		case AST_KIND_CONST: return "Const";
 		case AST_KIND_VARIABLE_DECLARATION: return "Variable_Declaration";
@@ -619,11 +622,19 @@ void print_node_value(Ast_Base* node) {
 		case AST_KIND_BINARY_OP: lexer_print_token_raw(&AST_AS(node, Ast_Operation)->op); break;
 		case AST_KIND_PRE_OP: lexer_print_token_raw(&AST_AS(node, Ast_Operation)->op); break;
 		case AST_KIND_INVOKE: break;
+		case AST_KIND_INITIALIZER: break;
+		case AST_KIND_ARRAY_INITIALIZER: break;
+		case AST_KIND_KEY_VALUE: break;
 		case AST_KIND_BLOCK: break;
+		case AST_KIND_CONST: break;
 		case AST_KIND_VARIABLE_DECLARATION: print_storage_class(AST_AS(node, Ast_Variable_Declaration)->storage_class); break;
 		case AST_KIND_FUNCTION_DECLARATION: print_storage_class(AST_AS(node, Ast_Function_Declaration)->storage_class); break;
 		case AST_KIND_PARAMETER: break;
 		case AST_KIND_RETURN: break;
+		case AST_KIND_BREAK: break;
+		case AST_KIND_CONTINUE: break;
+		case AST_KIND_IF: break;
+		case AST_KIND_FOR: break;
 		case AST_KIND_INDEX: break;
 		case AST_KIND_TYPE_POINTER: break;
 	}
@@ -651,6 +662,18 @@ void print_node(Ast_Base* node, int indent) {
 			for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
 				print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->arguments.items[i], indent + 1);
 			}
+			break;
+
+		case AST_KIND_INITIALIZER: 
+		case AST_KIND_ARRAY_INITIALIZER: 
+			for (i = 0; i < AST_AS(node, Ast_Initializer)->count; ++i) {
+				print_node((Ast_Base*)AST_AS(node, Ast_Initializer)->items[i], indent + 1);
+			}
+			break;
+
+		case AST_KIND_KEY_VALUE: 
+			print_node((Ast_Base*)AST_AS(node, Ast_Key_Value)->key, indent + 1);
+			print_node((Ast_Base*)AST_AS(node, Ast_Key_Value)->value, indent + 1);
 			break;
 
 		case AST_KIND_CONST:

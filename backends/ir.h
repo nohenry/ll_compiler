@@ -38,6 +38,7 @@ typedef enum {
 	LL_IR_OPCODE_RET,
 	LL_IR_OPCODE_RETVALUE,
 	LL_IR_OPCODE_STORE,
+	LL_IR_OPCODE_MEMCOPY,
 	LL_IR_OPCODE_LOAD,
 	LL_IR_OPCODE_INVOKE,
 	LL_IR_OPCODE_INVOKEVALUE,
@@ -132,10 +133,15 @@ typedef enum {
 	LL_BACKEND_IR_FLAG_LHS_IMMEDIATE = (1u << 1u),
 } LL_Backend_Ir_Flags;
 
+#define CURRENT_CONST_STACK (0x80000000u)
+#define CURRENT_INDEX (0x7FFFFFFFu)
+
 typedef struct ll_backend_ir {
 	LL_Ir_Function_List fns;
+	LL_Ir_Function_List const_stack;
 	LL_Ir_Data_Item_List data_items;
-	int32_t current_function;
+
+	uint32_t current_function;
 	LL_Ir_Block_Ref current_block, return_block;
 	LL_Ir_Block_List blocks;
 

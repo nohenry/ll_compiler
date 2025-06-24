@@ -101,10 +101,6 @@ typedef struct {
 } Linux_x86_64_Elf_Backend;
 
 typedef struct {
-	size_t size, alignment;
-} Linux_x86_64_Elf_Layout;
-
-typedef struct {
 	bool is_reg;
 	union {
 		X86_64_Operand_Register reg;
@@ -240,19 +236,19 @@ void linux_x86_64_elf_append_op_many(Compiler_Context* cc, Linux_x86_64_Elf_Back
 	arena_da_append_many(&cc->arena, b->current_section, (uint8_t*)bytes, count);
 }
 
-static Linux_x86_64_Elf_Layout linux_x86_64_elf_get_layout(LL_Type* ty) {
-	Linux_x86_64_Elf_Layout sub_layout;
+LL_Backend_Layout linux_x86_64_elf_get_layout(LL_Type* ty) {
+	LL_Backend_Layout sub_layout;
 	switch (ty->kind) {
-	case LL_TYPE_INT: return (Linux_x86_64_Elf_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
-	case LL_TYPE_UINT: return (Linux_x86_64_Elf_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
-	case LL_TYPE_FLOAT: return (Linux_x86_64_Elf_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
-	case LL_TYPE_POINTER: return (Linux_x86_64_Elf_Layout) { .size = 8, .alignment = 8 };
-	case LL_TYPE_STRING: return (Linux_x86_64_Elf_Layout) { .size = 8, .alignment = 8 };
+	case LL_TYPE_INT: return (LL_Backend_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
+	case LL_TYPE_UINT: return (LL_Backend_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
+	case LL_TYPE_FLOAT: return (LL_Backend_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
+	case LL_TYPE_POINTER: return (LL_Backend_Layout) { .size = 8, .alignment = 8 };
+	case LL_TYPE_STRING: return (LL_Backend_Layout) { .size = 8, .alignment = 8 };
 	case LL_TYPE_ARRAY: {
 		sub_layout = linux_x86_64_elf_get_layout(((LL_Type_Array*)ty)->element_type);
-		return (Linux_x86_64_Elf_Layout) { .size = sub_layout.alignment * ty->width, .alignment = sub_layout.alignment };
+		return (LL_Backend_Layout) { .size = sub_layout.alignment * ty->width, .alignment = sub_layout.alignment };
 	}
-	default: return (Linux_x86_64_Elf_Layout) { .size = 0, .alignment = 1 };
+	default: return (LL_Backend_Layout) { .size = 0, .alignment = 1 };
 	}
 }
 
@@ -1525,7 +1521,7 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 
 		uint64_t offset = 0;
 		for (int li = 0; li < fn->locals.count; ++li) {
-			Linux_x86_64_Elf_Layout l = linux_x86_64_elf_get_layout(fn->locals.items[li].ident->base.type);
+			LL_Backend_Layout l = linux_x86_64_elf_get_layout(fn->locals.items[li].ident->base.type);
 			offset = align_forward(offset + l.size, l.alignment);
 			b->locals.items[li] = offset;
 		}

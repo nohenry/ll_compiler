@@ -23,7 +23,10 @@ LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind) {
 	switch (kind) {
 	case LL_BACKEND_IR: ir_init(cc, backend.backend); break;
 	/* case LL_BACKEND_LINUX_X86_64_GAS: linux_x86_64_gas_init(cc, backend.backend); break; */
-	case LL_BACKEND_LINUX_X86_64_ELF: linux_x86_64_elf_init(cc, backend.backend); break;
+	case LL_BACKEND_LINUX_X86_64_ELF:
+		linux_x86_64_elf_init(cc, backend.backend);
+		backend.get_layout = linux_x86_64_elf_get_layout;
+	   	break;
 	}
 
 	return backend;
