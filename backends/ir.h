@@ -150,6 +150,8 @@ typedef struct ll_backend_ir {
 
 	LL_Backend_Ir_Flags flags;
 	LL_Ir_Operand copy_operand;
+
+	uint8_t* initializer_ptr;
 } LL_Backend_Ir;
 
 #define OPERAND_FMT "%s%d"

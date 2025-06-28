@@ -189,3 +189,8 @@ static inline uint64_t align_forward(uint64_t offset, uint64_t alignment) {
 		fprintf(stderr, "\n"); \
 	} while (0)
 
+
+#ifdef __AMD64__
+uint32_t log2_u32(uint32_t x);
+#endif
+

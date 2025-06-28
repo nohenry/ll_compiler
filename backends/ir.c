@@ -283,6 +283,10 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 
 			switch (var_decl->ident->base.type->kind) {
 			case LL_TYPE_ARRAY:
+				if (op != (uint32_t)-1) {
+					LL_Backend_Layout layout = cc->target->get_layout(var_decl->ident->base.type);
+					IR_APPEND_OP(LL_IR_OPCODE_MEMCOPY, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op, layout.size);
+				}
 				break;
 			default:
 				IR_APPEND_OP(LL_IR_OPCODE_STORE, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op);
@@ -375,9 +379,6 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		break;
 	}
 	case AST_KIND_LITERAL_INT:
-		expr->has_const = 1u;
-		expr->const_value.ival = AST_AS(expr, Ast_Literal)->i64;
-
 		if (AST_AS(expr, Ast_Literal)->i64 >= 0 && AST_AS(expr, Ast_Literal)->i64 <= 0xFFFFFFF) {
 			return AST_AS(expr, Ast_Literal)->i64;
 		} else {
@@ -560,9 +561,17 @@ DO_BIN_OP_ASSIGN_OP:
 		bool const_literal = true;
 		LL_Type* element_type = ((LL_Type_Array*)lit->base.type)->element_type;
 		LL_Backend_Layout layout = cc->target->get_layout(element_type);
-		uint8_t* data_ptr = arena_alloc(&cc->arena, lit->base.type->width * layout.alignment);
-		result = LL_IR_OPERAND_DATA_BIT | (uint32_t)b->data_items.count;
-		IR_APPEND_OP(LL_IR_OPCODE_MEMCOPY, b->copy_operand, result, (uint32_t)(lit->base.type->width * layout.alignment));
+		size_t size = max(layout.size, layout.alignment);
+
+		uint8_t* last_initializer_ptr = b->initializer_ptr;
+		uint8_t* initializer_ptr;
+		if (!last_initializer_ptr) {
+			initializer_ptr = arena_alloc(&cc->arena, lit->base.type->width * size);
+			b->initializer_ptr = initializer_ptr;
+
+			result = LL_IR_OPERAND_DATA_BIT | (uint32_t)b->data_items.count;
+			IR_APPEND_OP(LL_IR_OPCODE_MEMCOPY, b->copy_operand, result, (uint32_t)(lit->base.type->width * size));
+		}
 
 		uint64_t k;
 		for (i = 0, k = 0; i < lit->count; ++i, ++k) {
@@ -573,16 +582,16 @@ DO_BIN_OP_ASSIGN_OP:
 				if (kv->key->has_const && kv->value->has_const) {
 
 					if (layout.size <= 8) {
-						data_ptr[kv->key->const_value.uval] = (uint8_t)kv->value->const_value.uval;
+						b->initializer_ptr[kv->key->const_value.uval] = (uint8_t)kv->value->const_value.uval;
 					} else if (layout.size <= 16) {
-						((uint16_t*)data_ptr)[kv->key->const_value.uval] = (uint16_t)kv->value->const_value.uval;
+						((uint16_t*)b->initializer_ptr)[kv->key->const_value.uval] = (uint16_t)kv->value->const_value.uval;
 					} else if (layout.size <= 32) {
-						((uint32_t*)data_ptr)[kv->key->const_value.uval] = (uint32_t)kv->value->const_value.uval;
+						((uint32_t*)b->initializer_ptr)[kv->key->const_value.uval] = (uint32_t)kv->value->const_value.uval;
 					} else if (layout.size <= 64) {
-						((uint64_t*)data_ptr)[kv->key->const_value.uval] = (uint64_t)kv->value->const_value.uval;
+						((uint64_t*)b->initializer_ptr)[kv->key->const_value.uval] = (uint64_t)kv->value->const_value.uval;
 					} else {
 						TODO("implement other const size");
-						/* memcpy(&data_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
+						/* memcpy(&b->initializer_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
 					}
 					k = kv->key->const_value.uval;
 				} else {
@@ -594,30 +603,42 @@ DO_BIN_OP_ASSIGN_OP:
 				printf("buiklsjdlfk %d\n", lit->items[i]->has_const);
 
 				LL_Ir_Operand vvalue = ir_generate_expression(cc, b, lit->items[i], false);
-				if (lit->items[i]->has_const) {
-					if (layout.size <= 8) {
-						data_ptr[k] = (uint8_t)lit->items[i]->const_value.uval;
-					} else if (layout.size <= 16) {
-						((uint16_t*)data_ptr)[k] = (uint16_t)lit->items[i]->const_value.uval;
-					} else if (layout.size <= 32) {
-						((uint32_t*)data_ptr)[k] = (uint32_t)lit->items[i]->const_value.uval;
-					} else if (layout.size <= 64) {
-						((uint64_t*)data_ptr)[k] = (uint64_t)lit->items[i]->const_value.uval;
+				switch (lit->items[i]->type->kind) {
+				case LL_TYPE_ARRAY:
+					b->initializer_ptr += size;
+					break;
+				default:
+					if (lit->items[i]->has_const) {
+						if (layout.size <= 1) {
+							b->initializer_ptr[k] = (uint8_t)lit->items[i]->const_value.uval;
+						} else if (layout.size <= 2) {
+							((uint16_t*)b->initializer_ptr)[k] = (uint16_t)lit->items[i]->const_value.uval;
+						} else if (layout.size <= 4) {
+							((uint32_t*)b->initializer_ptr)[k] = (uint32_t)lit->items[i]->const_value.uval;
+							printf("write to pointer %p\n", b->initializer_ptr);
+						} else if (layout.size <= 8) {
+							((uint64_t*)b->initializer_ptr)[k] = (uint64_t)lit->items[i]->const_value.uval;
+						} else {
+							TODO("implement other const size");
+							/* memcpy(&b->initializer_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
+						}
 					} else {
-						TODO("implement other const size");
-						/* memcpy(&data_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
+						result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, element_type, b->copy_operand, (uint32_t)k, layout.size);
+						IR_APPEND_OP(LL_IR_OPCODE_STORE, result, vvalue);
 					}
-				} else {
-					result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, element_type, b->copy_operand, (uint32_t)k, layout.size);
-					IR_APPEND_OP(LL_IR_OPCODE_STORE, result, vvalue);
+					break;
 				}
 			}
 		}
 
 		/* void* data_ptr = arena_alloc(&cc->arena, layout.size); */
 
-		arena_da_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = data_ptr, .len = lit->base.type->width * layout.alignment }));
+		if (!last_initializer_ptr) {
+			arena_da_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = initializer_ptr, .len = lit->base.type->width * size }));
+			b->initializer_ptr = last_initializer_ptr;
+		}
 
+		result = (uint32_t)-1;
 		/* result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result); */
 		break;
 	}
@@ -632,10 +653,11 @@ DO_BIN_OP_ASSIGN_OP:
 			lvalue_op = ir_generate_expression(cc, b, op->left, true);
 		}
 		LL_Ir_Operand rvalue_op = ir_generate_expression(cc, b, op->right, false);
+		LL_Backend_Layout layout = cc->target->get_layout(expr->type);
 
-		result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, expr->type, lvalue_op, rvalue_op, 4);
+		result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, expr->type, lvalue_op, rvalue_op, max(layout.size, layout.alignment));
 
-		if (!lvalue) {
+		if (!lvalue && expr->type->kind != LL_TYPE_ARRAY) {
 			result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, result);
 		}
 

@@ -98,6 +98,8 @@ typedef struct {
 	uint8_t next_reg;
 
 	uint32_t stack_used;
+
+	Ast_Ident memcpy_ident;
 } Linux_x86_64_Elf_Backend;
 
 typedef struct {
@@ -246,7 +248,7 @@ LL_Backend_Layout linux_x86_64_elf_get_layout(LL_Type* ty) {
 	case LL_TYPE_STRING: return (LL_Backend_Layout) { .size = 8, .alignment = 8 };
 	case LL_TYPE_ARRAY: {
 		sub_layout = linux_x86_64_elf_get_layout(((LL_Type_Array*)ty)->element_type);
-		return (LL_Backend_Layout) { .size = sub_layout.alignment * ty->width, .alignment = sub_layout.alignment };
+		return (LL_Backend_Layout) { .size = max(sub_layout.size, sub_layout.alignment) * ty->width, .alignment = sub_layout.alignment };
 	}
 	default: return (LL_Backend_Layout) { .size = 0, .alignment = 1 };
 	}
@@ -381,6 +383,24 @@ void linux_x86_64_elf_init(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b) {
 		sym.st_info = ELF32_ST_INFO(STB_LOCAL, STT_SECTION);
 		sym.st_other = STV_DEFAULT;
 		sym.st_shndx = b->section_data.index;
+		sym.st_value = 0;
+		sym.st_size = 0;
+		arena_da_append(&cc->arena, &b->symbols, sym);
+	}
+
+	{
+		memset(&b->memcpy_ident, 0, sizeof(b->memcpy_ident));
+		b->memcpy_ident.str = str_lit("memcpy");
+		b->memcpy_ident.symbol_index = b->symbols.count;
+
+		Elf64_Sym sym;
+		sym.st_name = b->section_strtab.count;
+		arena_da_append_many(&cc->arena, &b->section_strtab, b->memcpy_ident.str.ptr, b->memcpy_ident.str.len);
+		arena_da_append(&cc->arena, &b->section_strtab, 0);
+
+		sym.st_info = ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE);
+		sym.st_other = STV_DEFAULT;
+		sym.st_shndx = 0;
 		sym.st_value = 0;
 		sym.st_size = 0;
 		arena_da_append(&cc->arena, &b->symbols, sym);
@@ -765,10 +785,15 @@ static void linux_x86_64_elf_generate_mov_to_register(Compiler_Context* cc, Linu
 			X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) {}), params);
 			break;
 		case LL_IR_OPERAND_LOCAL_BIT:
+			params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+			params.displacement = -b->locals.items[OPD_VALUE(src)];
+			X86_64_WRITE_INSTRUCTION_DYN(OPCODE_LEA, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
 			break;
-		case LL_IR_OPERAND_PARMAETER_BIT: {
+		case LL_IR_OPERAND_DATA_BIT:
+			params.immediate = 0;
+			X86_64_WRITE_INSTRUCTION(OPCODE_MOV, r64_i64, params);
+			arena_da_append(&cc->tmp_arena, &b->relocations, ((Elf64_Rela) { .r_offset = b->current_section->count - 8, .r_info = ELF64_R_INFO(3, R_X86_64_64), .r_addend = bir->data_items.items[OPD_VALUE(src)].binary_offset }));
 			break;
-		}
 		default: assert(false);
 		}
 		break;
@@ -1106,48 +1131,66 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 			case LL_TYPE_ARRAY: {
 				LL_Type_Array* arr_type = (LL_Type_Array*)type;
 				LL_Backend_Layout elem_layout = linux_x86_64_elf_get_layout(arr_type->element_type);
-				X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rcx }) );
 				size_t size = max(elem_layout.alignment, elem_layout.size);
 
-				LL_Ir_Operand size_value;
-				switch (OPD_TYPE(operands[2])) {
-				case LL_IR_OPERAND_IMMEDIATE_BIT:
-					size_value = OPD_VALUE(operands[2]) / size;
-					linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, size_value, false);
-					break;
-				case LL_IR_OPERAND_REGISTER_BIT:
-					if (size <= 8) {
-						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = 3 }) );
-					} else if (size <= 16) {
-						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = 4 }) );
-					} else if (size <= 32) {
-						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = 5 }) );
-					} else if (size <= 64) {
-						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = 6 }) );
-					} else assert(false);
-					if (b->registers.items[OPD_VALUE(operands[2])] != X86_64_OPERAND_REGISTER_rcx) {
+				X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rdi }) );
+				X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rsi }) );
+
+				linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rdi, operands[0], false);
+				linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rsi, operands[1], false);
+
+				switch (size) {
+				case 1:
+				case 2:
+				case 4:
+				case 8: {
+					X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rcx }) );
+
+					LL_Ir_Operand size_value;
+					switch (OPD_TYPE(operands[2])) {
+					case LL_IR_OPERAND_IMMEDIATE_BIT:
+						size_value = OPD_VALUE(operands[2]) / size;
+						linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, size_value, false);
+						break;
+					case LL_IR_OPERAND_REGISTER_BIT:
+						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = log2_u32(size << 3) }) );
+
+						if (b->registers.items[OPD_VALUE(operands[2])] != X86_64_OPERAND_REGISTER_rcx) {
+							linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, operands[2], true);
+						}
+						break;
+					default:
 						linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, operands[2], true);
+						break;
 					}
-					break;
-				default:
-					linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, operands[2], true);
+
+					const static int opcodes[] = { [1] = OPCODE_MOVSB, [2] = OPCODE_MOVSW, [4] = OPCODE_MOVSD, [8] = OPCODE_MOVSQ };
+					X86_64_WRITE_INSTRUCTION(opcodes[size], noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
+					X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rcx }) );
+
 					break;
 				}
-	
-				printf("size is %zu %zu\n", size, elem_layout.size, elem_layout.alignment);
-				/* if () */
-				/* linux_x86_64_elf_generate_mov(cc, b, bir, ) */
-				if (size <= 1) {
-					X86_64_WRITE_INSTRUCTION(OPCODE_MOVSB, noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
-				} else if (size <= 2) {
-					X86_64_WRITE_INSTRUCTION(OPCODE_MOVSW, noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
-				} else if (size <= 4) {
-					X86_64_WRITE_INSTRUCTION(OPCODE_MOVSD, noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
-				} else if (size <= 8) {
-					X86_64_WRITE_INSTRUCTION(OPCODE_MOVSQ, noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
-				} else assert(false);
+				default:
+					X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rdx }) );
 
-				X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rcx }) );
+					linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rdx, operands[2], false);
+
+					params.relative = 0;
+					X86_64_WRITE_INSTRUCTION(OPCODE_CALL, rel32, params);
+
+					arena_da_append(
+						&cc->tmp_arena,
+						&b->relocations,
+						((Elf64_Rela) { .r_offset = b->current_section->count - 4, .r_info = ELF64_R_INFO(b->memcpy_ident.symbol_index, R_X86_64_PLT32), .r_addend = -4 })
+					);
+
+					X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rdx }) );
+
+					break;
+				}
+
+				X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rsi }) );
+				X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rdi }) );
 			}
 			}
 			break;
@@ -1401,6 +1444,7 @@ DO_OPCODE_ARITHMETIC:
 		case LL_IR_OPCODE_LEA_INDEX: {
 			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
 			switch (type->kind) {
+			case LL_TYPE_ARRAY:
 			case LL_TYPE_STRING:
 			case LL_TYPE_ANYINT:
 			case LL_TYPE_INT: {
@@ -1417,7 +1461,6 @@ DO_OPCODE_ARITHMETIC:
 				case LL_IR_OPERAND_REGISTER_BIT: {
 					params.use_sib = 1 | X86_64_SIB_INDEX | X86_64_SIB_SCALE;
 					params.index = b->registers.items[OPD_VALUE(operands[2])];
-					printf("%x\n", params.use_sib);
 
 					switch (OPD_VALUE(operands[3])) {
 					case 1: params.scale = 0; break;
@@ -1594,7 +1637,8 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 		uint64_t offset = 0;
 		for (int li = 0; li < fn->locals.count; ++li) {
 			LL_Backend_Layout l = linux_x86_64_elf_get_layout(fn->locals.items[li].ident->base.type);
-			offset = align_forward(offset + l.size, l.alignment);
+			offset = align_forward(offset + max(l.size, l.alignment), l.alignment);
+			printf("local %d layout %d, %d, off: %d\n", li, l.size, l.alignment, offset);
 			b->locals.items[li] = offset;
 		}
 		b->stack_used = (uint32_t)offset;

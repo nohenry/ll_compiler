@@ -171,3 +171,12 @@ String_View ll_intern_string(Compiler_Context* cc, String_View str) {
 }
 
 
+uint32_t log2_u32(uint32_t x) {
+	uint32_t y;
+	__asm__ ( "\tbsr %1, %0\n"
+			: "=r"(y)
+			: "r" (x)
+		);
+	return y;
+}
+

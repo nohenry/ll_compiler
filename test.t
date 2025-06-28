@@ -4,12 +4,10 @@ void main() {
 		int aa = d * 2;
 		printf("Hello test_fun %d\n", aa);
     }
-	int[4] array = [0, 1, 2, 3];
-	printf("j is %d\n", array[2]);
+	int[3][4] array = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]];
 
-	int a = 23;
-	int8 b = 4;
-	int64 c = a + b;
+	int[3] aa = array[0];
+	printf("\x1b[33;1mAA is\x1b[0m %d\n", aa[3]);
 
 	// int b = 23 + 45;
 	// int d = 10;
