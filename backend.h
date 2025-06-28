@@ -17,7 +17,7 @@ typedef struct {
 	size_t size, alignment;
 } LL_Backend_Layout;
 
-typedef struct {
+typedef struct ll_backend {
 	LL_Backend_Kind kind;
 	void* backend;
 

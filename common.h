@@ -39,6 +39,7 @@ typedef struct {
 	struct ll_typer* typer;
 	struct ll_eval_context* eval_context;
 	struct ll_backend_ir* bir;
+	struct ll_backend* target;
 } Compiler_Context;
 
 extern String_View LL_KEYWORD_CONST;

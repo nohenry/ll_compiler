@@ -4,13 +4,12 @@ void main() {
 		int aa = d * 2;
 		printf("Hello test_fun %d\n", aa);
     }
-	int i = 0;
-	int[2] array = [0, 1, 2, 3];
-	array[0] = 20;
-	array[1] = 10;
-	int* p = &array[0];
-	int j = p[i];
-	printf("j is %d\n", j);
+	int[4] array = [0, 1, 2, 3];
+	printf("j is %d\n", array[2]);
+
+	int a = 23;
+	int8 b = 4;
+	int64 c = a + b;
 
 	// int b = 23 + 45;
 	// int d = 10;

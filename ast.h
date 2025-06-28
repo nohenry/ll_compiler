@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "lexer.h"
+#include "eval_value.h"
 
 #define optional
 
@@ -30,6 +31,7 @@ typedef enum {
     AST_KIND_FOR,
 
 	AST_KIND_INDEX,
+	AST_KIND_CAST,
     AST_KIND_TYPE_POINTER,
 } Ast_Kind;
 
@@ -47,6 +49,8 @@ struct ll_type;
 typedef struct {
     Ast_Kind kind;
 	struct ll_type* type;
+	LL_Eval_Value const_value;
+	uint8_t has_const;
 } Ast_Base;
 
 #define AST_IDENT_SYMBOL_INVALID ((int32_t)-1)
@@ -169,6 +173,11 @@ typedef struct {
 	LL_Storage_Class storage_class;
 	uint32_t ir_index;
 } Ast_Function_Declaration;
+
+typedef struct {
+	Ast_Base base;
+	Ast_Base* expr;
+} Ast_Cast;
 
 typedef struct {
 	Ast_Base base;

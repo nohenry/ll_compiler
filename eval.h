@@ -1,13 +1,7 @@
 #pragma once
 
 #include "backends/ir.h"
-
-typedef struct {
-	union {
-		int64_t  ival;
-		uint64_t uval;
-	};
-} LL_Eval_Value;
+#include "eval_value.h"
 
 typedef struct {
 	uint32_t count, capacity;

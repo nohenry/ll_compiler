@@ -569,6 +569,7 @@ static void x86_64_allocate_physical_registers(Compiler_Context* cc, Linux_x86_6
 			if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
 				b->registers.items[OPD_VALUE(operands[1])] = linux_x86_64_register_queue_dequeue(cc, &b->register_queue);
 				x86_64_reset_collapse(cc, b, bir, i, OPD_VALUE(operands[1]));
+				if (opcode == LL_IR_OPCODE_CAST) x86_64_set_collapse(cc, b, bir, i, OPD_VALUE(operands[1]), COLLAPSE_KIND_MEM);
 			}
 			linux_x86_64_register_queue_enqueue(cc, &b->register_queue, b->registers.items[OPD_VALUE(operands[0])]);
 			break;
@@ -740,6 +741,42 @@ static X86_64_Variant_Kind linux_x86_64_get_variant(Compiler_Context* cc, Linux_
 	return (X86_64_Variant_Kind)-1;
 }
 
+static void linux_x86_64_elf_generate_mov_to_register(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Type* type, X86_64_Operand_Register result, LL_Ir_Operand src, bool store) {
+	X86_64_Instruction_Parameters params = { 0 };
+	params.reg0 = result;
+	if (store) {
+		params.reg0 |= X86_64_REG_BASE;
+	}
+
+	switch (type->kind) {
+	case LL_TYPE_STRING:
+	case LL_TYPE_ANYINT:
+	case LL_TYPE_UINT:
+	case LL_TYPE_INT: {
+		/* TODO: max immeidiate is 28 bits */
+		switch (OPD_TYPE(src)) {
+		case LL_IR_OPERAND_IMMEDIATE_BIT:
+			params.immediate = OPD_VALUE(src);
+
+			X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+			break;
+		case LL_IR_OPERAND_REGISTER_BIT:
+			params.reg1 = b->registers.items[OPD_VALUE(src)];
+			X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) {}), params);
+			break;
+		case LL_IR_OPERAND_LOCAL_BIT:
+			break;
+		case LL_IR_OPERAND_PARMAETER_BIT: {
+			break;
+		}
+		default: assert(false);
+		}
+		break;
+	}
+	default: assert(false);
+	}
+}
+
 static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src, bool store) {
 	X86_64_Instruction_Parameters params = { 0 };
 	LL_Type* type = ir_get_operand_type(b->fn, result);
@@ -783,41 +820,9 @@ static void linux_x86_64_elf_generate_mov(Compiler_Context* cc, Linux_x86_64_Elf
 
 		break;
 	}
-	case LL_IR_OPERAND_REGISTER_BIT: {
-		params.reg0 = b->registers.items[OPD_VALUE(result)];
-		if (store) {
-			params.reg0 |= X86_64_REG_BASE;
-		}
-
-		switch (type->kind) {
-		case LL_TYPE_STRING:
-		case LL_TYPE_ANYINT:
-		case LL_TYPE_UINT:
-		case LL_TYPE_INT: {
-			/* TODO: max immeidiate is 28 bits */
-			switch (OPD_TYPE(src)) {
-			case LL_IR_OPERAND_IMMEDIATE_BIT:
-				params.immediate = OPD_VALUE(src);
-
-				X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
-				break;
-			case LL_IR_OPERAND_REGISTER_BIT:
-				params.reg1 = b->registers.items[OPD_VALUE(src)];
-				X86_64_WRITE_INSTRUCTION_DYN(OPCODE_MOV, linux_x86_64_get_variant(cc, b, bir, type, (X86_64_Get_Variant_Params) {}), params);
-				break;
-			case LL_IR_OPERAND_LOCAL_BIT:
-				break;
-			case LL_IR_OPERAND_PARMAETER_BIT: {
-				break;
-			}
-			default: assert(false);
-			}
-			break;
-		}
-		default: assert(false);
-		}
+	case LL_IR_OPERAND_REGISTER_BIT:
+		linux_x86_64_elf_generate_mov_to_register(cc, b, bir, type, b->registers.items[OPD_VALUE(result)], src, store);
 		break;
-	}
 	}
 }
 
@@ -928,6 +933,7 @@ static void linux_x86_64_elf_generate_load_cast(Compiler_Context* cc, Linux_x86_
 
     switch (OPD_TYPE(src)) {
     case LL_IR_OPERAND_LOCAL_BIT: {
+		// @collapse_gen
 		collapse = x86_64_get_collapse(cc, b, bir, OPD_VALUE(result));
 
 		if (collapse && collapse->op_collapse & COLLAPSE_KIND_MEM) {
@@ -945,7 +951,17 @@ static void linux_x86_64_elf_generate_load_cast(Compiler_Context* cc, Linux_x86_
         if (load) {
             params.reg1 = b->registers.items[OPD_VALUE(src)] | X86_64_REG_BASE;
         } else {
-            params.reg1 = b->registers.items[OPD_VALUE(src)];
+			// @collapse_use
+			collapse = x86_64_get_collapse(cc, b, bir, OPD_VALUE(src));
+			if (collapse->op_did_collapse) {
+				if (collapse->op_did_collapse == COLLAPSE_KIND_MEM) {
+					params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+					params.displacement = -b->locals.items[OPD_VALUE(src)];
+				}
+			} else {
+				params.reg1 = b->registers.items[OPD_VALUE(src)];
+			}
+			
         }
         X86_64_WRITE_INSTRUCTION_DYN(opcode, kind, params);
         break;
@@ -955,6 +971,7 @@ static void linux_x86_64_elf_generate_load_cast(Compiler_Context* cc, Linux_x86_
 		Linux_x86_64_Parameter parameter = linux_x86_64_call_convention_nth_parameter(b, &conv, OPD_VALUE(src));
 
 		if (parameter.is_reg) {
+			// @collapse_gen
 			collapse = x86_64_get_collapse(cc, b, bir, OPD_VALUE(result));
 			if (collapse && collapse->op_collapse & COLLAPSE_KIND_REG) {
 				collapse->op_did_collapse = COLLAPSE_KIND_REG;
@@ -1071,6 +1088,7 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
 		}
 		case LL_IR_OPCODE_STORE: {
             if (OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT) {
+				// @collapse_use
                 collapse1 = x86_64_get_collapse(cc, b, bir, OPD_VALUE(operands[1]));
                 if ((collapse1->op_collapse & COLLAPSE_KIND_MEM) && collapse1->op_did_collapse) {
                 } else {
@@ -1080,6 +1098,59 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
                 linux_x86_64_elf_generate_mov(cc, b, bir, operands[0], operands[1], true);
             }
 		   	break;
+		}
+
+		case LL_IR_OPCODE_MEMCOPY: {
+			LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
+			switch (type->kind) {
+			case LL_TYPE_ARRAY: {
+				LL_Type_Array* arr_type = (LL_Type_Array*)type;
+				LL_Backend_Layout elem_layout = linux_x86_64_elf_get_layout(arr_type->element_type);
+				X86_64_WRITE_INSTRUCTION(OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rcx }) );
+				size_t size = max(elem_layout.alignment, elem_layout.size);
+
+				LL_Ir_Operand size_value;
+				switch (OPD_TYPE(operands[2])) {
+				case LL_IR_OPERAND_IMMEDIATE_BIT:
+					size_value = OPD_VALUE(operands[2]) / size;
+					linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, size_value, false);
+					break;
+				case LL_IR_OPERAND_REGISTER_BIT:
+					if (size <= 8) {
+						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = 3 }) );
+					} else if (size <= 16) {
+						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = 4 }) );
+					} else if (size <= 32) {
+						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = 5 }) );
+					} else if (size <= 64) {
+						X86_64_WRITE_INSTRUCTION(OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) { .reg0 = b->registers.items[OPD_VALUE(operands[2])], .immediate = 6 }) );
+					} else assert(false);
+					if (b->registers.items[OPD_VALUE(operands[2])] != X86_64_OPERAND_REGISTER_rcx) {
+						linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, operands[2], true);
+					}
+					break;
+				default:
+					linux_x86_64_elf_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, operands[2], true);
+					break;
+				}
+	
+				printf("size is %zu %zu\n", size, elem_layout.size, elem_layout.alignment);
+				/* if () */
+				/* linux_x86_64_elf_generate_mov(cc, b, bir, ) */
+				if (size <= 1) {
+					X86_64_WRITE_INSTRUCTION(OPCODE_MOVSB, noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
+				} else if (size <= 2) {
+					X86_64_WRITE_INSTRUCTION(OPCODE_MOVSW, noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
+				} else if (size <= 4) {
+					X86_64_WRITE_INSTRUCTION(OPCODE_MOVSD, noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
+				} else if (size <= 8) {
+					X86_64_WRITE_INSTRUCTION(OPCODE_MOVSQ, noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
+				} else assert(false);
+
+				X86_64_WRITE_INSTRUCTION(OPCODE_POP, rm64, ((X86_64_Instruction_Parameters) { .reg0 = X86_64_OPERAND_REGISTER_rcx }) );
+			}
+			}
+			break;
 		}
 
 		case LL_IR_OPCODE_EQ:
@@ -1108,6 +1179,7 @@ DO_OPCODE_COMPARE:
 			case LL_TYPE_ANYINT:
 			case LL_TYPE_UINT:
 			case LL_TYPE_INT: {
+				// @collapse_use
 				collapse1 = x86_64_get_collapse(cc, b, bir, OPD_VALUE(operands[1]));
 				collapse2 = x86_64_get_collapse(cc, b, bir, OPD_VALUE(operands[2]));
 				if (collapse1->op_did_collapse) {
@@ -1152,7 +1224,7 @@ DO_OPCODE_ARITHMETIC:
 			switch (type->kind) {
 			case LL_TYPE_ANYINT:
 			case LL_TYPE_INT: {
-
+				// @collapse_use
 				collapse1 = x86_64_get_collapse(cc, b, bir, OPD_VALUE(operands[1]));
 				collapse2 = x86_64_get_collapse(cc, b, bir, OPD_VALUE(operands[2]));
 				if (collapse1->op_did_collapse) {

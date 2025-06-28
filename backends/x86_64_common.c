@@ -378,8 +378,7 @@ const X86_64_Instruction x86_64_instructions_table[] = {
 	},
 	[OPCODE_MOVSXD] = {
 		.r16_rm16  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
-		.r32_rm32  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
-		.r64_rm64  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
+		.r64_rm32  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
 	},
 	[OPCODE_MOVZX] = {
 		.r16_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB6u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
@@ -1236,6 +1235,7 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 	case X86_64_VARIANT_KIND_r64_rm128:
 	case X86_64_VARIANT_KIND_r64_rm8:
 	case X86_64_VARIANT_KIND_r64_rm16:
+	case X86_64_VARIANT_KIND_r64_rm32:
 		if (!(instruction.operands & 0x10))
 			rex |= 0x48;
 		break;

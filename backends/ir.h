@@ -26,7 +26,7 @@ typedef struct {
 } LL_Ir_Local_List;
 
 typedef struct {
-	LL_Type* type;
+	struct ll_type* type;
 } LL_Ir_Register;
 
 typedef struct {
@@ -149,6 +149,7 @@ typedef struct ll_backend_ir {
 	LL_Ir_Operand block_value;
 
 	LL_Backend_Ir_Flags flags;
+	LL_Ir_Operand copy_operand;
 } LL_Backend_Ir;
 
 #define OPERAND_FMT "%s%d"

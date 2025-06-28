@@ -77,7 +77,6 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
 
 Ast_Base* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
 	Ast_Base* b = parser_parse_statement(cc, parser);
-	print_node(b, 0);
 	return b;
 }
 
@@ -610,6 +609,7 @@ const char* get_node_kind(Ast_Base* node) {
 		case AST_KIND_IF: return "If";
 		case AST_KIND_FOR: return "For";
 		case AST_KIND_INDEX: return "Index";
+		case AST_KIND_CAST: return "Cast";
 		case AST_KIND_TYPE_POINTER: return "Pointer";
 	}
 }
@@ -636,7 +636,14 @@ void print_node_value(Ast_Base* node) {
 		case AST_KIND_IF: break;
 		case AST_KIND_FOR: break;
 		case AST_KIND_INDEX: break;
+		case AST_KIND_CAST:
+			ll_print_type_raw(node->type, stdout);
+			break;
 		case AST_KIND_TYPE_POINTER: break;
+	}
+
+	if (node->has_const) {
+		printf(" " PRIu64, node->const_value.uval);
 	}
 }
 
@@ -734,6 +741,10 @@ void print_node(Ast_Base* node, int indent) {
 			print_node(AST_AS(node, Ast_Operation)->left, indent + 1);
 			if (AST_AS(node, Ast_Operation)->right)
 				print_node(AST_AS(node, Ast_Operation)->right, indent + 1);
+			break;
+
+		case AST_KIND_CAST:
+			print_node(AST_AS(node, Ast_Cast)->expr, indent + 1);
 			break;
 
 		case AST_KIND_TYPE_POINTER:
