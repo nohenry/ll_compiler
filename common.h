@@ -20,6 +20,7 @@ typedef struct {
 
 #define str_lit(str) ((String_View) { (str), (sizeof(str)-1)/sizeof((str)[0]) })
 #define EQL(a, b) (is_eql((a), (b), sizeof((a))))
+#define HASH_VALUE_FN(key, seed) stbds_siphash_bytes(&(key), sizeof(key), (seed))
 
 struct ll_type;
 inline bool is_eql(void* a, void* b, size_t size) {
@@ -190,7 +191,7 @@ static inline uint64_t align_forward(uint64_t offset, uint64_t alignment) {
 	} while (0)
 
 
-#ifdef __AMD64__
+#if defined(__x86_64__)
 uint32_t log2_u32(uint32_t x);
 #endif
 

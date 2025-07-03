@@ -8,6 +8,8 @@
 #include "lexer.h"
 #include "ast.h"
 
+void ll_print_type_raw(struct ll_type* type, FILE* fd);
+
 LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename) {
     FILE* input = fopen(filename, "r");
 
@@ -643,7 +645,7 @@ void print_node_value(Ast_Base* node) {
 	}
 
 	if (node->has_const) {
-		printf(" " PRIu64, node->const_value.uval);
+		printf(" %" PRIu64, node->const_value.uval);
 	}
 }
 

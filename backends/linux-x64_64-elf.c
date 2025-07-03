@@ -1638,7 +1638,7 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
 		for (int li = 0; li < fn->locals.count; ++li) {
 			LL_Backend_Layout l = linux_x86_64_elf_get_layout(fn->locals.items[li].ident->base.type);
 			offset = align_forward(offset + max(l.size, l.alignment), l.alignment);
-			printf("local %d layout %d, %d, off: %d\n", li, l.size, l.alignment, offset);
+			printf("local %d layout %zu, %zu, off: %zu\n", li, l.size, l.alignment, offset);
 			b->locals.items[li] = offset;
 		}
 		b->stack_used = (uint32_t)offset;

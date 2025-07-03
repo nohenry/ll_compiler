@@ -18,6 +18,7 @@ int main() {
 
 	LL_Backend backend_elf = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_ELF);
 	LL_Backend backend_ir = ll_backend_init(&cc, LL_BACKEND_IR);
+	LL_Backend backend_c = ll_backend_init(&cc, LL_BACKEND_C);
 
 	cc.typer = &typer;
 	cc.eval_context = &eval_context;
@@ -27,16 +28,20 @@ int main() {
 	ll_typer_run(&cc, &typer, root);
 	print_node(root, 0);
 
-	ll_backend_generate_statement(&cc, &backend_ir, root);
-	ll_backend_write_to_file(&cc, &backend_ir, "");
+
+	ll_backend_generate_statement(&cc, &backend_c, root);
+	ll_backend_write_to_file(&cc, &backend_c, "out.c");
+
+	/* ll_backend_generate_statement(&cc, &backend_ir, root); */
+	/* ll_backend_write_to_file(&cc, &backend_ir, ""); */
 
 	/* LL_Backend backend = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_GAS); */
 	/* ll_backend_generate_statement_from_ir(&cc, &backend, backend_ir.backend); */
 	/* ll_backend_write_to_file(&cc, &backend, "out.s"); */
 
-	ll_backend_generate_statement_from_ir(&cc, &backend_elf, backend_ir.backend);
+	/* ll_backend_generate_statement_from_ir(&cc, &backend_elf, backend_ir.backend); */
 	/* x86_64_run_tests(&cc, backend_elf.backend); */
-	ll_backend_write_to_file(&cc, &backend_elf, "out.bin");
+	/* ll_backend_write_to_file(&cc, &backend_elf, "out.bin"); */
 
     
     /* LL_Token token; */

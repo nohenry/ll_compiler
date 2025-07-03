@@ -827,42 +827,41 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 }
 
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Ast_Base* typename) {
-	LL_Type* result;
+	LL_Type* result = NULL;
 
 	switch (typename->kind) {
 	case AST_KIND_IDENT:
 		if (string_view_starts_with(AST_AS(typename, Ast_Ident)->str, str_lit("int"))) {
-			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT.ptr) return typer->ty_int32;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT8.ptr) return typer->ty_int8;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT16.ptr) return typer->ty_int16;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT32.ptr) return typer->ty_int32;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT64.ptr) return typer->ty_int64;
+			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT.ptr) result = typer->ty_int32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT8.ptr) result = typer->ty_int8;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT16.ptr) result = typer->ty_int16;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT32.ptr) result = typer->ty_int32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT64.ptr) result = typer->ty_int64;
 		} else if (string_view_starts_with(AST_AS(typename, Ast_Ident)->str, str_lit("bool"))) {
-			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL.ptr) return typer->ty_bool;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL8.ptr) return typer->ty_bool8;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL16.ptr) return typer->ty_bool16;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL32.ptr) return typer->ty_bool32;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL64.ptr) return typer->ty_bool64;
+			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL.ptr) result = typer->ty_bool;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL8.ptr) result = typer->ty_bool8;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL16.ptr) result = typer->ty_bool16;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL32.ptr) result = typer->ty_bool32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL64.ptr) result = typer->ty_bool64;
 		} else if (string_view_starts_with(AST_AS(typename, Ast_Ident)->str, str_lit("uint"))) {
-			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT.ptr) return typer->ty_uint32;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT8.ptr) return typer->ty_uint8;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT16.ptr) return typer->ty_uint16;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT32.ptr) return typer->ty_uint32;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT64.ptr) return typer->ty_uint64;
+			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT.ptr) result = typer->ty_uint32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT8.ptr) result = typer->ty_uint8;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT16.ptr) result = typer->ty_uint16;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT32.ptr) result = typer->ty_uint32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT64.ptr) result = typer->ty_uint64;
 		} else if (string_view_starts_with(AST_AS(typename, Ast_Ident)->str, str_lit("float"))) {
-			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT.ptr) return typer->ty_float32;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT16.ptr) return typer->ty_float16;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT32.ptr) return typer->ty_float32;
-			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT64.ptr) return typer->ty_float64;
+			if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT.ptr) result = typer->ty_float32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT16.ptr) result = typer->ty_float16;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT32.ptr) result = typer->ty_float32;
+			else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT64.ptr) result = typer->ty_float64;
 		} else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_STRING.ptr) {
-			return typer->ty_string;
+			result = typer->ty_string;
 		} else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_VOID.ptr) {
-			return typer->ty_void;
+			result = typer->ty_void;
 		}
 
 		// TODO: search identifier in symbol table
-		
-		return NULL;
+		break;
 	case AST_KIND_TYPE_POINTER: {
 		result = ll_typer_get_ptr_type(cc, typer, ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Type_Pointer)->element));
 		break;
@@ -877,6 +876,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 	default: fprintf(stderr, "\x1b[31;1mTODO:\x1b[0m typename node %d\n", typename->kind);
 	}
 
+	typename->type = result;
 	return result;
 }
 
