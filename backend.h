@@ -12,6 +12,7 @@ typedef enum {
 	LL_BACKEND_LINUX_X86_64_GAS,
 	LL_BACKEND_LINUX_X86_64_ELF,
 	LL_BACKEND_C,
+	LL_BACKEND_QBE,
 } LL_Backend_Kind;
 
 typedef struct {
