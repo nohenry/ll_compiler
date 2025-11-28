@@ -1,9 +1,9 @@
 #pragma once
 
-#include <string.h>
-#include <stddef.h>
-#include <stdbool.h>
-#include <stdbool.h>
+// #include <string.h>
+// #include <stddef.h>
+// #include <stdbool.h>
+// #include <stdbool.h>
 
 #include "../core/core1.h"
 
@@ -12,23 +12,23 @@
 
 struct ll_type;
 inline bool is_eql(void* a, void* b, size_t size) {
-	return memcmp(a, b, size) == 0;
+    return memcmp(a, b, size) == 0;
 }
 
 #define LL_DEFAULT_MAP_ENTRY_COUNT (256u)
 
 typedef struct string_intern_map_entry {
-	string value;
-	struct string_intern_map_entry* next;
+    string value;
+    struct string_intern_map_entry* next;
 } String_Intern_Map_Entry;
 
 typedef struct {
     Oc_Arena arena, tmp_arena;
-	String_Intern_Map_Entry* string_interns[LL_DEFAULT_MAP_ENTRY_COUNT];
-	struct ll_typer* typer;
-	struct ll_eval_context* eval_context;
-	struct ll_backend_ir* bir;
-	struct ll_backend* target;
+    String_Intern_Map_Entry* string_interns[LL_DEFAULT_MAP_ENTRY_COUNT];
+    struct ll_typer* typer;
+    struct ll_eval_context* eval_context;
+    struct ll_backend_ir* bir;
+    struct ll_backend* target;
 } Compiler_Context;
 
 extern string LL_KEYWORD_CONST;
@@ -70,59 +70,59 @@ extern string LL_KEYWORD_STRING;
 extern string LL_KEYWORD_VOID;
 
 #define MAP_GET(map, key, allocator, hash_fn, eql_fn, seed) ({                     \
-		size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \
-		__typeof((map)[0]) current = (map)[hash]; 	 		                                   \
-		__typeof__(current->value)* result = NULL;                                     \
-		while (current) { 						                                   \
-			if (eql_fn(current->value, (key))) { 	                               \
-				result = &current->value; 		                                   \
-				break; 							                                   \
-			} 									                                   \
-			current = current->next; 			                                   \
-		} 										                                   \
-		result; 								                                   \
-	})
+        size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \
+        __typeof((map)[0]) current = (map)[hash]; 	 		                                   \
+        __typeof__(current->value)* result = NULL;                                     \
+        while (current) { 						                                   \
+            if (eql_fn(current->value, (key))) { 	                               \
+                result = &current->value; 		                                   \
+                break; 							                                   \
+            } 									                                   \
+            current = current->next; 			                                   \
+        } 										                                   \
+        result; 								                                   \
+    })
 
 #define MAP_PUT(map, key, _value, ...) MAP_PUT_(map, key, _value, __VA_ARGS__)
 #define MAP_PUT_(map, key, _value, allocator, hash_fn, eql_fn, seed) ({ 	               \
-		__typeof__(map[0]->value)* result = NULL;  			   	                           \
-		result = MAP_GET(map, key, allocator, hash_fn, eql_fn, seed);                   \
-		if (!result) { 										                           \
-			__typeof__(map[0]) entry = oc_arena_alloc(allocator, sizeof(*map[0]));            \
+        __typeof__(map[0]->value)* result = NULL;  			   	                           \
+        result = MAP_GET(map, key, allocator, hash_fn, eql_fn, seed);                   \
+        if (!result) { 										                           \
+            __typeof__(map[0]) entry = oc_arena_alloc(allocator, sizeof(*map[0]));            \
             size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \
             entry->next = (map)[hash];                                                 \
             (map)[hash] = entry;                                                       \
             result = &entry->value;                                                            \
-		} 													                           \
+        } 													                           \
         memcpy(result, &_value, sizeof(*result));                                       \
-		result; 										   	                           \
-	})
+        result; 										   	                           \
+    })
 
 #define MAP_GET_OR_PUT(map, key, _value, ...) MAP_GET_OR_PUT_(map, key, _value, __VA_ARGS__)
 #define MAP_GET_OR_PUT_(map, key, _value, allocator, hash_fn, eql_fn, seed) ({ 	               \
-		__typeof__(map[0]->value)* result = NULL;  			   	                               \
-		result = MAP_GET(map, key, allocator, hash_fn, eql_fn, seed);                          \
-		if (!result) { 										                                   \
-			__typeof__(map[0]) entry = oc_arena_alloc(allocator, sizeof(*map[0]));                \
+        __typeof__(map[0]->value)* result = NULL;  			   	                               \
+        result = MAP_GET(map, key, allocator, hash_fn, eql_fn, seed);                          \
+        if (!result) { 										                                   \
+            __typeof__(map[0]) entry = oc_arena_alloc(allocator, sizeof(*map[0]));                \
             size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0]));           \
             entry->next = (map)[hash];                                                         \
             (map)[hash] = entry;                                                               \
             memcpy(&entry->value, &_value, sizeof(*result));                                   \
             result = &entry->value;                                                            \
-		} 													                                   \
-		result; 										   	                                   \
-	})
+        } 													                                   \
+        result; 										   	                                   \
+    })
 
 #define MAP_DEFAULT &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED
 #define MAP_DEFAULT_HASH_FN(key, value) _Generic((key),	\
-		string : stbds_hash_string,					\
-		struct ll_type* : ll_type_hash 						\
-	)(key, value)
+        string : stbds_hash_string,					\
+        struct ll_type* : ll_type_hash 						\
+    )(key, value)
 
 #define MAP_DEFAULT_EQL_FN(a, b) _Generic((a),				\
-		string : string_eql,						\
-		struct ll_type* : ll_type_eql 						\
-	)(a, b)
+        string : string_eql,						\
+        struct ll_type* : ll_type_eql 						\
+    )(a, b)
 
 #define MAP_DEFAULT_SEED (16u)
 

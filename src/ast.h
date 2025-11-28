@@ -15,14 +15,14 @@ typedef enum {
     AST_KIND_PRE_OP,
     AST_KIND_INVOKE,
 
-	AST_KIND_VARIABLE_DECLARATION,
-	AST_KIND_FUNCTION_DECLARATION,
-	AST_KIND_PARAMETER,
+    AST_KIND_VARIABLE_DECLARATION,
+    AST_KIND_FUNCTION_DECLARATION,
+    AST_KIND_PARAMETER,
     AST_KIND_BLOCK,
-	AST_KIND_CONST,
-	AST_KIND_INITIALIZER,
-	AST_KIND_ARRAY_INITIALIZER,
-	AST_KIND_KEY_VALUE,
+    AST_KIND_CONST,
+    AST_KIND_INITIALIZER,
+    AST_KIND_ARRAY_INITIALIZER,
+    AST_KIND_KEY_VALUE,
 
     AST_KIND_RETURN,
     AST_KIND_BREAK,
@@ -30,27 +30,27 @@ typedef enum {
     AST_KIND_IF,
     AST_KIND_FOR,
 
-	AST_KIND_INDEX,
-	AST_KIND_CAST,
+    AST_KIND_INDEX,
+    AST_KIND_CAST,
     AST_KIND_TYPE_POINTER,
 } Ast_Kind;
 
 typedef enum {
-	LL_STORAGE_CLASS_EXTERN = (1 << 0),
-	LL_STORAGE_CLASS_STATIC = (1 << 1),
+    LL_STORAGE_CLASS_EXTERN = (1 << 0),
+    LL_STORAGE_CLASS_STATIC = (1 << 1),
 } LL_Storage_Class;
 
 typedef enum {
-	LL_PARAMETER_FLAG_VARIADIC = (1 << 0),
+    LL_PARAMETER_FLAG_VARIADIC = (1 << 0),
 } LL_Parameter_Flags;
 
 struct ll_type;
 
 typedef struct {
     Ast_Kind kind;
-	struct ll_type* type;
-	LL_Eval_Value const_value;
-	uint8_t has_const;
+    struct ll_type* type;
+    LL_Eval_Value const_value;
+    uint8_t has_const;
 } Ast_Base;
 
 #define AST_IDENT_SYMBOL_INVALID ((int32_t)-1)
@@ -58,8 +58,8 @@ typedef struct {
 typedef struct {
     Ast_Base base;
     string str;
-	struct scope_map* resolved_scope;
-	int32_t symbol_index;
+    struct scope_map* resolved_scope;
+    int32_t symbol_index;
 } Ast_Ident;
 
 typedef struct {
@@ -69,11 +69,11 @@ typedef struct {
 } Ast_List;
 
 typedef struct {
-	Ast_Base base;
-	Ast_Base* type;
-	Ast_Ident* ident;
-	LL_Parameter_Flags flags;
-	uint32_t ir_index;
+    Ast_Base base;
+    Ast_Base* type;
+    Ast_Ident* ident;
+    LL_Parameter_Flags flags;
+    uint32_t ir_index;
 } Ast_Parameter;
 
 typedef struct {
@@ -83,12 +83,12 @@ typedef struct {
 } Ast_Parameter_List;
 
 typedef enum {
-	AST_BLOCK_FLAG_EXPR = (1u << 0u),
+    AST_BLOCK_FLAG_EXPR = (1u << 0u),
 } Ast_Block_Flags;
 
 typedef struct {
     Ast_Base base;
-	Ast_Block_Flags flags;
+    Ast_Block_Flags flags;
 
     uint32_t count;
     uint32_t capacity;
@@ -113,7 +113,7 @@ typedef struct {
 typedef struct {
     Ast_Base base;
     Ast_Base* expr;
-	Ast_List arguments;
+    Ast_List arguments;
 } Ast_Invoke;
 
 typedef struct {
@@ -131,8 +131,8 @@ typedef struct {
 } Ast_Initializer;
 
 typedef struct {
-	Ast_Base base;
-	Ast_Base* expr;
+    Ast_Base base;
+    Ast_Base* expr;
 } Ast_Marker;
 
 typedef struct {
@@ -157,31 +157,31 @@ typedef struct {
 
 typedef struct {
     Ast_Base base;
-	Ast_Base* type;
-	Ast_Ident* ident;
-	Ast_Base* initializer optional;
-	LL_Storage_Class storage_class;
-	uint32_t ir_index;
+    Ast_Base* type;
+    Ast_Ident* ident;
+    Ast_Base* initializer optional;
+    LL_Storage_Class storage_class;
+    uint32_t ir_index;
 } Ast_Variable_Declaration;
 
 typedef struct {
     Ast_Base base;
-	Ast_Base* return_type;
-	Ast_Ident* ident;
-	Ast_Parameter_List parameters;
-	Ast_Base* body optional;
-	LL_Storage_Class storage_class;
-	uint32_t ir_index;
+    Ast_Base* return_type;
+    Ast_Ident* ident;
+    Ast_Parameter_List parameters;
+    Ast_Base* body optional;
+    LL_Storage_Class storage_class;
+    uint32_t ir_index;
 } Ast_Function_Declaration;
 
 typedef struct {
-	Ast_Base base;
-	Ast_Base* expr;
+    Ast_Base base;
+    Ast_Base* expr;
 } Ast_Cast;
 
 typedef struct {
-	Ast_Base base;
-	Ast_Base* element;
+    Ast_Base base;
+    Ast_Base* element;
 } Ast_Type_Pointer;
 
 #define AST_AS(value, Type) ((Type*)(value))

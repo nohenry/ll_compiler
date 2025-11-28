@@ -1,8 +1,11 @@
+#include <limits.h>
+#include <stdint.h>
 
-#define OC_CORE_IMPLEMENTATION
-#include "core/core1.h"
+// #define OC_CORE_IMPLEMENTATION
+// #include "core/core1.h"
 int main() {
-    eprint("hello ");
-    eprint("hello ", one);
-    eprint("hello ", one, two);
+    INT8_MAX;
+    // eprint("hello ");
+    // eprint("hello ", one);
+    // eprint("hello ", one, two);
 }

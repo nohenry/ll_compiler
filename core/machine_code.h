@@ -117,13 +117,13 @@ No arguments:
 #endif
 
 typedef struct {
-	void (*append_u8)(void* w, unsigned char value);
-	void (*append_u16)(void* w, unsigned short value);
-	void (*append_u32)(void* w, unsigned int value);
-	void (*append_u64)(void* w, unsigned long long int value);
+    void (*append_u8)(void* w, unsigned char value);
+    void (*append_u16)(void* w, unsigned short value);
+    void (*append_u32)(void* w, unsigned int value);
+    void (*append_u64)(void* w, unsigned long long int value);
 
-	void (*append_many)(void* w, unsigned char* bytes, unsigned long long int count);
-	void (*end_instruction)(void* w);
+    void (*append_many)(void* w, unsigned char* bytes, unsigned long long int count);
+    void (*end_instruction)(void* w);
 
     void (*log_error)(void* w, const char* fmt, ...);
     void (*assert_abort)(void* w, const char* fmt, ...);
@@ -148,24 +148,24 @@ void oc_default_machine_code_writer_assert_abort(void* w, const char* fmt, ...);
 extern const OC_Default_Machine_Code_Writer oc_default_machine_code_writer;
 
 typedef enum {
-	X86_64_OPERAND_REGISTER_rax = 0,
-	X86_64_OPERAND_REGISTER_rcx,
-	X86_64_OPERAND_REGISTER_rdx,
-	X86_64_OPERAND_REGISTER_rbx,
-	X86_64_OPERAND_REGISTER_rsp,
-	X86_64_OPERAND_REGISTER_rbp,
-	X86_64_OPERAND_REGISTER_rsi,
-	X86_64_OPERAND_REGISTER_rdi,
-	X86_64_OPERAND_REGISTER_r8,
-	X86_64_OPERAND_REGISTER_r9,
-	X86_64_OPERAND_REGISTER_r10,
-	X86_64_OPERAND_REGISTER_r11,
-	X86_64_OPERAND_REGISTER_r12,
-	X86_64_OPERAND_REGISTER_r13,
-	X86_64_OPERAND_REGISTER_r14,
-	X86_64_OPERAND_REGISTER_r15,
+    X86_64_OPERAND_REGISTER_rax = 0,
+    X86_64_OPERAND_REGISTER_rcx,
+    X86_64_OPERAND_REGISTER_rdx,
+    X86_64_OPERAND_REGISTER_rbx,
+    X86_64_OPERAND_REGISTER_rsp,
+    X86_64_OPERAND_REGISTER_rbp,
+    X86_64_OPERAND_REGISTER_rsi,
+    X86_64_OPERAND_REGISTER_rdi,
+    X86_64_OPERAND_REGISTER_r8,
+    X86_64_OPERAND_REGISTER_r9,
+    X86_64_OPERAND_REGISTER_r10,
+    X86_64_OPERAND_REGISTER_r11,
+    X86_64_OPERAND_REGISTER_r12,
+    X86_64_OPERAND_REGISTER_r13,
+    X86_64_OPERAND_REGISTER_r14,
+    X86_64_OPERAND_REGISTER_r15,
 
-	X86_64_OPERAND_REGISTER_invalid,
+    X86_64_OPERAND_REGISTER_invalid,
 } X86_64_Operand_Register;
 
 #define X86_64_OPERAND_REGISTER_xmm(n) ((n))
@@ -198,505 +198,505 @@ typedef enum {
 #define vex_vvvv (((unsigned int)OPERANDS_TYPE_vex_vvvv) << 5)
 
 enum {
-	OPCODE_ADD,
-	OPCODE_ADC,
-	OPCODE_AND,
-	OPCODE_CALL,
-	OPCODE_CBW,
-	OPCODE_CWDE,
-	OPCODE_CDQE,
-	OPCODE_CWD,
-	OPCODE_CDQ,
-	OPCODE_CQO,
-	OPCODE_CLC,
-	OPCODE_CLI,
-	OPCODE_CLD,
-	OPCODE_CMC,
+    OPCODE_ADD,
+    OPCODE_ADC,
+    OPCODE_AND,
+    OPCODE_CALL,
+    OPCODE_CBW,
+    OPCODE_CWDE,
+    OPCODE_CDQE,
+    OPCODE_CWD,
+    OPCODE_CDQ,
+    OPCODE_CQO,
+    OPCODE_CLC,
+    OPCODE_CLI,
+    OPCODE_CLD,
+    OPCODE_CMC,
 
-	OPCODE_CMOVO,
-	OPCODE_CMOVNO,
-	OPCODE_CMOVB,
-	OPCODE_CMOVAE,
-	OPCODE_CMOVE,
-	OPCODE_CMOVNE,
-	OPCODE_CMOVBE,
-	OPCODE_CMOVA,
-	OPCODE_CMOVS,
-	OPCODE_CMOVNS,
-	OPCODE_CMOVPE,
-	OPCODE_CMOVPO,
-	OPCODE_CMOVL,
-	OPCODE_CMOVGE,
-	OPCODE_CMOVLE,
-	OPCODE_CMOVG,
+    OPCODE_CMOVO,
+    OPCODE_CMOVNO,
+    OPCODE_CMOVB,
+    OPCODE_CMOVAE,
+    OPCODE_CMOVE,
+    OPCODE_CMOVNE,
+    OPCODE_CMOVBE,
+    OPCODE_CMOVA,
+    OPCODE_CMOVS,
+    OPCODE_CMOVNS,
+    OPCODE_CMOVPE,
+    OPCODE_CMOVPO,
+    OPCODE_CMOVL,
+    OPCODE_CMOVGE,
+    OPCODE_CMOVLE,
+    OPCODE_CMOVG,
 
-	OPCODE_CMP,
-	OPCODE_CMPSB,
-	OPCODE_CMPSW,
-	OPCODE_CMPSD,
-	OPCODE_CMPSQ,
-	OPCODE_CPUID,
-	OPCODE_DEC,
-	OPCODE_DIV,
-	OPCODE_FWAIT,
-	OPCODE_HLT,
-	OPCODE_IDIV,
-	OPCODE_IN,
-	OPCODE_INSB,
-	OPCODE_INSW,
-	OPCODE_INSD,
-	OPCODE_INC,
-	OPCODE_INT,
-	OPCODE_INT1,
-	OPCODE_INT3,
-	OPCODE_INTO,
-	OPCODE_IMUL,
-	OPCODE_IRET,
-	OPCODE_IRETD,
-	OPCODE_IRETQ,
+    OPCODE_CMP,
+    OPCODE_CMPSB,
+    OPCODE_CMPSW,
+    OPCODE_CMPSD,
+    OPCODE_CMPSQ,
+    OPCODE_CPUID,
+    OPCODE_DEC,
+    OPCODE_DIV,
+    OPCODE_FWAIT,
+    OPCODE_HLT,
+    OPCODE_IDIV,
+    OPCODE_IN,
+    OPCODE_INSB,
+    OPCODE_INSW,
+    OPCODE_INSD,
+    OPCODE_INC,
+    OPCODE_INT,
+    OPCODE_INT1,
+    OPCODE_INT3,
+    OPCODE_INTO,
+    OPCODE_IMUL,
+    OPCODE_IRET,
+    OPCODE_IRETD,
+    OPCODE_IRETQ,
 
-	OPCODE_JMP,
-	OPCODE_JO,
-	OPCODE_JNO,
-	OPCODE_JA,
-	OPCODE_JAE,
-	OPCODE_JB,
-	OPCODE_JBE,
-	OPCODE_JC,
-	OPCODE_JCXZ,
-	OPCODE_JECXZ,
-	OPCODE_JRCXZ,
-	OPCODE_JE,
-	OPCODE_JNE,
-	OPCODE_JS,
-	OPCODE_JNS,
-	OPCODE_JPE,
-	OPCODE_JPO,
-	OPCODE_JG,
-	OPCODE_JGE,
-	OPCODE_JL,
-	OPCODE_JLE,
+    OPCODE_JMP,
+    OPCODE_JO,
+    OPCODE_JNO,
+    OPCODE_JA,
+    OPCODE_JAE,
+    OPCODE_JB,
+    OPCODE_JBE,
+    OPCODE_JC,
+    OPCODE_JCXZ,
+    OPCODE_JECXZ,
+    OPCODE_JRCXZ,
+    OPCODE_JE,
+    OPCODE_JNE,
+    OPCODE_JS,
+    OPCODE_JNS,
+    OPCODE_JPE,
+    OPCODE_JPO,
+    OPCODE_JG,
+    OPCODE_JGE,
+    OPCODE_JL,
+    OPCODE_JLE,
 
-	OPCODE_LAHF,
-	OPCODE_LEA,
-	OPCODE_LODSB,
-	OPCODE_LODSW,
-	OPCODE_LODSD,
-	OPCODE_LODSQ,
-	OPCODE_LOOP,
-	OPCODE_LOOPE,
-	OPCODE_LOOPNE,
+    OPCODE_LAHF,
+    OPCODE_LEA,
+    OPCODE_LODSB,
+    OPCODE_LODSW,
+    OPCODE_LODSD,
+    OPCODE_LODSQ,
+    OPCODE_LOOP,
+    OPCODE_LOOPE,
+    OPCODE_LOOPNE,
 
-	OPCODE_MOV,
-	OPCODE_MOVSB,
-	OPCODE_MOVSW,
-	OPCODE_MOVSD,
-	OPCODE_MOVSQ,
-	OPCODE_MOVSX,
-	OPCODE_MOVSXD,
+    OPCODE_MOV,
+    OPCODE_MOVSB,
+    OPCODE_MOVSW,
+    OPCODE_MOVSD,
+    OPCODE_MOVSQ,
+    OPCODE_MOVSX,
+    OPCODE_MOVSXD,
     OPCODE_MOVZX,
 
-	OPCODE_MUL,
-	OPCODE_NEG,
-	OPCODE_NOT,
+    OPCODE_MUL,
+    OPCODE_NEG,
+    OPCODE_NOT,
 
-	OPCODE_OR,
-	OPCODE_OUT,
-	OPCODE_OUTSB,
-	OPCODE_OUTSW,
-	OPCODE_OUTSD,
-	OPCODE_POP,
-	OPCODE_POPF,
-	OPCODE_POPFQ,
-	OPCODE_PUSH,
-	OPCODE_PUSHF,
-	OPCODE_PUSHFQ,
-	OPCODE_RET,
-	OPCODE_RET_FAR,
-	OPCODE_RCL,
-	OPCODE_RCR,
-	OPCODE_ROL,
-	OPCODE_ROR,
-	OPCODE_SAHF,
-	OPCODE_SAL,
-	OPCODE_SAR,
-	OPCODE_SBB,
-	OPCODE_SCASB,
-	OPCODE_SCASW,
-	OPCODE_SCASD,
-	OPCODE_SCASQ,
-	OPCODE_SHL,
-	OPCODE_SHR,
-	OPCODE_STC,
-	OPCODE_STI,
-	OPCODE_STD,
-	OPCODE_STOSB,
-	OPCODE_STOSW,
-	OPCODE_STOSD,
-	OPCODE_STOSQ,
-	OPCODE_SUB,
-	OPCODE_SYSCALL,
+    OPCODE_OR,
+    OPCODE_OUT,
+    OPCODE_OUTSB,
+    OPCODE_OUTSW,
+    OPCODE_OUTSD,
+    OPCODE_POP,
+    OPCODE_POPF,
+    OPCODE_POPFQ,
+    OPCODE_PUSH,
+    OPCODE_PUSHF,
+    OPCODE_PUSHFQ,
+    OPCODE_RET,
+    OPCODE_RET_FAR,
+    OPCODE_RCL,
+    OPCODE_RCR,
+    OPCODE_ROL,
+    OPCODE_ROR,
+    OPCODE_SAHF,
+    OPCODE_SAL,
+    OPCODE_SAR,
+    OPCODE_SBB,
+    OPCODE_SCASB,
+    OPCODE_SCASW,
+    OPCODE_SCASD,
+    OPCODE_SCASQ,
+    OPCODE_SHL,
+    OPCODE_SHR,
+    OPCODE_STC,
+    OPCODE_STI,
+    OPCODE_STD,
+    OPCODE_STOSB,
+    OPCODE_STOSW,
+    OPCODE_STOSD,
+    OPCODE_STOSQ,
+    OPCODE_SUB,
+    OPCODE_SYSCALL,
 
-	OPCODE_SETO,
-	OPCODE_SETNO,
-	OPCODE_SETB,
-	OPCODE_SETAE,
-	OPCODE_SETE,
-	OPCODE_SETNE,
-	OPCODE_SETBE,
-	OPCODE_SETA,
-	OPCODE_SETS,
-	OPCODE_SETNS,
-	OPCODE_SETPE,
-	OPCODE_SETPO,
-	OPCODE_SETL,
-	OPCODE_SETGE,
-	OPCODE_SETLE,
-	OPCODE_SETG,
+    OPCODE_SETO,
+    OPCODE_SETNO,
+    OPCODE_SETB,
+    OPCODE_SETAE,
+    OPCODE_SETE,
+    OPCODE_SETNE,
+    OPCODE_SETBE,
+    OPCODE_SETA,
+    OPCODE_SETS,
+    OPCODE_SETNS,
+    OPCODE_SETPE,
+    OPCODE_SETPO,
+    OPCODE_SETL,
+    OPCODE_SETGE,
+    OPCODE_SETLE,
+    OPCODE_SETG,
 
-	OPCODE_TEST,
-	OPCODE_XCHG,
-	OPCODE_XLAT,
-	OPCODE_XOR,
+    OPCODE_TEST,
+    OPCODE_XCHG,
+    OPCODE_XLAT,
+    OPCODE_XOR,
 
 
 
-	OPCODE_ADDPS,
-	OPCODE_ADDPD,
-	OPCODE_ADDSS,
-	OPCODE_ADDSD,
-	OPCODE_MULPS,
-	OPCODE_MULPD,
-	OPCODE_MULSS,
-	OPCODE_MULSD,
-	OPCODE_SUBPS,
-	OPCODE_SUBPD,
-	OPCODE_SUBSS,
-	OPCODE_SUBSD,
-	OPCODE_MINPS,
-	OPCODE_MINPD,
-	OPCODE_MINSS,
-	OPCODE_MINSD,
-	OPCODE_DIVPS,
-	OPCODE_DIVPD,
-	OPCODE_DIVSS,
-	OPCODE_DIVSD,
-	OPCODE_MAXPS,
-	OPCODE_MAXPD,
-	OPCODE_MAXSS,
-	OPCODE_MAXSD,
-	OPCODE_SQRTPS,
-	OPCODE_SQRTPD,
-	OPCODE_SQRTSS,
-	OPCODE_SQRTSD,
-	OPCODE_RSQRTPS,
-	OPCODE_RSQRTSS,
-	OPCODE_RCPPS,
-	OPCODE_RCPSS,
+    OPCODE_ADDPS,
+    OPCODE_ADDPD,
+    OPCODE_ADDSS,
+    OPCODE_ADDSD,
+    OPCODE_MULPS,
+    OPCODE_MULPD,
+    OPCODE_MULSS,
+    OPCODE_MULSD,
+    OPCODE_SUBPS,
+    OPCODE_SUBPD,
+    OPCODE_SUBSS,
+    OPCODE_SUBSD,
+    OPCODE_MINPS,
+    OPCODE_MINPD,
+    OPCODE_MINSS,
+    OPCODE_MINSD,
+    OPCODE_DIVPS,
+    OPCODE_DIVPD,
+    OPCODE_DIVSS,
+    OPCODE_DIVSD,
+    OPCODE_MAXPS,
+    OPCODE_MAXPD,
+    OPCODE_MAXSS,
+    OPCODE_MAXSD,
+    OPCODE_SQRTPS,
+    OPCODE_SQRTPD,
+    OPCODE_SQRTSS,
+    OPCODE_SQRTSD,
+    OPCODE_RSQRTPS,
+    OPCODE_RSQRTSS,
+    OPCODE_RCPPS,
+    OPCODE_RCPSS,
 
-	OPCODE_ANDPS,
-	OPCODE_ANDPD,
-	OPCODE_ANDNPS,
-	OPCODE_ANDNPD,
-	OPCODE_ORPS,
-	OPCODE_ORPD,
-	OPCODE_XORPS,
-	OPCODE_XORPD,
+    OPCODE_ANDPS,
+    OPCODE_ANDPD,
+    OPCODE_ANDNPS,
+    OPCODE_ANDNPD,
+    OPCODE_ORPS,
+    OPCODE_ORPD,
+    OPCODE_XORPS,
+    OPCODE_XORPD,
 
-	OPCODE_PUNPCKLBW,
-	OPCODE_PUNPCKLWD,
-	OPCODE_PUNPCKLDQ,
-	OPCODE_PUNPCKLQDQ,
-	OPCODE_PACKSSWB,
-	OPCODE_PCMPGTB,
-	OPCODE_PCMPGTW,
-	OPCODE_PCMPGTD,
-	OPCODE_PACKUSWB,
-	OPCODE_PUNPCKHBW,
-	OPCODE_PUNPCKHWD,
-	OPCODE_PUNPCKHDQ,
-	OPCODE_PUNPCKHQDQ,
-	OPCODE_PACKSSDW,
+    OPCODE_PUNPCKLBW,
+    OPCODE_PUNPCKLWD,
+    OPCODE_PUNPCKLDQ,
+    OPCODE_PUNPCKLQDQ,
+    OPCODE_PACKSSWB,
+    OPCODE_PCMPGTB,
+    OPCODE_PCMPGTW,
+    OPCODE_PCMPGTD,
+    OPCODE_PACKUSWB,
+    OPCODE_PUNPCKHBW,
+    OPCODE_PUNPCKHWD,
+    OPCODE_PUNPCKHDQ,
+    OPCODE_PUNPCKHQDQ,
+    OPCODE_PACKSSDW,
 
-	OPCODE_PSHUFB,
-	OPCODE_PSHUFW,
-	OPCODE_PSHUFD,
-	OPCODE_PSHUFHW,
-	OPCODE_PSHUFLW,
+    OPCODE_PSHUFB,
+    OPCODE_PSHUFW,
+    OPCODE_PSHUFD,
+    OPCODE_PSHUFHW,
+    OPCODE_PSHUFLW,
 
-	OPCODE_PSRLW,
-	OPCODE_PSRLD,
-	OPCODE_PSRLQ,
-	OPCODE_PADDQ,
-	OPCODE_PMULLW,
-	OPCODE_PAVGB,
-	OPCODE_PSRAW,
-	OPCODE_PSRAD,
-	OPCODE_PAVGW,
-	OPCODE_PMULHUW,
-	OPCODE_PMULHW,
-	OPCODE_PSLLW,
-	OPCODE_PSLLD,
-	OPCODE_PSLLQ,
-	OPCODE_PMULUDQ,
-	OPCODE_PMADDWD,
-	OPCODE_PSADBW,
-	OPCODE_PSUBUSB,
-	OPCODE_PSUBUSW,
-	OPCODE_PMINUB,
-	OPCODE_PAND,
-	OPCODE_PADDUSB,
-	OPCODE_PADDUSW,
-	OPCODE_PMAXUB,
-	OPCODE_PANDN,
-	OPCODE_PSUBSB,
-	OPCODE_PSUBSW,
-	OPCODE_PMINSW,
-	OPCODE_POR,
-	OPCODE_PADDSB,
-	OPCODE_PADDSW,
-	OPCODE_PMAXSW,
-	OPCODE_PXOR,
-	OPCODE_PSUBB,
-	OPCODE_PSUBW,
-	OPCODE_PSUBD,
-	OPCODE_PSUBQ,
-	OPCODE_PADDB,
-	OPCODE_PADDW,
-	OPCODE_PADDD,
+    OPCODE_PSRLW,
+    OPCODE_PSRLD,
+    OPCODE_PSRLQ,
+    OPCODE_PADDQ,
+    OPCODE_PMULLW,
+    OPCODE_PAVGB,
+    OPCODE_PSRAW,
+    OPCODE_PSRAD,
+    OPCODE_PAVGW,
+    OPCODE_PMULHUW,
+    OPCODE_PMULHW,
+    OPCODE_PSLLW,
+    OPCODE_PSLLD,
+    OPCODE_PSLLQ,
+    OPCODE_PMULUDQ,
+    OPCODE_PMADDWD,
+    OPCODE_PSADBW,
+    OPCODE_PSUBUSB,
+    OPCODE_PSUBUSW,
+    OPCODE_PMINUB,
+    OPCODE_PAND,
+    OPCODE_PADDUSB,
+    OPCODE_PADDUSW,
+    OPCODE_PMAXUB,
+    OPCODE_PANDN,
+    OPCODE_PSUBSB,
+    OPCODE_PSUBSW,
+    OPCODE_PMINSW,
+    OPCODE_POR,
+    OPCODE_PADDSB,
+    OPCODE_PADDSW,
+    OPCODE_PMAXSW,
+    OPCODE_PXOR,
+    OPCODE_PSUBB,
+    OPCODE_PSUBW,
+    OPCODE_PSUBD,
+    OPCODE_PSUBQ,
+    OPCODE_PADDB,
+    OPCODE_PADDW,
+    OPCODE_PADDD,
 
-	OPCODE_CMPEQB,
-	OPCODE_CMPEQW,
-	OPCODE_CMPEQD,
-	OPCODE_COMISS,
-	OPCODE_COMISD,
+    OPCODE_CMPEQB,
+    OPCODE_CMPEQW,
+    OPCODE_CMPEQD,
+    OPCODE_COMISS,
+    OPCODE_COMISD,
 
-	OPCODE_CVTDQ2PD,
-	OPCODE_CVTDQ2PS,
-	OPCODE_CVTPD2DQ,
-	OPCODE_CVTPD2PI,
-	OPCODE_CVTPD2PS,
-	OPCODE_CVTPI2PD,
-	OPCODE_CVTPI2PS,
-	OPCODE_CVTPS2DQ,
-	OPCODE_CVTPS2PD,
-	OPCODE_CVTPS2PI,
-	OPCODE_CVTSD2SI,
-	OPCODE_CVTSD2SS,
-	OPCODE_CVTSI2SD,
-	OPCODE_CVTSI2SS,
-	OPCODE_CVTSS2SD,
-	OPCODE_CVTSS2SI,
-	OPCODE_CVTTPD2DQ,
-	OPCODE_CVTTPD2PI,
-	OPCODE_CVTTPS2DQ,
-	OPCODE_CVTTPS2PI,
-	OPCODE_CVTTSD2SI,
-	OPCODE_CVTTSS2SI,
+    OPCODE_CVTDQ2PD,
+    OPCODE_CVTDQ2PS,
+    OPCODE_CVTPD2DQ,
+    OPCODE_CVTPD2PI,
+    OPCODE_CVTPD2PS,
+    OPCODE_CVTPI2PD,
+    OPCODE_CVTPI2PS,
+    OPCODE_CVTPS2DQ,
+    OPCODE_CVTPS2PD,
+    OPCODE_CVTPS2PI,
+    OPCODE_CVTSD2SI,
+    OPCODE_CVTSD2SS,
+    OPCODE_CVTSI2SD,
+    OPCODE_CVTSI2SS,
+    OPCODE_CVTSS2SD,
+    OPCODE_CVTSS2SI,
+    OPCODE_CVTTPD2DQ,
+    OPCODE_CVTTPD2PI,
+    OPCODE_CVTTPS2DQ,
+    OPCODE_CVTTPS2PI,
+    OPCODE_CVTTSD2SI,
+    OPCODE_CVTTSS2SI,
 
-	OPCODE_EMMS,
-	OPCODE_HADDPD,
-	OPCODE_HADDPS,
-	OPCODE_HSUBPD,
-	OPCODE_HSUBPS,
+    OPCODE_EMMS,
+    OPCODE_HADDPD,
+    OPCODE_HADDPS,
+    OPCODE_HSUBPD,
+    OPCODE_HSUBPS,
 
-	OPCODE_MOVAPS,
-	OPCODE_MOVAPD,
-	OPCODE_MOVLPS,
-	OPCODE_MOVHPS,
-	OPCODE_MOVHPD,
-	OPCODE_MOVHLPS,
-	OPCODE_MOVLHPS,
-	OPCODE_MOVLPD,
-	OPCODE_MOVMSKPS,
-	OPCODE_MOVMSKPD,
-	OPCODE_MOVNTPS,
-	OPCODE_MOVNTPD,
-	OPCODE_MOVUPS,
-	OPCODE_MOVUPD,
-	OPCODE_MOVSS,
-	/* OPCODE_MOVSD, */
-	OPCODE_MOVSLDUP,
-	OPCODE_MOVSHDUP,
-	OPCODE_MOVDDUP,
-	OPCODE_MOVD,
-	OPCODE_MOVQ,
-	OPCODE_MOVDQA,
-	OPCODE_MOVDQU,
-	OPCODE_UCOMISS,
-	OPCODE_UCOMISD,
-	OPCODE_UNPCKLPS,
-	OPCODE_UNPCKHPS,
+    OPCODE_MOVAPS,
+    OPCODE_MOVAPD,
+    OPCODE_MOVLPS,
+    OPCODE_MOVHPS,
+    OPCODE_MOVHPD,
+    OPCODE_MOVHLPS,
+    OPCODE_MOVLHPS,
+    OPCODE_MOVLPD,
+    OPCODE_MOVMSKPS,
+    OPCODE_MOVMSKPD,
+    OPCODE_MOVNTPS,
+    OPCODE_MOVNTPD,
+    OPCODE_MOVUPS,
+    OPCODE_MOVUPD,
+    OPCODE_MOVSS,
+    /* OPCODE_MOVSD, */
+    OPCODE_MOVSLDUP,
+    OPCODE_MOVSHDUP,
+    OPCODE_MOVDDUP,
+    OPCODE_MOVD,
+    OPCODE_MOVQ,
+    OPCODE_MOVDQA,
+    OPCODE_MOVDQU,
+    OPCODE_UCOMISS,
+    OPCODE_UCOMISD,
+    OPCODE_UNPCKLPS,
+    OPCODE_UNPCKHPS,
 
-	OPCODE_VADDPS,
-	OPCODE_VADDPD,
-	OPCODE_VADDSS,
-	OPCODE_VADDSD,
-	OPCODE_VMULPS,
-	OPCODE_VMULPD,
-	OPCODE_VMULSS,
-	OPCODE_VMULSD,
-	OPCODE_VSUBPS,
-	OPCODE_VSUBPD,
-	OPCODE_VSUBSS,
-	OPCODE_VSUBSD,
-	OPCODE_VMINPS,
-	OPCODE_VMINPD,
-	OPCODE_VMINSS,
-	OPCODE_VMINSD,
-	OPCODE_VDIVPS,
-	OPCODE_VDIVPD,
-	OPCODE_VDIVSS,
-	OPCODE_VDIVSD,
-	OPCODE_VMAXPS,
-	OPCODE_VMAXPD,
-	OPCODE_VMAXSS,
-	OPCODE_VMAXSD,
-	OPCODE_VSQRTPS,
-	OPCODE_VSQRTPD,
-	OPCODE_VSQRTSS,
-	OPCODE_VSQRTSD,
-	OPCODE_VRSQRTPS,
-	OPCODE_VRSQRTSS,
-	OPCODE_VRCPPS,
-	OPCODE_VRCPSS,
+    OPCODE_VADDPS,
+    OPCODE_VADDPD,
+    OPCODE_VADDSS,
+    OPCODE_VADDSD,
+    OPCODE_VMULPS,
+    OPCODE_VMULPD,
+    OPCODE_VMULSS,
+    OPCODE_VMULSD,
+    OPCODE_VSUBPS,
+    OPCODE_VSUBPD,
+    OPCODE_VSUBSS,
+    OPCODE_VSUBSD,
+    OPCODE_VMINPS,
+    OPCODE_VMINPD,
+    OPCODE_VMINSS,
+    OPCODE_VMINSD,
+    OPCODE_VDIVPS,
+    OPCODE_VDIVPD,
+    OPCODE_VDIVSS,
+    OPCODE_VDIVSD,
+    OPCODE_VMAXPS,
+    OPCODE_VMAXPD,
+    OPCODE_VMAXSS,
+    OPCODE_VMAXSD,
+    OPCODE_VSQRTPS,
+    OPCODE_VSQRTPD,
+    OPCODE_VSQRTSS,
+    OPCODE_VSQRTSD,
+    OPCODE_VRSQRTPS,
+    OPCODE_VRSQRTSS,
+    OPCODE_VRCPPS,
+    OPCODE_VRCPSS,
 
-	OPCODE_VANDPS,
-	OPCODE_VANDPD,
-	OPCODE_VANDNPS,
-	OPCODE_VANDNPD,
-	OPCODE_VORPS,
-	OPCODE_VORPD,
-	OPCODE_VXORPS,
-	OPCODE_VXORPD,
+    OPCODE_VANDPS,
+    OPCODE_VANDPD,
+    OPCODE_VANDNPS,
+    OPCODE_VANDNPD,
+    OPCODE_VORPS,
+    OPCODE_VORPD,
+    OPCODE_VXORPS,
+    OPCODE_VXORPD,
 
-	OPCODE_VHADDPD,
-	OPCODE_VHADDPS,
-	OPCODE_VHSUBPD,
-	OPCODE_VHSUBPS,
+    OPCODE_VHADDPD,
+    OPCODE_VHADDPS,
+    OPCODE_VHSUBPD,
+    OPCODE_VHSUBPS,
 
-	OPCODE_VPUNPCKLBW,
-	OPCODE_VPUNPCKLWD,
-	OPCODE_VPUNPCKLDQ,
-	OPCODE_VPUNPCKLQDQ,
-	OPCODE_VPACKSSWB,
-	OPCODE_VPCMPGTB,
-	OPCODE_VPCMPGTW,
-	OPCODE_VPCMPGTD,
-	OPCODE_VPACKUSWB,
-	OPCODE_VPUNPCKHBW,
-	OPCODE_VPUNPCKHWD,
-	OPCODE_VPUNPCKHDQ,
-	OPCODE_VPUNPCKHQDQ,
-	OPCODE_VPACKSSDW,
-	OPCODE_VPSHUFD,
-	OPCODE_VPSHUFHW,
-	OPCODE_VPSHUFLW,
+    OPCODE_VPUNPCKLBW,
+    OPCODE_VPUNPCKLWD,
+    OPCODE_VPUNPCKLDQ,
+    OPCODE_VPUNPCKLQDQ,
+    OPCODE_VPACKSSWB,
+    OPCODE_VPCMPGTB,
+    OPCODE_VPCMPGTW,
+    OPCODE_VPCMPGTD,
+    OPCODE_VPACKUSWB,
+    OPCODE_VPUNPCKHBW,
+    OPCODE_VPUNPCKHWD,
+    OPCODE_VPUNPCKHDQ,
+    OPCODE_VPUNPCKHQDQ,
+    OPCODE_VPACKSSDW,
+    OPCODE_VPSHUFD,
+    OPCODE_VPSHUFHW,
+    OPCODE_VPSHUFLW,
 
-	OPCODE_VPSRLW,
-	OPCODE_VPSRLD,
-	OPCODE_VPSRLQ,
-	OPCODE_VPADDQ,
-	OPCODE_VPMULLW,
-	OPCODE_VPAVGB,
-	OPCODE_VPSRAW,
-	OPCODE_VPSRAD,
-	OPCODE_VPAVGW,
-	OPCODE_VPMULHUW,
-	OPCODE_VPMULHW,
-	OPCODE_VPSLLW,
-	OPCODE_VPSLLD,
-	OPCODE_VPSLLQ,
-	OPCODE_VPMULUDQ,
-	OPCODE_VPMADDWD,
-	OPCODE_VPSADBW,
-	OPCODE_VPSUBUSB,
-	OPCODE_VPSUBUSW,
-	OPCODE_VPMINUB,
-	OPCODE_VPAND,
-	OPCODE_VPADDUSB,
-	OPCODE_VPADDUSW,
-	OPCODE_VPMAXUB,
-	OPCODE_VPANDN,
-	OPCODE_VPSUBSB,
-	OPCODE_VPSUBSW,
-	OPCODE_VPMINSW,
-	OPCODE_VPOR,
-	OPCODE_VPADDSB,
-	OPCODE_VPADDSW,
-	OPCODE_VPMAXSW,
-	OPCODE_VPXOR,
-	OPCODE_VPSUBB,
-	OPCODE_VPSUBW,
-	OPCODE_VPSUBD,
-	OPCODE_VPSUBQ,
-	OPCODE_VPADDB,
-	OPCODE_VPADDW,
-	OPCODE_VPADDD,
+    OPCODE_VPSRLW,
+    OPCODE_VPSRLD,
+    OPCODE_VPSRLQ,
+    OPCODE_VPADDQ,
+    OPCODE_VPMULLW,
+    OPCODE_VPAVGB,
+    OPCODE_VPSRAW,
+    OPCODE_VPSRAD,
+    OPCODE_VPAVGW,
+    OPCODE_VPMULHUW,
+    OPCODE_VPMULHW,
+    OPCODE_VPSLLW,
+    OPCODE_VPSLLD,
+    OPCODE_VPSLLQ,
+    OPCODE_VPMULUDQ,
+    OPCODE_VPMADDWD,
+    OPCODE_VPSADBW,
+    OPCODE_VPSUBUSB,
+    OPCODE_VPSUBUSW,
+    OPCODE_VPMINUB,
+    OPCODE_VPAND,
+    OPCODE_VPADDUSB,
+    OPCODE_VPADDUSW,
+    OPCODE_VPMAXUB,
+    OPCODE_VPANDN,
+    OPCODE_VPSUBSB,
+    OPCODE_VPSUBSW,
+    OPCODE_VPMINSW,
+    OPCODE_VPOR,
+    OPCODE_VPADDSB,
+    OPCODE_VPADDSW,
+    OPCODE_VPMAXSW,
+    OPCODE_VPXOR,
+    OPCODE_VPSUBB,
+    OPCODE_VPSUBW,
+    OPCODE_VPSUBD,
+    OPCODE_VPSUBQ,
+    OPCODE_VPADDB,
+    OPCODE_VPADDW,
+    OPCODE_VPADDD,
 
-	OPCODE_VCMPEQB,
-	OPCODE_VCMPEQW,
-	OPCODE_VCMPEQD,
-	OPCODE_VCOMISS,
-	OPCODE_VCOMISD,
-	OPCODE_VCVTSI2SD,
-	OPCODE_VCVTSI2SS,
-	OPCODE_VCVTSS2SI,
-	OPCODE_VCVTTSS2SI,
-	OPCODE_VCVTSD2SI,
-	OPCODE_VCVTTSD2SI,
-	OPCODE_VCVTPS2PD,
-	OPCODE_VCVTPD2PS,
-	OPCODE_VCVTSS2SD,
-	OPCODE_VCVTSD2SS,
-	OPCODE_VCVTDQ2PS,
-	OPCODE_VCVTPS2DQ,
-	OPCODE_VCVTTPS2DQ,
-	OPCODE_VMOVAPS,
-	OPCODE_VMOVAPD,
-	OPCODE_VMOVLPS,
-	OPCODE_VMOVHPS,
-	OPCODE_VMOVHPD,
-	OPCODE_VMOVHLPS,
-	OPCODE_VMOVLHPS,
-	OPCODE_VMOVLPD,
-	OPCODE_VMOVMSKPS,
-	OPCODE_VMOVMSKPD,
-	OPCODE_VMOVNTPS,
-	OPCODE_VMOVNTPD,
-	OPCODE_VMOVUPS,
-	OPCODE_VMOVUPD,
-	OPCODE_VMOVSS,
-	OPCODE_VMOVSD,
-	OPCODE_VMOVSLDUP,
-	OPCODE_VMOVSHDUP,
-	OPCODE_VMOVDDUP,
-	OPCODE_VMOVD,
-	OPCODE_VMOVQ,
-	OPCODE_VMOVDQA,
-	OPCODE_VMOVDQU,
-	OPCODE_VUCOMISS,
-	OPCODE_VUCOMISD,
-	OPCODE_VUNPCKLPS,
-	OPCODE_VUNPCKHPS,
-	OPCODE_VZEROALL,
-	OPCODE_VZEROUPPER,
+    OPCODE_VCMPEQB,
+    OPCODE_VCMPEQW,
+    OPCODE_VCMPEQD,
+    OPCODE_VCOMISS,
+    OPCODE_VCOMISD,
+    OPCODE_VCVTSI2SD,
+    OPCODE_VCVTSI2SS,
+    OPCODE_VCVTSS2SI,
+    OPCODE_VCVTTSS2SI,
+    OPCODE_VCVTSD2SI,
+    OPCODE_VCVTTSD2SI,
+    OPCODE_VCVTPS2PD,
+    OPCODE_VCVTPD2PS,
+    OPCODE_VCVTSS2SD,
+    OPCODE_VCVTSD2SS,
+    OPCODE_VCVTDQ2PS,
+    OPCODE_VCVTPS2DQ,
+    OPCODE_VCVTTPS2DQ,
+    OPCODE_VMOVAPS,
+    OPCODE_VMOVAPD,
+    OPCODE_VMOVLPS,
+    OPCODE_VMOVHPS,
+    OPCODE_VMOVHPD,
+    OPCODE_VMOVHLPS,
+    OPCODE_VMOVLHPS,
+    OPCODE_VMOVLPD,
+    OPCODE_VMOVMSKPS,
+    OPCODE_VMOVMSKPD,
+    OPCODE_VMOVNTPS,
+    OPCODE_VMOVNTPD,
+    OPCODE_VMOVUPS,
+    OPCODE_VMOVUPD,
+    OPCODE_VMOVSS,
+    OPCODE_VMOVSD,
+    OPCODE_VMOVSLDUP,
+    OPCODE_VMOVSHDUP,
+    OPCODE_VMOVDDUP,
+    OPCODE_VMOVD,
+    OPCODE_VMOVQ,
+    OPCODE_VMOVDQA,
+    OPCODE_VMOVDQU,
+    OPCODE_VUCOMISS,
+    OPCODE_VUCOMISD,
+    OPCODE_VUNPCKLPS,
+    OPCODE_VUNPCKHPS,
+    OPCODE_VZEROALL,
+    OPCODE_VZEROUPPER,
 };
 
 typedef enum {
-	OPERANDS_TYPE_modrm = 1,
-	OPERANDS_TYPE_modreg,
-	OPERANDS_TYPE_add_to_opcode,
-	OPERANDS_TYPE_imm,
-	OPERANDS_TYPE_vex_vvvv,
-	OPERANDS_TYPE_modm,
-	OPERANDS_TYPE_modr,
+    OPERANDS_TYPE_modrm = 1,
+    OPERANDS_TYPE_modreg,
+    OPERANDS_TYPE_add_to_opcode,
+    OPERANDS_TYPE_imm,
+    OPERANDS_TYPE_vex_vvvv,
+    OPERANDS_TYPE_modm,
+    OPERANDS_TYPE_modr,
 } X86_64_Operands_Type;
 
 // oc_todo: maybe add __attribute__((packed))
 typedef struct {
-	unsigned int operands; // top 3 is Operands_Type, next 1 is don't add rex, bottom 4 is argument
-	unsigned short opcode;
+    unsigned int operands; // top 3 is Operands_Type, next 1 is don't add rex, bottom 4 is argument
+    unsigned short opcode;
 } X86_64_Instruction_Variant;
 
 // clang -E backends/x86_64_common.c | grep -Po
@@ -704,86 +704,86 @@ typedef struct {
 // \.noarg\s*\= |\.al_i8\s*\= |\.ax_i16\s*\= |\.eax_i32\s*\= |\.rax_i32\s*\= |\.ax_i8\s*\= |\. eax_i8\s*\= |\.ax_r16\s*\= |\.eax_r32\s*\= |\.rax_r64\s*\= |\.al_dx\s*\= |\.ax_dx\s*\= |\. eax_dx\s*\= |\.rm8\s*\= |\.rm16\s*\= |\. rm32\s*\= |\.rm64\s*\= |\.rm8_cl\s*\= |\.rm16_cl\s*\= |\. rm32_cl\s*\= |\.rm64_cl\s*\= |\.rm16_r16\s*\= |\.rm64_r64\s*\= |\.r16\s*\= |\.r32\s*\= |\.r64\s*\= |\.r16_rm16\s*\= |\.r64_rm64\s*\= |\.r8_i8\s*\= |\.r16_i16\s*\= |\.r32_i32\s*\= |\.r64_i64\s*\= |\.rm8_i8\s*\= |\.rm16_i16\s*\= |\.rm32_i32\s*\= |\.rm64_i32\s*\= |\.rm16_i8\s*\= |\.rm32_i8\s*\= |\.rm64_i8\s*\= |\.i8\s*\= |\.i16\s*\= |\.i32\s*\= |\.rel8\s*\= |\.rel16\s*\= |\.rel32\s*\= |\.r16_rm16_i8\s*\= |\.r16_rm16_i16\s*\= |\.r32_rm32_i32\s*\= |\.r64_rm64_i32\s*\= |\.r8_rm8\s*\= |\.r32_rm32\s*\= |\.rm32_r32\s*\= |\.rm8_r8\s*\= |\.r128_rm128\s*\= |\.r256_rm256\s*\= |\.rm128_r128\s*\= |\.rm256_r256\s*\= |\.r64_rm32\s*\= |\.rm32_r64\s*\= |\.r32_rm32_i8\s*\= |\.r64_rm64_i8\s*\= |\.r128_rm128_i8\s*\= |\.r256_rm256_i8\s*\= |\.r128_vvvv_rm128\s*\= |\.r256_vvvv_rm256\s*\= |\.r128_vvvv_rm32\s*\= |\.r128_vvvv_rm64\s*\= |\.r128_rm32\s*\= |\.r128_rm64\s*\= |\.rm32_rm128\s*\= |\.rm64_rm128\s*\= |\.rm32_r128\s*\= |\.rm64_r128\s*\= |\.r32_rm128\s*\= |\.r64_rm128\s*\= |\.r32_rm256
 
 typedef struct {
-	X86_64_Instruction_Variant
-		noarg,
-		al_i8, ax_i16, eax_i32, rax_i32,
-			   ax_i8,  eax_i8,
-		       ax_r16, eax_r32, rax_r64,
-		al_dx, ax_dx,  eax_dx,
-		rm8, rm16,  rm32, rm64,
-		rm8_cl, rm16_cl,  rm32_cl, rm64_cl,
-		/* rm8_r8, */ rm16_r16, /* rm32_r32, */ rm64_r64,
-		r16, r32, r64,
-		/* r8_rm8, */ r16_rm16, /* r32_rm32, */ r64_rm64,
+    X86_64_Instruction_Variant
+        noarg,
+        al_i8, ax_i16, eax_i32, rax_i32,
+               ax_i8,  eax_i8,
+               ax_r16, eax_r32, rax_r64,
+        al_dx, ax_dx,  eax_dx,
+        rm8, rm16,  rm32, rm64,
+        rm8_cl, rm16_cl,  rm32_cl, rm64_cl,
+        /* rm8_r8, */ rm16_r16, /* rm32_r32, */ rm64_r64,
+        r16, r32, r64,
+        /* r8_rm8, */ r16_rm16, /* r32_rm32, */ r64_rm64,
         r16_rm8, r32_rm8, r64_rm8,
         r32_rm16, r64_rm16,
-		r8_i8, r16_i16, r32_i32, r64_i64,
-		rm8_i8, rm16_i16, rm32_i32, rm64_i32, rm16_i8, rm32_i8, rm64_i8,
-		i8, i16, i32,
-		rel8, rel16, rel32,
-		r16_rm16_i8, 
-		r16_rm16_i16, r32_rm32_i32, r64_rm64_i32;
+        r8_i8, r16_i16, r32_i32, r64_i64,
+        rm8_i8, rm16_i16, rm32_i32, rm64_i32, rm16_i8, rm32_i8, rm64_i8,
+        i8, i16, i32,
+        rel8, rel16, rel32,
+        r16_rm16_i8, 
+        r16_rm16_i16, r32_rm32_i32, r64_rm64_i32;
 
-	union {
-		struct { X86_64_Instruction_Variant r8_rm8, r32_rm32, rm32_r32, rm8_r8; };
-		struct { X86_64_Instruction_Variant r128_rm128, r256_rm256, rm128_r128, rm256_r256, r64_rm32, rm32_r64; };
-	};
-	union {
-		struct { X86_64_Instruction_Variant r32_rm32_i8, r64_rm64_i8; };
-		struct { X86_64_Instruction_Variant r128_rm128_i8, r256_rm256_i8; };
-	};
-		
-	X86_64_Instruction_Variant r128_vvvv_rm128, r256_vvvv_rm256,
-							   r128_vvvv_rm32,	r128_vvvv_rm64,
-							   r128_rm32, r128_rm64,
-							   rm32_rm128, rm64_rm128,
-							   rm32_r128, rm64_r128,
-							   r32_rm128, r64_rm128,
-							   r32_rm256;
+    union {
+        struct { X86_64_Instruction_Variant r8_rm8, r32_rm32, rm32_r32, rm8_r8; };
+        struct { X86_64_Instruction_Variant r128_rm128, r256_rm256, rm128_r128, rm256_r256, r64_rm32, rm32_r64; };
+    };
+    union {
+        struct { X86_64_Instruction_Variant r32_rm32_i8, r64_rm64_i8; };
+        struct { X86_64_Instruction_Variant r128_rm128_i8, r256_rm256_i8; };
+    };
+        
+    X86_64_Instruction_Variant r128_vvvv_rm128, r256_vvvv_rm256,
+                               r128_vvvv_rm32,	r128_vvvv_rm64,
+                               r128_rm32, r128_rm64,
+                               rm32_rm128, rm64_rm128,
+                               rm32_r128, rm64_r128,
+                               r32_rm128, r64_rm128,
+                               r32_rm256;
 } X86_64_Instruction;
 
 typedef enum {
-	X86_64_VARIANT_KIND_noarg,
+    X86_64_VARIANT_KIND_noarg,
 
-	X86_64_VARIANT_KIND_al_i8,
-   	X86_64_VARIANT_KIND_ax_i16,
-   	X86_64_VARIANT_KIND_eax_i32,
-   	X86_64_VARIANT_KIND_rax_i32,
+    X86_64_VARIANT_KIND_al_i8,
+       X86_64_VARIANT_KIND_ax_i16,
+       X86_64_VARIANT_KIND_eax_i32,
+       X86_64_VARIANT_KIND_rax_i32,
 
-   	X86_64_VARIANT_KIND_ax_i8,
-   	X86_64_VARIANT_KIND_eax_i8,
+       X86_64_VARIANT_KIND_ax_i8,
+       X86_64_VARIANT_KIND_eax_i8,
 
-   	X86_64_VARIANT_KIND_ax_r16,
-   	X86_64_VARIANT_KIND_eax_r32,
-   	/* X86_64_VARIANT_KIND_rax_r32, */
+       X86_64_VARIANT_KIND_ax_r16,
+       X86_64_VARIANT_KIND_eax_r32,
+       /* X86_64_VARIANT_KIND_rax_r32, */
 
-   	X86_64_VARIANT_KIND_al_dx,
-   	X86_64_VARIANT_KIND_ax_dx,
-   	X86_64_VARIANT_KIND_eax_dx,
+       X86_64_VARIANT_KIND_al_dx,
+       X86_64_VARIANT_KIND_ax_dx,
+       X86_64_VARIANT_KIND_eax_dx,
 
-	X86_64_VARIANT_KIND_rm8,
-	X86_64_VARIANT_KIND_rm16,
-	X86_64_VARIANT_KIND_rm32,
-	X86_64_VARIANT_KIND_rm64,
+    X86_64_VARIANT_KIND_rm8,
+    X86_64_VARIANT_KIND_rm16,
+    X86_64_VARIANT_KIND_rm32,
+    X86_64_VARIANT_KIND_rm64,
 
-	X86_64_VARIANT_KIND_rm8_r8,
-	X86_64_VARIANT_KIND_rm16_r16,
-	X86_64_VARIANT_KIND_rm32_r32,
-	X86_64_VARIANT_KIND_rm64_r64,
+    X86_64_VARIANT_KIND_rm8_r8,
+    X86_64_VARIANT_KIND_rm16_r16,
+    X86_64_VARIANT_KIND_rm32_r32,
+    X86_64_VARIANT_KIND_rm64_r64,
 
-	X86_64_VARIANT_KIND_rm8_cl,
-	X86_64_VARIANT_KIND_rm16_cl,
-	X86_64_VARIANT_KIND_rm32_cl,
-	X86_64_VARIANT_KIND_rm64_cl,
+    X86_64_VARIANT_KIND_rm8_cl,
+    X86_64_VARIANT_KIND_rm16_cl,
+    X86_64_VARIANT_KIND_rm32_cl,
+    X86_64_VARIANT_KIND_rm64_cl,
 
-	X86_64_VARIANT_KIND_r16,
-	X86_64_VARIANT_KIND_r32,
-	X86_64_VARIANT_KIND_r64,
+    X86_64_VARIANT_KIND_r16,
+    X86_64_VARIANT_KIND_r32,
+    X86_64_VARIANT_KIND_r64,
 
-	X86_64_VARIANT_KIND_r8_rm8,
-	X86_64_VARIANT_KIND_r16_rm16,
-	X86_64_VARIANT_KIND_r32_rm32,
-	X86_64_VARIANT_KIND_r64_rm64,
+    X86_64_VARIANT_KIND_r8_rm8,
+    X86_64_VARIANT_KIND_r16_rm16,
+    X86_64_VARIANT_KIND_r32_rm32,
+    X86_64_VARIANT_KIND_r64_rm64,
 
     X86_64_VARIANT_KIND_r16_rm8,
     X86_64_VARIANT_KIND_r32_rm8,
@@ -791,48 +791,48 @@ typedef enum {
     X86_64_VARIANT_KIND_r32_rm16,
     X86_64_VARIANT_KIND_r64_rm16,
 
-	X86_64_VARIANT_KIND_r8_i8,
-	X86_64_VARIANT_KIND_r16_i16,
-	X86_64_VARIANT_KIND_r32_i32,
-	X86_64_VARIANT_KIND_r64_i64,
+    X86_64_VARIANT_KIND_r8_i8,
+    X86_64_VARIANT_KIND_r16_i16,
+    X86_64_VARIANT_KIND_r32_i32,
+    X86_64_VARIANT_KIND_r64_i64,
 
-	X86_64_VARIANT_KIND_rm8_i8,
-	X86_64_VARIANT_KIND_rm16_i16,
-	X86_64_VARIANT_KIND_rm32_i32,
-	X86_64_VARIANT_KIND_rm64_i32,
-	X86_64_VARIANT_KIND_rm16_i8,
-	X86_64_VARIANT_KIND_rm32_i8,
-	X86_64_VARIANT_KIND_rm64_i8,
+    X86_64_VARIANT_KIND_rm8_i8,
+    X86_64_VARIANT_KIND_rm16_i16,
+    X86_64_VARIANT_KIND_rm32_i32,
+    X86_64_VARIANT_KIND_rm64_i32,
+    X86_64_VARIANT_KIND_rm16_i8,
+    X86_64_VARIANT_KIND_rm32_i8,
+    X86_64_VARIANT_KIND_rm64_i8,
 
-	X86_64_VARIANT_KIND_i8,
-	X86_64_VARIANT_KIND_i16,
-	X86_64_VARIANT_KIND_i32,
+    X86_64_VARIANT_KIND_i8,
+    X86_64_VARIANT_KIND_i16,
+    X86_64_VARIANT_KIND_i32,
 
-	X86_64_VARIANT_KIND_rel8,
-	X86_64_VARIANT_KIND_rel16,
-	X86_64_VARIANT_KIND_rel32,
+    X86_64_VARIANT_KIND_rel8,
+    X86_64_VARIANT_KIND_rel16,
+    X86_64_VARIANT_KIND_rel32,
 
-	X86_64_VARIANT_KIND_r16_rm16_i8,
-   	X86_64_VARIANT_KIND_r32_rm32_i8,
-	X86_64_VARIANT_KIND_r64_rm64_i8,
-	X86_64_VARIANT_KIND_r16_rm16_i16,
-	X86_64_VARIANT_KIND_r32_rm32_i32,
-   	X86_64_VARIANT_KIND_r64_rm64_i32,
+    X86_64_VARIANT_KIND_r16_rm16_i8,
+       X86_64_VARIANT_KIND_r32_rm32_i8,
+    X86_64_VARIANT_KIND_r64_rm64_i8,
+    X86_64_VARIANT_KIND_r16_rm16_i16,
+    X86_64_VARIANT_KIND_r32_rm32_i32,
+       X86_64_VARIANT_KIND_r64_rm64_i32,
 
-	X86_64_VARIANT_KIND_r128_vvvv_rm128,
-	X86_64_VARIANT_KIND_r256_vvvv_rm256,
+    X86_64_VARIANT_KIND_r128_vvvv_rm128,
+    X86_64_VARIANT_KIND_r256_vvvv_rm256,
 
-	X86_64_VARIANT_KIND_r128_vvvv_rm32,
-	X86_64_VARIANT_KIND_r128_vvvv_rm64,
-	X86_64_VARIANT_KIND_r128_rm32,
-	X86_64_VARIANT_KIND_r128_rm64,
-	X86_64_VARIANT_KIND_rm32_r128,
-	X86_64_VARIANT_KIND_rm64_r128,
-	X86_64_VARIANT_KIND_r32_rm128,
-	X86_64_VARIANT_KIND_r64_rm128,
-	X86_64_VARIANT_KIND_r32_rm256,
-	X86_64_VARIANT_KIND_rm32_r64,
-	X86_64_VARIANT_KIND_r64_rm32,
+    X86_64_VARIANT_KIND_r128_vvvv_rm32,
+    X86_64_VARIANT_KIND_r128_vvvv_rm64,
+    X86_64_VARIANT_KIND_r128_rm32,
+    X86_64_VARIANT_KIND_r128_rm64,
+    X86_64_VARIANT_KIND_rm32_r128,
+    X86_64_VARIANT_KIND_rm64_r128,
+    X86_64_VARIANT_KIND_r32_rm128,
+    X86_64_VARIANT_KIND_r64_rm128,
+    X86_64_VARIANT_KIND_r32_rm256,
+    X86_64_VARIANT_KIND_rm32_r64,
+    X86_64_VARIANT_KIND_r64_rm32,
 } X86_64_Variant_Kind;
 
 #define X86_64_VARIANT_KIND_r128_rm128 X86_64_VARIANT_KIND_r8_rm8
@@ -846,20 +846,20 @@ typedef enum {
 #define X86_64_REG_BASE (0x10u)
 
 typedef enum {
-	X86_64_PREFIX_REP = 0xF3,
-	X86_64_PREFIX_REPE = 0xF3,
-	X86_64_PREFIX_REPNE = 0xF2,
+    X86_64_PREFIX_REP = 0xF3,
+    X86_64_PREFIX_REPE = 0xF3,
+    X86_64_PREFIX_REPNE = 0xF2,
 } X86_64_Prefixes;
 
 #define X86_64_SIB_INDEX (1u << 1u)
 #define X86_64_SIB_SCALE (1u << 2u)
 
 typedef struct {
-	unsigned char reg0, reg1, reg2, reg3;
-	unsigned char scale, index;
-	long long int displacement, immediate, relative;
-	unsigned char rep;
-	unsigned char use_sib, rbp_is_rip;
+    unsigned char reg0, reg1, reg2, reg3;
+    unsigned char scale, index;
+    long long int displacement, immediate, relative;
+    unsigned char rep;
+    unsigned char use_sib, rbp_is_rip;
 } X86_64_Instruction_Parameters;
 
 X86_64_Variant_Kind oc_x86_64_get_inverse_compare(unsigned int /* OPCODE */ opcode);
@@ -895,9 +895,9 @@ X86_64_Instruction_Variant oc_x86_64_get_variant(const X86_64_Instruction* inst,
 
 #if OC_MACHINE_CODE_IMPLEMENTATION
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdarg.h>
+// #include <stdlib.h>
+// #include <stdio.h>
+// #include <stdarg.h>
 
 #define default_code_writer_resize(w, byte_count)                                                    \
     do {                                                                                             \
@@ -928,87 +928,87 @@ static union {
     char c[4];
 } endian_test = {ENDIAN_TEST_VALUE};
 
-void oc_default_machine_code_writer_append_u8(void* w, unsigned char value) {
-    OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
-    default_code_writer_resize(ww, 1);
-    ww->buffer[ww->count] = value;
-    ww->count += 1;
-}
+// void oc_default_machine_code_writer_append_u8(void* w, unsigned char value) {
+//     OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
+//     default_code_writer_resize(ww, 1);
+//     ww->buffer[ww->count] = value;
+//     ww->count += 1;
+// }
 
-void oc_default_machine_code_writer_append_u16(void* w, unsigned short value) {
-    OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
-    default_code_writer_resize(ww, 2);
-    ww->buffer[ww->count + 0] = (value >> 0) & 0xFFu;
-    ww->buffer[ww->count + 1] = (value >> 8) & 0xFFu;
-    ww->count += 2;
-}
+// void oc_default_machine_code_writer_append_u16(void* w, unsigned short value) {
+//     OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
+//     default_code_writer_resize(ww, 2);
+//     ww->buffer[ww->count + 0] = (value >> 0) & 0xFFu;
+//     ww->buffer[ww->count + 1] = (value >> 8) & 0xFFu;
+//     ww->count += 2;
+// }
 
-void oc_default_machine_code_writer_append_u32(void* w, unsigned int value) {
-    OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
-    default_code_writer_resize(ww, 4);
-    ww->buffer[ww->count + 0] = (value >> 0);
-    ww->buffer[ww->count + 1] = (value >> 8);
-    ww->buffer[ww->count + 2] = (value >> 16);
-    ww->buffer[ww->count + 3] = (value >> 24);
-    ww->count += 4;
-}
+// void oc_default_machine_code_writer_append_u32(void* w, unsigned int value) {
+//     OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
+//     default_code_writer_resize(ww, 4);
+//     ww->buffer[ww->count + 0] = (value >> 0);
+//     ww->buffer[ww->count + 1] = (value >> 8);
+//     ww->buffer[ww->count + 2] = (value >> 16);
+//     ww->buffer[ww->count + 3] = (value >> 24);
+//     ww->count += 4;
+// }
 
-void oc_default_machine_code_writer_append_u64(void* w, unsigned long long int value) {
-    OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
-    default_code_writer_resize(ww, 8);
-    ww->buffer[ww->count + 0] = (value >> 0);
-    ww->buffer[ww->count + 1] = (value >> 8);
-    ww->buffer[ww->count + 2] = (value >> 16);
-    ww->buffer[ww->count + 3] = (value >> 24);
-    ww->buffer[ww->count + 4] = (value >> 32);
-    ww->buffer[ww->count + 5] = (value >> 40);
-    ww->buffer[ww->count + 6] = (value >> 48);
-    ww->buffer[ww->count + 7] = (value >> 56);
-    ww->count += 8;
-}
+// void oc_default_machine_code_writer_append_u64(void* w, unsigned long long int value) {
+//     OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
+//     default_code_writer_resize(ww, 8);
+//     ww->buffer[ww->count + 0] = (value >> 0);
+//     ww->buffer[ww->count + 1] = (value >> 8);
+//     ww->buffer[ww->count + 2] = (value >> 16);
+//     ww->buffer[ww->count + 3] = (value >> 24);
+//     ww->buffer[ww->count + 4] = (value >> 32);
+//     ww->buffer[ww->count + 5] = (value >> 40);
+//     ww->buffer[ww->count + 6] = (value >> 48);
+//     ww->buffer[ww->count + 7] = (value >> 56);
+//     ww->count += 8;
+// }
 
-void oc_default_machine_code_writer_append_many(void* w, unsigned char* bytes, unsigned long long int count) {
-    OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
-    default_code_writer_resize(ww, count);
-    for (unsigned long long int i = 0; i < count; i++) {
-        ww->buffer[ww->count + i] = bytes[i];
-    }
-    ww->count += count;
-}
+// void oc_default_machine_code_writer_append_many(void* w, unsigned char* bytes, unsigned long long int count) {
+//     OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
+//     default_code_writer_resize(ww, count);
+//     for (unsigned long long int i = 0; i < count; i++) {
+//         ww->buffer[ww->count + i] = bytes[i];
+//     }
+//     ww->count += count;
+// }
 
-void oc_default_machine_code_writer_end_instruction(void* w) {
-    OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
-    default_code_writer_append_stride(ww, ww->count);
-}
+// void oc_default_machine_code_writer_end_instruction(void* w) {
+//     OC_Default_Machine_Code_Writer *ww = (OC_Default_Machine_Code_Writer*)w;
+//     default_code_writer_append_stride(ww, ww->count);
+// }
 
 // #include <stdio.h>
-void oc_default_machine_code_writer_log_error(void* w, const char* fmt, ...) {
-    va_list f;
-    va_start(f, fmt);
-    vfprintf(stderr, fmt, f);
-    va_end(f);
-}
+// void oc_default_machine_code_writer_log_error(void* w, const char* fmt, ...) {
+//     va_list f;
+//     va_start(f, fmt);
+//     vfprintf(stderr, fmt, f);
+//     va_end(f);
+// }
 
-void oc_default_machine_code_writer_assert_abort(void* w, const char* fmt, ...) {
-    va_list f;
-    va_start(f, fmt);
-    vfprintf(stderr, fmt, f);
-    va_end(f);
-    abort();
-}
+// void oc_default_machine_code_writer_assert_abort(void* w, const char* fmt, ...) {
+//     va_list f;
+//     va_start(f, fmt);
+//     vfprintf(stderr, fmt, f);
+//     va_end(f);
+//     abort();
+// }
 
-const OC_Default_Machine_Code_Writer oc_default_machine_code_writer = {
-    .base = {
-        .append_u8 = oc_default_machine_code_writer_append_u8,
-        .append_u16 = oc_default_machine_code_writer_append_u16,
-        .append_u32 = oc_default_machine_code_writer_append_u32,
-        .append_u64 = oc_default_machine_code_writer_append_u64,
-        .append_many = oc_default_machine_code_writer_append_many,
-        .end_instruction = oc_default_machine_code_writer_end_instruction,
-        .log_error = oc_default_machine_code_writer_log_error,
-        .assert_abort = oc_default_machine_code_writer_assert_abort,
-    }
-};
+// const OC_Default_Machine_Code_Writer oc_default_machine_code_writer = {
+//     .base = {
+//         .append_u8 = oc_default_machine_code_writer_append_u8,
+//         .append_u16 = oc_default_machine_code_writer_append_u16,
+//         .append_u32 = oc_default_machine_code_writer_append_u32,
+//         .append_u64 = oc_default_machine_code_writer_append_u64,
+//         .append_many = oc_default_machine_code_writer_append_many,
+//         .end_instruction = oc_default_machine_code_writer_end_instruction,
+//         .log_error = oc_default_machine_code_writer_log_error,
+//         .assert_abort = oc_default_machine_code_writer_assert_abort,
+//     }
+// };
 
 const X86_64_Operand_Register x86_64_usable_gp_registers[] = {
     X86_64_OPERAND_REGISTER_rax,

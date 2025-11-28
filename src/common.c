@@ -4,19 +4,19 @@
 
 size_t stbds_hash_string(string str, size_t seed)
 {
-	size_t hash = seed;
-	while (str.len-- > 0)
-		hash = STBDS_ROTATE_LEFT(hash, 9) + (unsigned char) *str.ptr++;
+    size_t hash = seed;
+    while (str.len-- > 0)
+        hash = STBDS_ROTATE_LEFT(hash, 9) + (unsigned char) *str.ptr++;
 
-	// Thomas Wang 64-to-32 bit mix function, hopefully also works in 32 bits
-	hash ^= seed;
-	hash = (~hash) + (hash << 18);
-	hash ^= hash ^ STBDS_ROTATE_RIGHT(hash,31);
-	hash = hash * 21;
-	hash ^= hash ^ STBDS_ROTATE_RIGHT(hash,11);
-	hash += (hash << 6);
-	hash ^= STBDS_ROTATE_RIGHT(hash,22);
-	return hash+seed;
+    // Thomas Wang 64-to-32 bit mix function, hopefully also works in 32 bits
+    hash ^= seed;
+    hash = (~hash) + (hash << 18);
+    hash ^= hash ^ STBDS_ROTATE_RIGHT(hash,31);
+    hash = hash * 21;
+    hash ^= hash ^ STBDS_ROTATE_RIGHT(hash,11);
+    hash += (hash << 6);
+    hash ^= STBDS_ROTATE_RIGHT(hash,22);
+    return hash+seed;
 }
 
 #define STBDS_SIPHASH_C_ROUNDS 1
@@ -76,12 +76,12 @@ size_t stbds_siphash_bytes(void *p, size_t len, size_t seed)
 }
 
 bool string_eql(string a, string b) {
-	return strncmp(a.ptr, b.ptr, min(a.len, b.len)) == 0;
+    return strncmp(a.ptr, b.ptr, min(a.len, b.len)) == 0;
 }
 
 bool string_starts_with(string haystack, string needle) {
-	if (needle.len > haystack.len) return false;
-	return memcmp(haystack.ptr, needle.ptr, needle.len) == 0;
+    if (needle.len > haystack.len) return false;
+    return memcmp(haystack.ptr, needle.ptr, needle.len) == 0;
 }
 
 string LL_KEYWORD_CONST;
@@ -123,60 +123,60 @@ string LL_KEYWORD_STRING;
 string LL_KEYWORD_VOID;
 
 Compiler_Context ll_compiler_context_create() {
-	Compiler_Context result = { 0 };
-	LL_KEYWORD_CONST = ll_intern_string(&result, lit("const"));
-	LL_KEYWORD_IF = ll_intern_string(&result, lit("if"));
-	LL_KEYWORD_FOR = ll_intern_string(&result, lit("for"));
-	LL_KEYWORD_WHILE = ll_intern_string(&result, lit("while"));
-	LL_KEYWORD_ELSE = ll_intern_string(&result, lit("else"));
-	LL_KEYWORD_DO = ll_intern_string(&result, lit("do"));
-	LL_KEYWORD_MATCH = ll_intern_string(&result, lit("match"));
-	LL_KEYWORD_STRUCT = ll_intern_string(&result, lit("struct"));
-	LL_KEYWORD_EXTERN = ll_intern_string(&result, lit("extern"));
-	LL_KEYWORD_RETURN = ll_intern_string(&result, lit("return"));
-	LL_KEYWORD_BREAK = ll_intern_string(&result, lit("break"));
-	LL_KEYWORD_CONTINUE = ll_intern_string(&result, lit("continue"));
+    Compiler_Context result = { 0 };
+    LL_KEYWORD_CONST = ll_intern_string(&result, lit("const"));
+    LL_KEYWORD_IF = ll_intern_string(&result, lit("if"));
+    LL_KEYWORD_FOR = ll_intern_string(&result, lit("for"));
+    LL_KEYWORD_WHILE = ll_intern_string(&result, lit("while"));
+    LL_KEYWORD_ELSE = ll_intern_string(&result, lit("else"));
+    LL_KEYWORD_DO = ll_intern_string(&result, lit("do"));
+    LL_KEYWORD_MATCH = ll_intern_string(&result, lit("match"));
+    LL_KEYWORD_STRUCT = ll_intern_string(&result, lit("struct"));
+    LL_KEYWORD_EXTERN = ll_intern_string(&result, lit("extern"));
+    LL_KEYWORD_RETURN = ll_intern_string(&result, lit("return"));
+    LL_KEYWORD_BREAK = ll_intern_string(&result, lit("break"));
+    LL_KEYWORD_CONTINUE = ll_intern_string(&result, lit("continue"));
 
-	LL_KEYWORD_BOOL = ll_intern_string(&result, lit("bool"));
-	LL_KEYWORD_BOOL8 = ll_intern_string(&result, lit("bool8"));
-	LL_KEYWORD_BOOL16 = ll_intern_string(&result, lit("bool16"));
-	LL_KEYWORD_BOOL32 = ll_intern_string(&result, lit("bool32"));
-	LL_KEYWORD_BOOL64 = ll_intern_string(&result, lit("bool64"));
-	LL_KEYWORD_TRUE = ll_intern_string(&result, lit("true"));
-	LL_KEYWORD_FALSE = ll_intern_string(&result, lit("false"));
+    LL_KEYWORD_BOOL = ll_intern_string(&result, lit("bool"));
+    LL_KEYWORD_BOOL8 = ll_intern_string(&result, lit("bool8"));
+    LL_KEYWORD_BOOL16 = ll_intern_string(&result, lit("bool16"));
+    LL_KEYWORD_BOOL32 = ll_intern_string(&result, lit("bool32"));
+    LL_KEYWORD_BOOL64 = ll_intern_string(&result, lit("bool64"));
+    LL_KEYWORD_TRUE = ll_intern_string(&result, lit("true"));
+    LL_KEYWORD_FALSE = ll_intern_string(&result, lit("false"));
 
-	LL_KEYWORD_UINT = ll_intern_string(&result, lit("uint"));
-	LL_KEYWORD_UINT8 = ll_intern_string(&result, lit("uint8"));
-	LL_KEYWORD_UINT16 = ll_intern_string(&result, lit("uint16"));
-	LL_KEYWORD_UINT32 = ll_intern_string(&result, lit("uint32"));
-	LL_KEYWORD_UINT64 = ll_intern_string(&result, lit("uint64"));
-	LL_KEYWORD_INT = ll_intern_string(&result, lit("int"));
-	LL_KEYWORD_INT8 = ll_intern_string(&result, lit("int8"));
-	LL_KEYWORD_INT16 = ll_intern_string(&result, lit("int16"));
-	LL_KEYWORD_INT32 = ll_intern_string(&result, lit("int32"));
-	LL_KEYWORD_INT64 = ll_intern_string(&result, lit("int64"));
-	LL_KEYWORD_FLOAT16 = ll_intern_string(&result, lit("float16"));
-	LL_KEYWORD_FLOAT32 = ll_intern_string(&result, lit("float32"));
-	LL_KEYWORD_FLOAT64 = ll_intern_string(&result, lit("float64"));
-	LL_KEYWORD_FLOAT = ll_intern_string(&result, lit("float"));
-	LL_KEYWORD_STRING = ll_intern_string(&result, lit("string"));
-	LL_KEYWORD_VOID = ll_intern_string(&result, lit("void"));
+    LL_KEYWORD_UINT = ll_intern_string(&result, lit("uint"));
+    LL_KEYWORD_UINT8 = ll_intern_string(&result, lit("uint8"));
+    LL_KEYWORD_UINT16 = ll_intern_string(&result, lit("uint16"));
+    LL_KEYWORD_UINT32 = ll_intern_string(&result, lit("uint32"));
+    LL_KEYWORD_UINT64 = ll_intern_string(&result, lit("uint64"));
+    LL_KEYWORD_INT = ll_intern_string(&result, lit("int"));
+    LL_KEYWORD_INT8 = ll_intern_string(&result, lit("int8"));
+    LL_KEYWORD_INT16 = ll_intern_string(&result, lit("int16"));
+    LL_KEYWORD_INT32 = ll_intern_string(&result, lit("int32"));
+    LL_KEYWORD_INT64 = ll_intern_string(&result, lit("int64"));
+    LL_KEYWORD_FLOAT16 = ll_intern_string(&result, lit("float16"));
+    LL_KEYWORD_FLOAT32 = ll_intern_string(&result, lit("float32"));
+    LL_KEYWORD_FLOAT64 = ll_intern_string(&result, lit("float64"));
+    LL_KEYWORD_FLOAT = ll_intern_string(&result, lit("float"));
+    LL_KEYWORD_STRING = ll_intern_string(&result, lit("string"));
+    LL_KEYWORD_VOID = ll_intern_string(&result, lit("void"));
 
-	return result;
+    return result;
 }
 
 string ll_intern_string(Compiler_Context* cc, string str) {
     string* s = MAP_GET_OR_PUT(cc->string_interns, str, str, MAP_DEFAULT);
-	return *s;
+    return *s;
 }
 
 
 uint32_t log2_u32(uint32_t x) {
-	uint32_t y;
-	__asm__ ( "\tbsr %1, %0\n"
-			: "=r"(y)
-			: "r" (x)
-		);
-	return y;
+    uint32_t y;
+    __asm__ ( "\tbsr %1, %0\n"
+            : "=r"(y)
+            : "r" (x)
+        );
+    return y;
 }
 

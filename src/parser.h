@@ -4,7 +4,7 @@
 #include "ast.h"
 
 typedef struct {
-	LL_Lexer lexer;
+    LL_Lexer lexer;
 } LL_Parser;
 
 LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename);

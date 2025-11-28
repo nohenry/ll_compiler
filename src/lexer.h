@@ -1,26 +1,26 @@
 #pragma once
 
-#include <stdint.h>
-#include <stdbool.h>
+// #include <stdint.h>
+// #include <stdbool.h>
 #include "common.h"
 
 typedef enum {
-	LL_TOKEN_KIND_NONE = 0,
-	LL_TOKEN_KIND_IDENT = 256,
-	LL_TOKEN_KIND_BUILTIN,
-	LL_TOKEN_KIND_INT,
-	LL_TOKEN_KIND_STRING,
+    LL_TOKEN_KIND_NONE = 0,
+    LL_TOKEN_KIND_IDENT = 256,
+    LL_TOKEN_KIND_BUILTIN,
+    LL_TOKEN_KIND_INT,
+    LL_TOKEN_KIND_STRING,
 
-	/* assigns */
+    /* assigns */
     LL_TOKEN_KIND_ASSIGN_PLUS,
     LL_TOKEN_KIND_ASSIGN_MINUS,
     LL_TOKEN_KIND_ASSIGN_TIMES,
     LL_TOKEN_KIND_ASSIGN_DIVIDE,
     LL_TOKEN_KIND_ASSIGN_PERCENT,
 
-	/* comparison */
+    /* comparison */
     LL_TOKEN_KIND_EQUALS,
-	LL_TOKEN_KIND_NEQUALS,
+    LL_TOKEN_KIND_NEQUALS,
     LL_TOKEN_KIND_LTE,
     LL_TOKEN_KIND_GTE,
 
@@ -38,8 +38,8 @@ typedef struct {
 typedef struct {
     string source;
     size_t pos;
-	LL_Token peeked_token;
-	bool has_peeked_token;
+    LL_Token peeked_token;
+    bool has_peeked_token;
 } LL_Lexer;
 
 

@@ -36,7 +36,30 @@ typedef struct {
 
 #if OC_PLATFORM_WINDOWS
     #define WIN32_LEAN_AND_MEAN
-    #include "Windows.h"
+    // #include "Windows.h"
+    // #define typeof decltype
+
+    #define WINAPI __stdcall
+    #define MEM_RESERVE                     0x00002000  
+    #define MEM_COMMIT                      0x00001000  
+    #define PAGE_READWRITE          0x04    
+    typedef void* HANDLE;
+
+    #define STD_INPUT_HANDLE    ((sint32)-10)
+    #define STD_OUTPUT_HANDLE   ((sint32)-11)
+    #define STD_ERROR_HANDLE    ((sint32)-12)
+
+    _Noreturn void WINAPI ExitProcess(uint32 uExitCode);
+    void* WINAPI VirtualAlloc(void* lpAddress, sword dwSize, sint32 flAllocationType, sint32 flProtect);
+    HANDLE WINAPI GetStdHandle(sint32 nStdHandle);
+
+    sint32 WINAPI WriteFile(
+        HANDLE hFile,
+        const void* lpBuffer,
+        unsigned long nNumberOfBytesToWrite,
+        unsigned long* lpNumberOfBytesWritten,
+        void* lpOverlapped
+    );
 #elif OC_PLATFORM_UNIX
     #include <sys/mman.h>
     #include <unistd.h>
@@ -319,8 +342,23 @@ static inline string string_slice_count(string s, sword start, sword count) {
 /* --------    libc forwards  -------- */
 void *memset(void *s, int c, size_t n);
 void *memcpy(void *dest, const void *src, size_t n);
+int memcmp(const void *a, const void *b, size_t n);
+int strncmp(const char *a, const char *b, size_t n);
 size_t strlen(const char *s);
 _Noreturn void exit(int status);
+typedef void FILE;
+int fopen_s(FILE**, const char*, const char*);
+int fseek(FILE*, int, int);
+size_t ftell(FILE*);
+unsigned long long fwrite(const void *, unsigned long long a, unsigned long long b, FILE *);
+unsigned long long fread(void *, unsigned long long a, unsigned long long b, FILE *);
+void fclose(FILE*);
+void* realloc(void *, size_t);
+void* malloc(size_t);
+void* alloca(size_t);
+#define SEEK_CUR    1
+#define SEEK_END    2
+#define SEEK_SET    0
 
 /* -------- Platform Specific -------- */
 void* oc_allocate_pages(uword required_size);

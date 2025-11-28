@@ -8,22 +8,22 @@
 #define BACKEND_INDENT "    "
 
 typedef enum {
-	LL_BACKEND_IR,
-	LL_BACKEND_LINUX_X86_64_GAS,
-	LL_BACKEND_LINUX_X86_64_ELF,
-	LL_BACKEND_C,
-	LL_BACKEND_QBE,
+    LL_BACKEND_IR,
+    LL_BACKEND_LINUX_X86_64_GAS,
+    LL_BACKEND_LINUX_X86_64_ELF,
+    LL_BACKEND_C,
+    LL_BACKEND_QBE,
 } LL_Backend_Kind;
 
 typedef struct {
-	size_t size, alignment;
+    size_t size, alignment;
 } LL_Backend_Layout;
 
 typedef struct ll_backend {
-	LL_Backend_Kind kind;
-	void* backend;
+    LL_Backend_Kind kind;
+    void* backend;
 
-	LL_Backend_Layout (*get_layout)(LL_Type* ty);
+    LL_Backend_Layout (*get_layout)(LL_Type* ty);
 } LL_Backend;
 
 LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind);

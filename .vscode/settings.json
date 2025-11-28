@@ -10,6 +10,9 @@
         "arena.h": "c",
         "common.h": "c",
         "core1.h": "c",
-        "machine_code.h": "c"
+        "machine_code.h": "c",
+        "stdlib.h": "c",
+        "malloc.h": "c",
+        "limits.h": "c"
     }
 }
