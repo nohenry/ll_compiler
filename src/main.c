@@ -6,9 +6,9 @@
 #include "typer.h"
 #include "eval.h"
 #include "backend.h"
-#include "backends/x86_64_common.h"
+#include "../backends/x86_64_common.h"
 
-int main() {
+int main(void) {
     Compiler_Context cc = ll_compiler_context_create();
 	LL_Parser parser = parser_create_from_file(&cc, "test.t");
 
@@ -26,7 +26,7 @@ int main() {
 	cc.target = &backend_elf;
 
 	ll_typer_run(&cc, &typer, root);
-	print_node(root, 0);
+	print_node(root, 0, &stdout_writer);
 
 
 	ll_backend_generate_statement(&cc, &backend_c, root);

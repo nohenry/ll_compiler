@@ -1,6 +1,6 @@
 
 #include "eval.h"
-#include "backends/ir.h"
+#include "../backends/ir.h"
 
 #define FUNCTION() (&bir->const_stack.items[bir->current_function & CURRENT_INDEX])
 
@@ -17,7 +17,7 @@ static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backe
 		case LL_TYPE_INT:
 			b->locals.items[OPD_VALUE(lvalue)].ival = rvalue.ival;
 			break;
-		default: assert(false); break;
+		default: oc_assert(false); break;
 		}
 
 		break;
@@ -30,11 +30,11 @@ static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backe
 		case LL_TYPE_INT:
 			b->registers.items[OPD_VALUE(lvalue)].ival = rvalue.ival;
 			break;
-		default: assert(false);
+		default: oc_assert(false);
 		}
 		break;
 	}
-	default: TODO("implementn set value operand type\n"); break;
+	default: oc_todo("implementn set value operand type\n"); break;
 	}
 }
 
@@ -57,7 +57,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
 		case LL_TYPE_INT:
 			result.ival = b->locals.items[OPD_VALUE(lvalue)].ival;
 			break;
-		default: assert(false); break;
+		default: oc_assert(false); break;
 		}
 
 		break;
@@ -73,11 +73,11 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
 		case LL_TYPE_INT:
 			result.ival = b->registers.items[OPD_VALUE(lvalue)].ival;
 			break;
-		default: assert(false);
+		default: oc_assert(false);
 		}
 		break;
 	}
-	default: TODO("implementn get value operand type\n"); break;
+	default: oc_todo("implementn get value operand type\n"); break;
 	}
 
 	return result;
@@ -85,25 +85,25 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
 
 
 static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src, bool load) {
-    uint32_t opcode;
-    LL_Type* from_type;
     LL_Type* to_type = ir_get_operand_type(FUNCTION(), result);
+    // @TODO: why did we have this???
+    // LL_Type* from_type;
 
-    switch (OPD_TYPE(src)) {
-    case LL_IR_OPERAND_LOCAL_BIT: {
-        from_type = FUNCTION()->locals.items[OPD_VALUE(src)].ident->base.type;
-        break;
-    }
-    case LL_IR_OPERAND_REGISTER_BIT: {
-        from_type = ir_get_operand_type(FUNCTION(), src);
-        break;
-    }
-    case LL_IR_OPERAND_IMMEDIATE_BIT: {
-        from_type = to_type;
-        break;
-    }
-    default: printf("todo: add load operands\n"); break;
-    }
+    // switch (OPD_TYPE(src)) {
+    // case LL_IR_OPERAND_LOCAL_BIT: {
+    //     from_type = FUNCTION()->locals.items[OPD_VALUE(src)].ident->base.type;
+    //     break;
+    // }
+    // case LL_IR_OPERAND_REGISTER_BIT: {
+    //     from_type = ir_get_operand_type(FUNCTION(), src);
+    //     break;
+    // }
+    // case LL_IR_OPERAND_IMMEDIATE_BIT: {
+    //     from_type = to_type;
+    //     break;
+    // }
+    // default: oc_todo("add load operands"); break;
+    // }
 
     switch (OPD_TYPE(src)) {
     case LL_IR_OPERAND_LOCAL_BIT: {
@@ -120,7 +120,7 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     }
     case LL_IR_OPERAND_REGISTER_BIT: {
 		if (load) {
-			assert(false);
+			oc_assert(false);
 		} else {
 			switch (to_type->kind) {
 			case LL_TYPE_UINT:
@@ -147,7 +147,7 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
 		}
         break;
     }
-    default: printf("todo: add load operands\n"); break;
+    default: oc_todo("add load operands"); break;
     }
 }
 
@@ -155,6 +155,9 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 	size_t i;
     int32_t opcode1, opcode2;
 	LL_Type* type;
+
+    (void)opcode1;
+    (void)opcode2;
 
 	for (i = 0; i < block->ops.count; ) {
 		LL_Ir_Opcode opcode = (LL_Ir_Opcode)block->ops.items[i];
@@ -195,7 +198,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 			case LL_TYPE_BOOL: \
 				b->registers.items[OPD_VALUE(operands[0])].uval = (b->registers.items[OPD_VALUE(operands[1])].uval op b->registers.items[OPD_VALUE(operands[2])].uval) ? 1 : 0; \
 				break; \
-			default: TODO("implement types for operations"); break; \
+			default: oc_todo("implement types for operations"); break; \
 			}
 		case LL_IR_OPCODE_EQ: DO_OP(==); break;
 		case LL_IR_OPCODE_NEQ: DO_OP(!=); break;
@@ -213,7 +216,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 			case LL_TYPE_UINT: \
 				b->registers.items[OPD_VALUE(operands[0])].uval = ll_eval_get_value(cc, b, bir, operands[1]).uval op ll_eval_get_value(cc, b, bir, operands[2]).uval; \
 				break; \
-			default: TODO("implement types for operations"); break; \
+			default: oc_todo("implement types for operations"); break; \
 			}
 		case LL_IR_OPCODE_ADD: DO_OP(+) break; 
         case LL_IR_OPCODE_SUB: DO_OP(-) break; 
@@ -235,10 +238,10 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 
 		   	break;
 		}
-		default: printf("handle other op\n"); break;
+		default: oc_todo("handle other op"); break;
 		}
 
-		size_t count = ir_get_op_count(cc, bir, block->ops.items, i);
+		size_t count = ir_get_op_count(cc, bir, (LL_Ir_Opcode*)block->ops.items, i);
 		i += count;
 	}
 }
@@ -253,7 +256,7 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 	if (bir->free_block) {
 		memcpy(&bir->blocks.items[entry_block_ref], &entry_block, sizeof(entry_block));
 	} else {
-		arena_da_append(&cc->arena, &bir->blocks, entry_block);
+		oc_array_append(&cc->arena, &bir->blocks, entry_block);
 	}
 
 	LL_Ir_Function fn = {
@@ -264,7 +267,7 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 		.block_count = 1,
 	};
 
-	arena_da_append(&cc->arena, &bir->const_stack, fn);
+	oc_array_append(&cc->arena, &bir->const_stack, fn);
 	/* memcpy(&bir->fns.items[0], &fn, sizeof(fn)); */
 
 	int32_t last_function = bir->current_function;
@@ -275,10 +278,10 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 	result_op = ir_generate_expression(cc, bir, expr, false);
 
 	b->registers.count = 0;
-	arena_da_reserve(&cc->arena, &b->registers, FUNCTION()->registers.count);
+	oc_array_reserve(&cc->arena, &b->registers, FUNCTION()->registers.count);
 
 	b->locals.count = 0;
-	arena_da_reserve(&cc->arena, &b->locals, FUNCTION()->locals.count);
+	oc_array_reserve(&cc->arena, &b->locals, FUNCTION()->locals.count);
 
 	LL_Ir_Block_Ref current_block = fn.entry;
 	while (current_block) {

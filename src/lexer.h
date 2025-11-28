@@ -31,12 +31,12 @@ typedef struct {
     LL_Token_Kind kind;
     union {
         int64_t i64;
-        String_View str;
+        string str;
     };
 } LL_Token;
 
 typedef struct {
-    String_View source;
+    string source;
     size_t pos;
 	LL_Token peeked_token;
 	bool has_peeked_token;
@@ -47,6 +47,6 @@ bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
 void lexer_consume(Compiler_Context *cc, LL_Lexer* lexer);
 bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
 void lexer_print_token_raw(LL_Token* token);
-void lexer_print_token_kind(LL_Token_Kind, FILE* fd);
-void lexer_print_token_raw_to_fd(LL_Token* token, FILE* fd);
+void lexer_print_token_kind(LL_Token_Kind, Oc_Writer* w);
+void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w);
 void lexer_print_token(LL_Token* token);

@@ -11,14 +11,18 @@
 void ll_print_type_raw(struct ll_type* type, FILE* fd);
 
 LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename) {
-    FILE* input = fopen(filename, "r");
+    FILE* input;
+    if (!fopen_s(&input, filename, "r")) {
+        eprint("unable to open file ''\n", filename);
+        oc_exit(-1);
+    }
 
     fseek(input, 0, SEEK_END);
     size_t input_size = ftell(input);
     fseek(input, 0, SEEK_SET);
 
     uint8_t* input_contents = malloc(input_size);
-    if (!input_contents) ABORT("OOM");
+    if (!input_contents) oc_oom();
 
     fread(input_contents, 1, input_size, input);
 	fclose(input);
@@ -41,20 +45,20 @@ LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename) {
 #define CREATE_NODE(_kind, value) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), value); create_node(cc, parser, (Ast_Base*)&v, sizeof(v)); })
 
 #define _CREATE_ASSIGN_KIND(_kind, type) _Generic((type), \
-        Ast_Base : 1,                       \
+        Ast_Base : (void)0,                       \
         default : v.base.kind = _kind                    \
     )
 
 static Ast_Base* create_node(Compiler_Context* cc, LL_Parser* parser, Ast_Base* node, size_t size) {
-    return arena_memdup(&cc->arena, node, size);
+    return oc_arena_dup(&cc->arena, node, size);
 }
 
 static void unexpected_token(Compiler_Context* cc, LL_Parser* parser, char* file, int line) {
     LL_Token tok;
     PEEK(&tok);
-    fprintf(stderr, "%s line %d: \x1b[31;1merror\x1b[0m\x1b[1m: unexpected token '", file, line);
-    lexer_print_token_raw_to_fd(&tok, stderr);
-    fprintf(stderr, "' (%d)\x1b[0m\n", tok.kind);
+    eprint("%s line %d: \x1b[31;1merror\x1b[0m\x1b[1m: unexpected token '", file, line);
+    lexer_print_token_raw_to_writer(&tok, &stderr_writer);
+    eprint("' (%d)\x1b[0m\n", tok.kind);
 }
 
 static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind kind, LL_Token* out, char* file, int line) {
@@ -62,11 +66,11 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
     PEEK(&tok);
     if (tok.kind != kind) {
 
-		fprintf(stderr, "%s line %d: \x1b[31;1merror\x1b[0m\x1b[1m: expected token '", file, line);
-		lexer_print_token_kind(kind, stderr);
-		fprintf(stderr, "' (%d), but found '", tok.kind);
-		lexer_print_token_raw_to_fd(&tok, stderr);
-		fprintf(stderr, "' \x1b[0m\n");
+		eprint("%s line %d: \x1b[31;1merror\x1b[0m\x1b[1m: expected token '", file, line);
+		lexer_print_token_kind(kind, &stderr_writer);
+		eprint("' (%d), but found '", tok.kind);
+		lexer_print_token_raw_to_writer(&tok, &stderr_writer);
+		eprint("' \x1b[0m\n");
 
         return false;
     } else {
@@ -142,12 +146,12 @@ Ast_Block* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
 	PEEK(&token);
 
 	while (token.kind != '}') {
-		arena_da_append(&cc->arena, &block, parser_parse_statement(cc, parser));
+		oc_array_append(&cc->arena, &block, parser_parse_statement(cc, parser));
 		PEEK(&token);
 	}
 
 	CONSUME();
-	return arena_memdup(&cc->arena, &block, sizeof(block));
+	return oc_arena_dup(&cc->arena, &block, sizeof(block));
 }
 
 Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
@@ -199,7 +203,7 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 			PEEK(&token);
 			while (token.kind != ')') {
 				Ast_Parameter parameter = parser_parse_parameter(cc, parser);
-				arena_da_append(&cc->arena, &parameters, parameter);
+				oc_array_append(&cc->arena, &parameters, parameter);
 				PEEK(&token);
 
 				if (token.kind != ')') {
@@ -313,7 +317,7 @@ Ast_Base* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
             expr1 = CREATE_NODE(AST_KIND_KEY_VALUE, ((Ast_Key_Value) { .key = expr1, .value = expr2 }));
         }
 
-        arena_da_append(&cc->arena, &result, expr1);
+        oc_array_append(&cc->arena, &result, expr1);
         
         PEEK(&token);
         if (token.kind != '}') {
@@ -341,7 +345,7 @@ Ast_Base* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser
             expr2 = parser_parse_expression(cc, parser, 0, false);
             expr1 = CREATE_NODE(AST_KIND_KEY_VALUE, ((Ast_Key_Value) { .key = expr1, .value = expr2 }));
         }
-        arena_da_append(&cc->arena, &result, expr1);
+        oc_array_append(&cc->arena, &result, expr1);
         
         PEEK(&token);
         if (token.kind != ']') {
@@ -364,15 +368,15 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 #pragma GCC diagnostic ignored "-Wswitch"
 	case '-':
 		CONSUME();
-		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '-', .right = parser_parse_expression(cc, parser, 140, false) }));
+		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = token, .right = parser_parse_expression(cc, parser, 140, false) }));
 		break;
 	case '*':
 		CONSUME();
-		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '*', .right = parser_parse_expression(cc, parser, 140, false) }));
+		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = token, .right = parser_parse_expression(cc, parser, 140, false) }));
 		break;
 	case '&':
 		CONSUME();
-		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = '&', .right = parser_parse_expression(cc, parser, 140, false) }));
+		left = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = token, .right = parser_parse_expression(cc, parser, 140, false) }));
 		break;
 #pragma GCC diagnostic pop
 	case LL_TOKEN_KIND_IDENT:
@@ -459,7 +463,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 		if (bin_precedence != 0 && bin_precedence >= last_precedence) {
 			CONSUME();
 			right = parser_parse_expression(cc, parser, bin_precedence, false);
-			left = CREATE_NODE(AST_KIND_BINARY_OP, ((Ast_Operation){ .left = left, .right = right, .op = token.kind }));
+			left = CREATE_NODE(AST_KIND_BINARY_OP, ((Ast_Operation){ .left = left, .right = right, .op = { token.kind } }));
 		} else if (post_precedence != 0 && post_precedence >= last_precedence) {
 			switch (token.kind) {
 #pragma GCC diagnostic push
@@ -470,7 +474,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 					Ast_List arguments = { 0 };
 					PEEK(&token);
 					while (token.kind != ')') {
-						arena_da_append(&cc->arena, &arguments, parser_parse_expression(cc, parser, 0, false));
+						oc_array_append(&cc->arena, &arguments, parser_parse_expression(cc, parser, 0, false));
 
 						PEEK(&token);
 						if (token.kind != ')') {
@@ -510,7 +514,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int l
 					break;
 				}
 #pragma GCC diagnostic pop
-				default: assert(false); break;
+				default: oc_assert(false); break;
 			}
 		} else break;
 	}
@@ -578,15 +582,16 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
 
     default:
         UNEXPECTED();
+        result = NULL;
         break;
     }
 
     return result;
 }
 
-void print_storage_class(LL_Storage_Class storage_class) {
-	if (storage_class & LL_STORAGE_CLASS_EXTERN) printf("extern ");
-	if (storage_class & LL_STORAGE_CLASS_STATIC) printf("static ");
+void print_storage_class(LL_Storage_Class storage_class, Oc_Writer* w) {
+	if (storage_class & LL_STORAGE_CLASS_EXTERN) wprint(w, "extern ");
+	if (storage_class & LL_STORAGE_CLASS_STATIC) wprint(w, "static ");
 }
 
 const char* get_node_kind(Ast_Base* node) {
@@ -616,21 +621,21 @@ const char* get_node_kind(Ast_Base* node) {
 	}
 }
 
-void print_node_value(Ast_Base* node) {
+void print_node_value(Ast_Base* node, Oc_Writer* w) {
 	switch (node->kind) {
-		case AST_KIND_LITERAL_INT: printf("%" PRId64, AST_AS(node, Ast_Literal)->i64); break;
-		case AST_KIND_LITERAL_STRING: printf(FMT_SV_FMT, FMT_SV_ARG(AST_AS(node, Ast_Literal)->str)); break;
-		case AST_KIND_IDENT: printf(FMT_SV_FMT, FMT_SV_ARG(AST_AS(node, Ast_Ident)->str)); break;
-		case AST_KIND_BINARY_OP: lexer_print_token_raw(&AST_AS(node, Ast_Operation)->op); break;
-		case AST_KIND_PRE_OP: lexer_print_token_raw(&AST_AS(node, Ast_Operation)->op); break;
+		case AST_KIND_LITERAL_INT:    wprint(w, "{}", AST_AS(node, Ast_Literal)->i64); break;
+		case AST_KIND_LITERAL_STRING: wprint(w, "{}", AST_AS(node, Ast_Literal)->str); break;
+		case AST_KIND_IDENT:          wprint(w, "{}", AST_AS(node, Ast_Ident)->str); break;
+		case AST_KIND_BINARY_OP: lexer_print_token_raw_to_writer(&AST_AS(node, Ast_Operation)->op, w); break;
+		case AST_KIND_PRE_OP:    lexer_print_token_raw_to_writer(&AST_AS(node, Ast_Operation)->op, w); break;
 		case AST_KIND_INVOKE: break;
 		case AST_KIND_INITIALIZER: break;
 		case AST_KIND_ARRAY_INITIALIZER: break;
 		case AST_KIND_KEY_VALUE: break;
 		case AST_KIND_BLOCK: break;
 		case AST_KIND_CONST: break;
-		case AST_KIND_VARIABLE_DECLARATION: print_storage_class(AST_AS(node, Ast_Variable_Declaration)->storage_class); break;
-		case AST_KIND_FUNCTION_DECLARATION: print_storage_class(AST_AS(node, Ast_Function_Declaration)->storage_class); break;
+		case AST_KIND_VARIABLE_DECLARATION: print_storage_class(AST_AS(node, Ast_Variable_Declaration)->storage_class, w); break;
+		case AST_KIND_FUNCTION_DECLARATION: print_storage_class(AST_AS(node, Ast_Function_Declaration)->storage_class, w); break;
 		case AST_KIND_PARAMETER: break;
 		case AST_KIND_RETURN: break;
 		case AST_KIND_BREAK: break;
@@ -645,117 +650,117 @@ void print_node_value(Ast_Base* node) {
 	}
 
 	if (node->has_const) {
-		printf(" %" PRIu64, node->const_value.uval);
+		wprint(w, " {}", node->const_value.uval);
 	}
 }
 
-void print_node(Ast_Base* node, int indent) {
+void print_node(Ast_Base* node, int indent, Oc_Writer* w) {
 	int i;
 	for (i = 0; i < indent; ++i) {
-		printf("  ");
+		wprint(w, "  ");
 	}
-	printf("%s ", get_node_kind(node));
-	print_node_value(node);
-	printf("\n");
+	wprint(w, "{} ", get_node_kind(node));
+	print_node_value(node, w);
+	wprint(w, "\n");
 	switch (node->kind) {
 		case AST_KIND_BINARY_OP: 
-			print_node(AST_AS(node, Ast_Operation)->left, indent + 1);
-			print_node(AST_AS(node, Ast_Operation)->right, indent + 1);
+			print_node(AST_AS(node, Ast_Operation)->left, indent + 1, w);
+			print_node(AST_AS(node, Ast_Operation)->right, indent + 1, w);
 			break;
 		case AST_KIND_PRE_OP: 
-			print_node(AST_AS(node, Ast_Operation)->right, indent + 1);
+			print_node(AST_AS(node, Ast_Operation)->right, indent + 1, w);
 			break;
 
 		case AST_KIND_INVOKE: 
-			print_node(AST_AS(node, Ast_Invoke)->expr, indent + 1);
+			print_node(AST_AS(node, Ast_Invoke)->expr, indent + 1, w);
 			for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
-				print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->arguments.items[i], indent + 1);
+				print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->arguments.items[i], indent + 1, w);
 			}
 			break;
 
 		case AST_KIND_INITIALIZER: 
 		case AST_KIND_ARRAY_INITIALIZER: 
 			for (i = 0; i < AST_AS(node, Ast_Initializer)->count; ++i) {
-				print_node((Ast_Base*)AST_AS(node, Ast_Initializer)->items[i], indent + 1);
+				print_node((Ast_Base*)AST_AS(node, Ast_Initializer)->items[i], indent + 1, w);
 			}
 			break;
 
 		case AST_KIND_KEY_VALUE: 
-			print_node((Ast_Base*)AST_AS(node, Ast_Key_Value)->key, indent + 1);
-			print_node((Ast_Base*)AST_AS(node, Ast_Key_Value)->value, indent + 1);
+			print_node((Ast_Base*)AST_AS(node, Ast_Key_Value)->key, indent + 1, w);
+			print_node((Ast_Base*)AST_AS(node, Ast_Key_Value)->value, indent + 1, w);
 			break;
 
 		case AST_KIND_CONST:
-			print_node(AST_AS(node, Ast_Marker)->expr, indent + 1);
+			print_node(AST_AS(node, Ast_Marker)->expr, indent + 1, w);
 			break;
 		case AST_KIND_VARIABLE_DECLARATION:
-			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->type, indent + 1);
-			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1);
-			if (AST_AS(node, Ast_Variable_Declaration)->initializer) print_node(AST_AS(node, Ast_Variable_Declaration)->initializer, indent + 1);
+			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->type, indent + 1, w);
+			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1, w);
+			if (AST_AS(node, Ast_Variable_Declaration)->initializer) print_node(AST_AS(node, Ast_Variable_Declaration)->initializer, indent + 1, w);
 			break;
 
 		case AST_KIND_FUNCTION_DECLARATION:
-			print_node(AST_AS(node, Ast_Function_Declaration)->return_type, indent + 1);
-			print_node((Ast_Base*)AST_AS(node, Ast_Function_Declaration)->ident, indent + 1);
+			print_node(AST_AS(node, Ast_Function_Declaration)->return_type, indent + 1, w);
+			print_node((Ast_Base*)AST_AS(node, Ast_Function_Declaration)->ident, indent + 1, w);
 			for (i = 0; i < AST_AS(node, Ast_Function_Declaration)->parameters.count; ++i) {
-				print_node((Ast_Base*)&AST_AS(node, Ast_Function_Declaration)->parameters.items[i], indent + 1);
+				print_node((Ast_Base*)&AST_AS(node, Ast_Function_Declaration)->parameters.items[i], indent + 1, w);
 			}
-			if (AST_AS(node, Ast_Function_Declaration)->body) print_node(AST_AS(node, Ast_Function_Declaration)->body, indent + 1);
+			if (AST_AS(node, Ast_Function_Declaration)->body) print_node(AST_AS(node, Ast_Function_Declaration)->body, indent + 1, w);
 			break;
 
 		case AST_KIND_PARAMETER:
 			if (AST_AS(node, Ast_Variable_Declaration)->type)
-				print_node(AST_AS(node, Ast_Variable_Declaration)->type, indent + 1);
-			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1);
+				print_node(AST_AS(node, Ast_Variable_Declaration)->type, indent + 1, w);
+			print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1, w);
 			break;
 		case AST_KIND_RETURN:
 			if (AST_AS(node, Ast_Control_Flow)->expr)
-				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1);
+				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1, w);
 			break;
 		case AST_KIND_BREAK:
 			if (AST_AS(node, Ast_Control_Flow)->expr)
-				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1);
+				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1, w);
 			break;
 		case AST_KIND_CONTINUE:
 			if (AST_AS(node, Ast_Control_Flow)->expr)
-				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1);
+				print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1, w);
 			break;
 		case AST_KIND_IF:
 			if (AST_AS(node, Ast_If)->cond)
-				print_node(AST_AS(node, Ast_If)->cond, indent + 1);
+				print_node(AST_AS(node, Ast_If)->cond, indent + 1, w);
 			if (AST_AS(node, Ast_If)->body)
-				print_node(AST_AS(node, Ast_If)->body, indent + 1);
+				print_node(AST_AS(node, Ast_If)->body, indent + 1, w);
 			if (AST_AS(node, Ast_If)->else_clause)
-				print_node(AST_AS(node, Ast_If)->else_clause, indent + 1);
+				print_node(AST_AS(node, Ast_If)->else_clause, indent + 1, w);
 			break;
 		case AST_KIND_FOR:
 			if (AST_AS(node, Ast_Loop)->init)
-				print_node(AST_AS(node, Ast_Loop)->init, indent + 1);
+				print_node(AST_AS(node, Ast_Loop)->init, indent + 1, w);
 			if (AST_AS(node, Ast_Loop)->cond)
-				print_node(AST_AS(node, Ast_Loop)->cond, indent + 1);
+				print_node(AST_AS(node, Ast_Loop)->cond, indent + 1, w);
 			if (AST_AS(node, Ast_Loop)->update)
-				print_node(AST_AS(node, Ast_Loop)->update, indent + 1);
+				print_node(AST_AS(node, Ast_Loop)->update, indent + 1, w);
 			if (AST_AS(node, Ast_Loop)->body)
-				print_node(AST_AS(node, Ast_Loop)->body, indent + 1);
+				print_node(AST_AS(node, Ast_Loop)->body, indent + 1, w);
 			break;
 
 		case AST_KIND_INDEX:
-			print_node(AST_AS(node, Ast_Operation)->left, indent + 1);
+			print_node(AST_AS(node, Ast_Operation)->left, indent + 1, w);
 			if (AST_AS(node, Ast_Operation)->right)
-				print_node(AST_AS(node, Ast_Operation)->right, indent + 1);
+				print_node(AST_AS(node, Ast_Operation)->right, indent + 1, w);
 			break;
 
 		case AST_KIND_CAST:
-			print_node(AST_AS(node, Ast_Cast)->expr, indent + 1);
+			print_node(AST_AS(node, Ast_Cast)->expr, indent + 1, w);
 			break;
 
 		case AST_KIND_TYPE_POINTER:
-			print_node(AST_AS(node, Ast_Type_Pointer)->element, indent + 1);
+			print_node(AST_AS(node, Ast_Type_Pointer)->element, indent + 1, w);
 			break;
 
 		case AST_KIND_BLOCK:
 			for (i = 0; i < AST_AS(node, Ast_Block)->count; ++i) {
-				print_node(AST_AS(node, Ast_Block)->items[i], indent + 1);
+				print_node(AST_AS(node, Ast_Block)->items[i], indent + 1, w);
 			}
 
 		default: break;

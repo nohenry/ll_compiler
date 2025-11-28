@@ -555,7 +555,7 @@ typedef enum {
 	OPERANDS_TYPE_modr,
 } X86_64_Operands_Type;
 
-// TODO: maybe add __attribute__((packed))
+// oc_todo: maybe add __attribute__((packed))
 typedef struct {
 	uint32_t operands; // top 3 is Operands_Type, next 1 is don't add rex, bottom 4 is argument
 	uint16_t opcode;

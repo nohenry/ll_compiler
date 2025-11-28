@@ -90,7 +90,7 @@ DO_IDENTIFIER:
                     return true;
                 }
             }
-            assert(false);
+            oc_assert(false);
         }
         case '0' ... '9': {
             int64_t integral = 0;
@@ -168,7 +168,7 @@ DONE_NUMBER:
         }
 		case '"': {
             bool needs_alloc = false;
-            String_Builder alloc_string = { 0 };
+            Oc_String_Builder alloc_string = { 0 };
 			lexer->pos++;
             size_t last_copied = lexer->pos;
 
@@ -182,34 +182,34 @@ DONE_NUMBER:
                         if (lexer->pos + 1 < lexer->source.len) {
                             switch (lexer->source.ptr[lexer->pos + 1]) {
                                 case 'n':
-                                    arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied);
-                                    arena_sb_append_cstr(&cc->arena, &alloc_string, "\n");
+                                    oc_sb_append_string(&alloc_string, string_slice(lexer->source, last_copied, lexer->pos));
+                                    oc_sb_append_char_str(&alloc_string, "\n");
                                     last_copied = lexer->pos + 2;
                                     lexer->pos++;
                                     needs_alloc = true;
                                     break;
                                 case 't':
-                                    arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied);
-                                    arena_sb_append_cstr(&cc->arena, &alloc_string, "\t");
+                                    oc_sb_append_string(&alloc_string, string_slice(lexer->source, last_copied, lexer->pos));
+                                    oc_sb_append_char_str(&alloc_string, "\t");
                                     last_copied = lexer->pos + 2;
                                     lexer->pos++;
                                     needs_alloc = true;
                                     break;
                                 case 'r':
-                                    arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied);
-                                    arena_sb_append_cstr(&cc->arena, &alloc_string, "\r");
+                                    oc_sb_append_string(&alloc_string, string_slice(lexer->source, last_copied, lexer->pos));
+                                    oc_sb_append_char_str(&alloc_string, "\r");
                                     last_copied = lexer->pos + 2;
                                     lexer->pos++;
                                     needs_alloc = true;
                                     break;
                                 case 'x': {
                                     uint8_t b = 0;
-                                    arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied);
+                                    oc_sb_append_string(&alloc_string, string_slice(lexer->source, last_copied, lexer->pos));
                                     last_copied = lexer->pos + 4;
                                     lexer->pos++;
 
                                     if (lexer->pos + 2 >= lexer->source.len) {
-                                        fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: Expected a byte value after \\x\x1b[0m\n");
+                                        eprint("\x1b[31;1merror\x1b[0;1m: Expected a byte value after \\x\x1b[0m\n");
                                         continue;
                                     }
                                     switch (lexer->source.ptr[lexer->pos + 1]) {
@@ -217,7 +217,7 @@ DONE_NUMBER:
                                         case 'a' ... 'f': b += 16 * (lexer->source.ptr[lexer->pos + 1] - 'a' + 0xa); break;
                                         case 'A' ... 'F': b += 16 * (lexer->source.ptr[lexer->pos + 1] - 'A' + 0xa); break;
                                         default:
-                                            fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: Expected a valid hex value after \\x\x1b[0m\n");
+                                            eprint("\x1b[31;1merror\x1b[0;1m: Expected a valid hex value after \\x\x1b[0m\n");
                                             continue;
                                     }
                                     switch (lexer->source.ptr[lexer->pos + 2]) {
@@ -225,10 +225,10 @@ DONE_NUMBER:
                                         case 'a' ... 'f': b += (lexer->source.ptr[lexer->pos + 2] - 'a' + 0xa); break;
                                         case 'A' ... 'F': b += (lexer->source.ptr[lexer->pos + 2] - 'A' + 0xa); break;
                                         default:
-                                            fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: Expected a valid hex value after \\x\x1b[0m\n");
+                                            eprint("\x1b[31;1merror\x1b[0;1m: Expected a valid hex value after \\x\x1b[0m\n");
                                             continue;
                                     }
-                                    arena_da_append(&cc->arena, &alloc_string, b);
+                                    oc_sb_append_char(&alloc_string, b);
                                     lexer->pos += 2;
                                     needs_alloc = true;
                                     break;
@@ -243,7 +243,7 @@ DONE_NUMBER:
 			lexer->pos++; // for closing quote
 
             if (needs_alloc) {
-                arena_sb_append_buf(&cc->arena, &alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied - 1);
+                oc_sb_append_char_str_len(&alloc_string, &lexer->source.ptr[last_copied], lexer->pos - last_copied - 1);
                 out->str.ptr = alloc_string.items;
                 out->str.len = alloc_string.count;
                 out->str = ll_intern_string(cc, out->str);
@@ -284,80 +284,79 @@ DONE_NUMBER:
 }
 
 void lexer_print_token_raw(LL_Token* token) {
-	lexer_print_token_raw_to_fd(token, stdout);
+	lexer_print_token_raw_to_writer(token, &stdout_writer);
 }
 
-void lexer_print_token_kind(LL_Token_Kind kind, FILE* fd) {
+void lexer_print_token_kind(LL_Token_Kind kind, Oc_Writer* w) {
     switch (kind) {
     case LL_TOKEN_KIND_IDENT:
-        fprintf(fd, "identifier");
+        wprint(w, "identifier");
         break;
     case LL_TOKEN_KIND_BUILTIN:
-        fprintf(fd, "builtin");
+        wprint(w, "builtin");
         break;
     case LL_TOKEN_KIND_INT:
-        fprintf(fd, "integer");
+        wprint(w, "integer");
         break;
     case LL_TOKEN_KIND_STRING:
-        fprintf(fd, "string");
+        wprint(w, "string");
         break;
 
-    case LL_TOKEN_KIND_ASSIGN_PLUS: fprintf(fd, "+="); break;
-    case LL_TOKEN_KIND_ASSIGN_MINUS: fprintf(fd, "-="); break;
-    case LL_TOKEN_KIND_ASSIGN_TIMES: fprintf(fd, "*="); break;
-    case LL_TOKEN_KIND_ASSIGN_DIVIDE: fprintf(fd, "/="); break;
-    case LL_TOKEN_KIND_ASSIGN_PERCENT: fprintf(fd, "%%="); break;
+    case LL_TOKEN_KIND_ASSIGN_PLUS: wprint(w, "+="); break;
+    case LL_TOKEN_KIND_ASSIGN_MINUS: wprint(w, "-="); break;
+    case LL_TOKEN_KIND_ASSIGN_TIMES: wprint(w, "*="); break;
+    case LL_TOKEN_KIND_ASSIGN_DIVIDE: wprint(w, "/="); break;
+    case LL_TOKEN_KIND_ASSIGN_PERCENT: wprint(w, "%="); break;
 
-    case LL_TOKEN_KIND_EQUALS: fprintf(fd, "=="); break;
-    case LL_TOKEN_KIND_NEQUALS: fprintf(fd, "=="); break;
-    case LL_TOKEN_KIND_LTE: fprintf(fd, "<="); break;
-    case LL_TOKEN_KIND_GTE: fprintf(fd, ">="); break;
+    case LL_TOKEN_KIND_EQUALS: wprint(w, "=="); break;
+    case LL_TOKEN_KIND_NEQUALS: wprint(w, "=="); break;
+    case LL_TOKEN_KIND_LTE: wprint(w, "<="); break;
+    case LL_TOKEN_KIND_GTE: wprint(w, ">="); break;
 
-    case LL_TOKEN_KIND_RANGE: fprintf(fd, ".."); break;
+    case LL_TOKEN_KIND_RANGE: wprint(w, ".."); break;
     
     default:
-        fprintf(fd, "%c", (char)kind);
+        wprint(w, "{}", (char)kind);
         break;
     }
 }
 
-
-void lexer_print_token_raw_to_fd(LL_Token* token, FILE* fd) {
+void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w) {
     switch (token->kind) {
     case LL_TOKEN_KIND_IDENT:
-        fprintf(fd, FMT_SV_FMT, FMT_SV_ARG(token->str));
+        wprint(w, "{}", token->str);
         break;
     case LL_TOKEN_KIND_BUILTIN:
-        fprintf(fd, FMT_SV_FMT, FMT_SV_ARG(token->str));
+        wprint(w, "{}", token->str);
         break;
     case LL_TOKEN_KIND_INT:
-        fprintf(fd, "%" PRId64, token->i64);
+        wprint(w, "{}", token->i64);
         break;
     case LL_TOKEN_KIND_STRING:
-        fprintf(fd, FMT_SV_FMT, FMT_SV_ARG(token->str));
+        wprint(w, "{}", token->str);
         break;
 
-    case LL_TOKEN_KIND_ASSIGN_PLUS: fprintf(fd, "+="); break;
-    case LL_TOKEN_KIND_ASSIGN_MINUS: fprintf(fd, "-="); break;
-    case LL_TOKEN_KIND_ASSIGN_TIMES: fprintf(fd, "*="); break;
-    case LL_TOKEN_KIND_ASSIGN_DIVIDE: fprintf(fd, "/="); break;
-    case LL_TOKEN_KIND_ASSIGN_PERCENT: fprintf(fd, "%%="); break;
+    case LL_TOKEN_KIND_ASSIGN_PLUS: wprint(w, "+="); break;
+    case LL_TOKEN_KIND_ASSIGN_MINUS: wprint(w, "-="); break;
+    case LL_TOKEN_KIND_ASSIGN_TIMES: wprint(w, "*="); break;
+    case LL_TOKEN_KIND_ASSIGN_DIVIDE: wprint(w, "/="); break;
+    case LL_TOKEN_KIND_ASSIGN_PERCENT: wprint(w, "%="); break;
 
-    case LL_TOKEN_KIND_EQUALS: fprintf(fd, "=="); break;
-    case LL_TOKEN_KIND_NEQUALS: fprintf(fd, "=="); break;
-    case LL_TOKEN_KIND_LTE: fprintf(fd, "<="); break;
-    case LL_TOKEN_KIND_GTE: fprintf(fd, ">="); break;
+    case LL_TOKEN_KIND_EQUALS: wprint(w, "=="); break;
+    case LL_TOKEN_KIND_NEQUALS: wprint(w, "=="); break;
+    case LL_TOKEN_KIND_LTE: wprint(w, "<="); break;
+    case LL_TOKEN_KIND_GTE: wprint(w, ">="); break;
 
-    case LL_TOKEN_KIND_RANGE: fprintf(fd, ".."); break;
+    case LL_TOKEN_KIND_RANGE: wprint(w, ".."); break;
     
     default:
-        fprintf(fd, "%c", (char)token->kind);
+        wprint(w, "{}", (char)token->kind);
         break;
     }
 }
 
 void lexer_print_token(LL_Token* token) {
-    printf("Token: ");
+    print("Token: ");
     lexer_print_token_raw(token);
-    printf("\n");
+    print("\n");
 }

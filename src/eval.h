@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backends/ir.h"
+#include "../backends/ir.h"
 #include "eval_value.h"
 
 typedef struct {

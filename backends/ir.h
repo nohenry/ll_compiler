@@ -1,7 +1,7 @@
 #pragma once
 
 #include "stdint.h"
-#include "../typer.h"
+#include "../src/typer.h"
 
 typedef uint32_t LL_Ir_Operand;
 #define LL_IR_OPERAND_VALUE_MASK 0xFFFFFFFu
@@ -34,7 +34,7 @@ typedef struct {
 	LL_Ir_Register* items;
 } LL_Ir_Register_List;
 
-typedef enum {
+enum {
 	LL_IR_OPCODE_RET,
 	LL_IR_OPCODE_RETVALUE,
 	LL_IR_OPCODE_STORE,
@@ -63,7 +63,8 @@ typedef enum {
 	LL_IR_OPCODE_AND,
 	LL_IR_OPCODE_OR,
 	LL_IR_OPCODE_XOR,
-} LL_Ir_Opcode;
+};
+typedef uint32 LL_Ir_Opcode;
 
 typedef struct {
 	LL_Ir_Opcode opcode;
@@ -72,7 +73,7 @@ typedef struct {
 
 typedef struct {
 	size_t count, capacity;
-	uint32_t* items;
+	LL_Ir_Opcode* items;
 } LL_Ir_Op_List;
 
 typedef struct ll_ir_block {
@@ -154,7 +155,7 @@ typedef struct ll_backend_ir {
 	uint8_t* initializer_ptr;
 } LL_Backend_Ir;
 
-#define OPERAND_FMT "%s%d"
+#define OPERAND_FMT "{}{}"
 #define OPERAND_FMT_VALUE(v) ( \
 		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_LOCAL_BIT ? "l" : \
 		(v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_REGISTER_BIT ? "r" : \
@@ -171,5 +172,5 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 LL_Type* ir_get_operand_type(LL_Ir_Function* fn, LL_Ir_Operand operand);
 
 size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i);
-void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i);
+void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i, Oc_Writer* w);
 

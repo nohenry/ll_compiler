@@ -57,7 +57,7 @@ typedef struct {
 
 typedef struct {
     Ast_Base base;
-    String_View str;
+    string str;
 	struct scope_map* resolved_scope;
 	int32_t symbol_index;
 } Ast_Ident;
@@ -99,7 +99,7 @@ typedef struct {
     Ast_Base base;
     union {
         int64_t i64;
-        String_View str;
+        string str;
     };
 } Ast_Literal;
 

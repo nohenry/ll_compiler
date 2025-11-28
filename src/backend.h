@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include "common.h"
 #include "ast.h"
-#include "backends/ir.h"
+#include "../backends/ir.h"
 
 #define BACKEND_INDENT "    "
 
@@ -36,6 +36,3 @@ void ll_backend_generate_statement_from_ir(Compiler_Context* cc, LL_Backend* b, 
 #define AS_LITTLE_ENDIAN_U16(x) (x)
 #define AS_LITTLE_ENDIAN_U32(x) (x)
 #define AS_LITTLE_ENDIAN_U64(x) (x)
-
-#define PUN(x, type) ({ __typeof__(x) val = (x); (*((type*)&val)); })
-

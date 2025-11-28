@@ -17,7 +17,7 @@ const X86_64_Operand_Register x86_64_usable_gp_registers[] = {
 	X86_64_OPERAND_REGISTER_r14,
 	X86_64_OPERAND_REGISTER_r15,
 };
-const size_t x86_64_usable_gp_registers_count = LEN(x86_64_usable_gp_registers);
+const size_t x86_64_usable_gp_registers_count = oc_len(x86_64_usable_gp_registers);
 
 #define X86_64_APPEND_OP_SEGMENT(segment) _Generic(segment, \
 			uint8_t : b->append_u8, \
@@ -297,7 +297,7 @@ const X86_64_Instruction x86_64_instructions_table[] = {
 		.rel8  		= { .opcode = 0xEBu, .operands = MAKE_OPERANDS(imm) },
 		.rel32 		= { .opcode = 0xE9u, .operands = MAKE_OPERANDS(imm) },
 		.rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(4)) },
-		// TODO: add far jumps
+		// oc_todo: add far jumps
 	},
 	X86_64_OPCODE_MAKE_Jcc(OPCODE_JO, 0x70, 0x80u),
 	X86_64_OPCODE_MAKE_Jcc(OPCODE_JNO, 0x71, 0x81u),
@@ -1116,7 +1116,7 @@ X86_64_Variant_Kind x86_64_get_inverse_compare(X86_64_Variant_Kind kind) {
 	case OPCODE_JGE: return OPCODE_JL;
 	case OPCODE_JL: return OPCODE_JGE;
 	case OPCODE_JLE: return OPCODE_JG;
-	default: assert(false);
+	default: oc_assert(false);
 	}
 }
 
@@ -1185,7 +1185,7 @@ static bool x86_64_uses_modrm(X86_64_Variant_Kind kind) {
 void x86_64_write_nop(Compiler_Context* cc, X86_64_Machine_Code_Writer* b, uint8_t byte_count) {
 #define WRITE_NOP(...) ({ 										\
 			uint8_t bytes[] = {__VA_ARGS__};					\
-			b->append_many(cc, (void*)b, bytes, LEN(bytes));	\
+			b->append_many(cc, (void*)b, bytes, oc_len(bytes));	\
 		})
 	switch (byte_count) {
 	case 2: WRITE_NOP(0x66, 0x90); break;
@@ -1196,7 +1196,7 @@ void x86_64_write_nop(Compiler_Context* cc, X86_64_Machine_Code_Writer* b, uint8
 	case 7: WRITE_NOP(0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00); break;
 	case 8: WRITE_NOP(0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00); break;
 	case 9: WRITE_NOP(0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00); break;
-	default: assert(false);
+	default: oc_assert(false);
 	}
 #undef WRITE_NOP
 }
@@ -1207,7 +1207,7 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 	int i;
 
 	if (instruction.opcode == 0) {
-		fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: invalid opcode\n");
+		eprint("\x1b[31;1merror\x1b[0;1m: invalid opcode\n");
 		return;
 	}
 
@@ -1330,7 +1330,7 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 			}
 			vex |= 0x4u;
 			break;
-		default: assert(false); break;
+		default: oc_assert(false); break;
 		}
 
 #define SWITCH_OP(n)										\
@@ -1371,7 +1371,7 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 		/* } */
 
 		if (parameters.rep) {
-			// TODO: add check for valid instructions
+			// oc_todo: add check for valid instructions
 			X86_64_APPEND_OP_SEGMENT(parameters.rep);
 		}
 
@@ -1387,7 +1387,7 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 		case OPCODE_PREFIX_F2: 
 			X86_64_APPEND_OP_SEGMENT((uint8_t)0xF2u);
 			break;
-		default: assert(false); break;
+		default: oc_assert(false); break;
 		}
 
 		if (rex) X86_64_APPEND_OP_SEGMENT(rex);
@@ -1401,7 +1401,7 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 		case OPCODE_PREFIX_2B: 
 			X86_64_APPEND_OP_SEGMENT((uint8_t)0x0Fu);
 			break;
-		default: assert(false);
+		default: oc_assert(false);
 		}
 
 		X86_64_APPEND_OP_SEGMENT((uint8_t)(instruction.opcode & 0xFF));
@@ -1419,10 +1419,10 @@ void x86_64_write_instruction(Compiler_Context* cc, X86_64_Machine_Code_Writer* 
 			mod |= (parameters.reg ##n & 0x7u) << 3u;		\
 			break;											\
 		case OPERANDS_TYPE_modr:							\
-			if (parameters.reg ## n & X86_64_REG_BASE) assert(false); \
+			if (parameters.reg ## n & X86_64_REG_BASE) oc_assert(false); \
 			goto DO_MODRM_##n;								\
 		case OPERANDS_TYPE_modm:							\
-			if (!(parameters.reg ## n & X86_64_REG_BASE)) assert(false); \
+			if (!(parameters.reg ## n & X86_64_REG_BASE)) oc_assert(false); \
 			goto DO_MODRM_##n;								\
 		case OPERANDS_TYPE_modrm:							\
 DO_MODRM_ ##n : 											\
@@ -1461,14 +1461,14 @@ DO_MODRM_ ##n : 											\
 				mod |= 0x4u;
 				if (parameters.use_sib & X86_64_SIB_SCALE) {
 					if (!(parameters.use_sib & X86_64_SIB_INDEX)) {
-						fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: scale requires index\n");
+						eprint("\x1b[31;1merror\x1b[0;1m: scale requires index\n");
 						abort();
 					}
 					sib |= parameters.scale << 6u;
 				}
 				if (parameters.use_sib & X86_64_SIB_INDEX) {
 					if (parameters.index == X86_64_OPERAND_REGISTER_rsp)  {
-						fprintf(stderr, "\x1b[31;1merror\x1b[0;1m: invalid use of rsp as index with rbp as base\x1b[0m\n");
+						eprint("\x1b[31;1merror\x1b[0;1m: invalid use of rsp as index with rbp as base\x1b[0m\n");
 						abort();
 					}
 					sib |= (parameters.index & 7u) << 3u;
@@ -1479,8 +1479,8 @@ DO_MODRM_ ##n : 											\
 				if (offset == 0)  {
 					// rbp as base means no base, only if mod is 0
 					if (base_reg == X86_64_OPERAND_REGISTER_rbp) {
-						// TODO: i feel like this might be wrong, below too
-						assert((mod >> 6) == 0);
+						// oc_todo: i feel like this might be wrong, below too
+						oc_assert((mod >> 6) == 0);
 						if (parameters.use_sib & X86_64_SIB_SCALE) {
 						} else if (!parameters.rbp_is_rip) {
 							mod |= 0x40u;
@@ -1521,11 +1521,11 @@ DO_MODRM_ ##n : 											\
 				X86_64_APPEND_OP_SEGMENT(mod);
 				X86_64_APPEND_OP_SEGMENT(PUN((int32_t)offset, uint32_t));
 			} else {
-				assert(false);
+				oc_assert(false);
 			}
 		} else {
 			/* if (!has_vex_vvvv) { */
-				// TODO: do we need this?
+				// oc_todo: do we need this?
 				mod |= 0xc0;
 			/* } */
 			X86_64_APPEND_OP_SEGMENT(mod);
@@ -2145,7 +2145,7 @@ X86_64_Instruction_Variant x86_64_get_variant(const X86_64_Instruction* inst, X8
 		MAKE_VARIANT(r32_rm256);
 		MAKE_VARIANT(rm32_r64);
 		MAKE_VARIANT(r64_rm32);
-        default: assert(false);
+        default: oc_assert(false);
 	}
 #undef MAKE_VARIANT
 	return result;

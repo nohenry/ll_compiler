@@ -3,8 +3,8 @@
 #include <inttypes.h>
 
 #include "c.h"
-#include "../common.h"
-#include "../typer.h"
+#include "../src/common.h"
+#include "../src/typer.h"
 
 typedef enum {
 	LL_BACKEND_C_VALUE_KIND_NONE,
@@ -30,8 +30,8 @@ typedef struct ll_backend_c_anon_type_entry {
 } LL_Backend_C_Anon_Type_Entry;
 
 typedef struct {
-	String_Builder o;
-	String_Builder typedef_o;
+	Oc_String_Builder o;
+	Oc_String_Builder typedef_o;
 	LL_Backend_C_Frame_List frames;
 
 	LL_Backend_C_Anon_Type_Entry* anon_entries[LL_DEFAULT_MAP_ENTRY_COUNT];
@@ -46,8 +46,8 @@ typedef struct {
 #endif
 #define FUNCTION() (&b->frames.items[b->frames.count - 1])
 
-#define output_str(str) arena_sb_append_cstr(&cc->arena, o, str)
-#define output_fmt(fmt, ...) arena_sb_sprintf(&cc->arena, o, fmt, ## __VA_ARGS__)
+#define output_str(str) oc_sb_append_char_str(o, str)
+#define output_fmt(fmt, ...) wprint(&o->writer, fmt, ## __VA_ARGS__)
 
 #define BACKEND_C_ANON_TYPEDEF_PREFIX "___anon_"
 
@@ -55,9 +55,9 @@ void backend_c_init(Compiler_Context* cc, LL_Backend_C* b) {
 	memset(b, 0, sizeof(*b));
 }
 
-LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backend_C* b, String_Builder* o, Ast_Base* expr, bool lvalue);
-void backend_c_generate_typename(Compiler_Context* cc, LL_Backend_C* b, String_Builder* o, Ast_Base* type, String_View* var_name);
-void backend_c_generate_typename_impl(Compiler_Context* cc, LL_Backend_C* b, String_Builder* o, LL_Type* type);
+LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backend_C* b, Oc_String_Builder* o, Ast_Base* expr, bool lvalue);
+void backend_c_generate_typename(Compiler_Context* cc, LL_Backend_C* b, Oc_String_Builder* o, Ast_Base* type, string* var_name);
+void backend_c_generate_typename_impl(Compiler_Context* cc, LL_Backend_C* b, Oc_String_Builder* o, LL_Type* type);
 
 typedef struct {
 	int64_t name_id;
@@ -79,16 +79,16 @@ int queue_item_compare(const void* a, const void* b) {
 bool backend_c_write_to_file(Compiler_Context* cc, LL_Backend_C* b, char* filepath) {
 	FILE* out_file = fopen(filepath, "w");
 	fwrite("#include <stdint.h>\n", sizeof(*b->o.items), sizeof("#include <stdint.h>\n")-1, out_file);
-	String_Builder* o = &b->typedef_o;
+	Oc_String_Builder* o = &b->typedef_o;
 
 	LL_Backend_C_Typedef_Queue queue = { 0 };
 	int64_t max_value = 0;
 
-	for (int i = 0; i < LEN(b->anon_entries); ++i) {
+	for (int i = 0; i < oc_len(b->anon_entries); ++i) {
 		LL_Backend_C_Anon_Type_Entry* current = b->anon_entries[i];
 
 		while (current) {
-			arena_da_append(&cc->arena, &queue, ((LL_Backend_C_Typedef_Queue_Entry){ current->name_id, current->value }));
+			oc_array_append(&cc->arena, &queue, ((LL_Backend_C_Typedef_Queue_Entry){ current->name_id, current->value }));
 			current = current->next;
 		}
 	}
@@ -101,11 +101,12 @@ bool backend_c_write_to_file(Compiler_Context* cc, LL_Backend_C* b, char* filepa
 			output_str("typedef ");
 			switch (queue.items[i].type->kind) {
 			case LL_TYPE_ARRAY:
-				arena_sb_append_cstr(&cc->arena, &b->typedef_o, "struct {");
+				oc_sb_append_char_str(&b->typedef_o, "struct {");
 				backend_c_generate_typename_impl(cc, b, &b->typedef_o, ((LL_Type_Array*)queue.items[i].type)->element_type);
-				arena_sb_sprintf(&cc->arena, &b->typedef_o, " val[%zu];} ", queue.items[i].type->width);
+                wprint(&b->typedef_o.writer, " val[{}];", queue.items[i].type->width);
+				oc_sb_append_char_str(&b->typedef_o, "}");
 				break;
-			default: TODO("implement anon type"); break;
+			default: oc_todo("implement anon type"); break;
 			}
 			output_fmt(BACKEND_C_ANON_TYPEDEF_PREFIX "%" PRId64 ";\n", queue.items[i].name_id);
 
@@ -122,9 +123,9 @@ bool backend_c_write_to_file(Compiler_Context* cc, LL_Backend_C* b, char* filepa
 
 int64_t backend_c_get_anon_struct_for_type(Compiler_Context* cc, LL_Backend_C* b, LL_Type* type) {
 	LL_Backend_C_Anon_Type_Entry* result = NULL;
-	String_Builder* o = &b->typedef_o;
+	Oc_String_Builder* o = &b->typedef_o;
 
-	size_t hash = HASH_VALUE_FN(type, MAP_DEFAULT_SEED) % LEN(b->anon_entries);
+	size_t hash = HASH_VALUE_FN(type, MAP_DEFAULT_SEED) % oc_len(b->anon_entries);
 	LL_Backend_C_Anon_Type_Entry* current = b->anon_entries[hash];
 	while (current) {
 		if (current->value == type) {
@@ -135,8 +136,8 @@ int64_t backend_c_get_anon_struct_for_type(Compiler_Context* cc, LL_Backend_C* b
 	}
 
 	if (!result) {
-		result = arena_alloc(&cc->arena, sizeof(LL_Backend_C_Anon_Type_Entry));
-		size_t hash = stbds_siphash_bytes(&type, sizeof(type), MAP_DEFAULT_SEED) % LEN(b->anon_entries);
+		result = oc_arena_alloc(&cc->arena, sizeof(LL_Backend_C_Anon_Type_Entry));
+		size_t hash = stbds_siphash_bytes(&type, sizeof(type), MAP_DEFAULT_SEED) % oc_len(b->anon_entries);
 		result->next = b->anon_entries[hash];
 		b->anon_entries[hash] = result;
 
@@ -145,12 +146,12 @@ int64_t backend_c_get_anon_struct_for_type(Compiler_Context* cc, LL_Backend_C* b
 		/* output_str("typdef "); */
 		switch (type->kind) {
 		case LL_TYPE_ARRAY:
-			arena_sb_append_cstr(&cc->arena, &b->typedef_o, "#if 0\n");
+			oc_sb_append_char_str(&b->typedef_o, "#if 0\n");
 			backend_c_generate_typename_impl(cc, b, &b->typedef_o, ((LL_Type_Array*)type)->element_type);
-			arena_sb_append_cstr(&cc->arena, &b->typedef_o, "\n#endif\n");
+			oc_sb_append_char_str(&b->typedef_o, "\n#endif\n");
 			/* arena_sb_sprintf(&cc->arena, &b->typedef_o, " val[%zu];}", type->width); */
 			break;
-		default: TODO("implement anon type"); break;
+		default: oc_todo("implement anon type"); break;
 		}
 		result->name_id = b->next_anon_id++;
 		/* arena_sb_sprintf(&cc->arena, &b->typedef_o, BACKEND_C_ANON_TYPEDEF_PREFIX "%" PRId64 ";\n", result->name_id); */
@@ -159,7 +160,7 @@ int64_t backend_c_get_anon_struct_for_type(Compiler_Context* cc, LL_Backend_C* b
 	return result->name_id;
 }
 
-void backend_c_generate_statement(Compiler_Context* cc, LL_Backend_C* b, String_Builder* o, Ast_Base* stmt) {
+void backend_c_generate_statement(Compiler_Context* cc, LL_Backend_C* b, Oc_String_Builder* o, Ast_Base* stmt) {
 	int i;
 	for (i = 0; i < b->indent; ++i) {
 		output_str("    ");
@@ -181,13 +182,13 @@ void backend_c_generate_statement(Compiler_Context* cc, LL_Backend_C* b, String_
 	case AST_KIND_VARIABLE_DECLARATION: {
 		Ast_Variable_Declaration* var_decl = AST_AS(stmt, Ast_Variable_Declaration);
 		if (var_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break;
-		assert(b->frames.count != 0);
+		oc_assert(b->frames.count != 0);
 
 		LL_Ir_Local var = {
 			.ident = var_decl->ident,
 		};
 		var_decl->ir_index = FUNCTION()->locals_count++;
-		/* arena_da_append(&cc->arena, &FUNCTION()->locals, var); */
+		/* oc_array_append(&cc->arena, &FUNCTION()->locals, var); */
 
 		backend_c_generate_typename(cc, b, o, var_decl->type, &var_decl->ident->str);
 
@@ -222,7 +223,7 @@ void backend_c_generate_statement(Compiler_Context* cc, LL_Backend_C* b, String_
 		LL_Backend_C_Frame frame = {
 			.locals_count = 0,
 		};
-		arena_da_append(&cc->arena, &b->frames, frame);
+		oc_array_append(&cc->arena, &b->frames, frame);
 
 		backend_c_generate_typename(cc, b, o, fn_decl->return_type, &fn_decl->ident->str);
 		output_str("(");
@@ -255,7 +256,7 @@ void backend_c_generate_root(Compiler_Context* cc, LL_Backend_C* b, Ast_Base* st
 	backend_c_generate_statement(cc, b, &b->o, stmt);
 }
 
-LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backend_C* b, String_Builder* o, Ast_Base* expr, bool lvalue) {
+LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backend_C* b, Oc_String_Builder* o, Ast_Base* expr, bool lvalue) {
 	LL_Backend_C_Value result;
 	LL_Ir_Opcode op, r1, r2;
 	int i;
@@ -278,18 +279,18 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 	}
 	case AST_KIND_LITERAL_INT:
 		output_fmt("%" PRId64, AST_AS(expr, Ast_Literal)->i64);
-		assert(!lvalue);
+		oc_assert(!lvalue);
 		break;
 	case AST_KIND_LITERAL_STRING: {
 		output_str("\"");
 
 		size_t index = b->o.count;
-		arena_da_reserve(&cc->arena, &b->o, b->o.count + AST_AS(expr, Ast_Literal)->str.len);
+		oc_array_reserve(&cc->arena, &b->o, b->o.count + AST_AS(expr, Ast_Literal)->str.len);
 		for (int i = 0; index < b->o.count; ++index, ++i) {
 			char c = AST_AS(expr, Ast_Literal)->str.ptr[i];
 			switch (c) {
 			case '\x00' ... '\x1f':
-				arena_da_reserve(&cc->arena, &b->o, b->o.count + 3);
+				oc_array_reserve(&cc->arena, &b->o, b->o.count + 3);
 				b->o.items[index++] = '\\';
 				b->o.items[index++] = 'x';
 
@@ -317,7 +318,7 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 #pragma GCC diagnostic ignored "-Wswitch"
 		case '-': {
 			backend_c_generate_expression(cc, b, o, AST_AS(expr, Ast_Operation)->right, false);
-			/* assert(false); */
+			/* oc_assert(false); */
 			break;
 		}
 		case '*': {
@@ -360,7 +361,7 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 
 		case '=': output_str("="); break;
 #pragma GCC diagnostic pop
-		default: assert(false);
+		default: oc_assert(false);
 		}
 
 		backend_c_generate_expression(cc, b, o, AST_AS(expr, Ast_Operation)->left, false);
@@ -379,7 +380,7 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 		break;
 	}
 	case AST_KIND_INVOKE: {
-		assert(!lvalue);
+		oc_assert(!lvalue);
 		Ast_Invoke* inv = AST_AS(expr, Ast_Invoke);
 
 		backend_c_generate_expression(cc, b, o, inv->expr, false);
@@ -424,7 +425,7 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 
 		output_str("}}");
 #if 0
-		/* assert((b->data_items.count & 0xF0000000u) == 0); // TODO: maybe support more */
+		/* oc_assert((b->data_items.count & 0xF0000000u) == 0); // oc_todo: maybe support more */
 		bool const_literal = true;
 		LL_Type* element_type = ((LL_Type_Array*)lit->base.type)->element_type;
 		LL_Backend_Layout layout = cc->target->get_layout(element_type);
@@ -433,7 +434,7 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 		uint8_t* last_initializer_ptr = b->initializer_ptr;
 		uint8_t* initializer_ptr;
 		if (!last_initializer_ptr) {
-			initializer_ptr = arena_alloc(&cc->arena, lit->base.type->width * size);
+			initializer_ptr = oc_arena_alloc(&cc->arena, lit->base.type->width * size);
 			b->initializer_ptr = initializer_ptr;
 
 			result = LL_IR_OPERAND_DATA_BIT | (uint32_t)b->data_items.count;
@@ -457,7 +458,7 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 					} else if (layout.size <= 64) {
 						((uint64_t*)b->initializer_ptr)[kv->key->const_value.uval] = (uint64_t)kv->value->const_value.uval;
 					} else {
-						TODO("implement other const size");
+						oc_todo("implement other const size");
 						/* memcpy(&b->initializer_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
 					}
 					k = kv->key->const_value.uval;
@@ -486,7 +487,7 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 						} else if (layout.size <= 8) {
 							((uint64_t*)b->initializer_ptr)[k] = (uint64_t)lit->items[i]->const_value.uval;
 						} else {
-							TODO("implement other const size");
+							oc_todo("implement other const size");
 							/* memcpy(&b->initializer_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
 						}
 					} else {
@@ -498,10 +499,10 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 			}
 		}
 
-		/* void* data_ptr = arena_alloc(&cc->arena, layout.size); */
+		/* void* data_ptr = oc_arena_alloc(&cc->arena, layout.size); */
 
 		if (!last_initializer_ptr) {
-			arena_da_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = initializer_ptr, .len = lit->base.type->width * size }));
+			oc_array_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = initializer_ptr, .len = lit->base.type->width * size }));
 			b->initializer_ptr = last_initializer_ptr;
 		}
 
@@ -527,7 +528,7 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 			backend_c_generate_expression(cc, b, o, op->right, false);
 			output_str("]");
 			break;
-		default: TODO("implement index type"); break;
+		default: oc_todo("implement index type"); break;
 		}
 
 		break;
@@ -536,16 +537,16 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 		Ast_Ident* ident = AST_AS(expr, Ast_Ident);
 
 		if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr) {
-			assert(!lvalue);
+			oc_assert(!lvalue);
 			output_str("true");
 			break;
 		} else if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
-			assert(!lvalue);
+			oc_assert(!lvalue);
 			output_str("false");
 			break;
 		}
 
-		arena_sb_append_buf(&cc->arena, &b->o, ident->str.ptr, ident->str.len);
+		oc_sb_append_char_str_len(&b->o, ident->str.ptr, ident->str.len);
 		
 		break;
 	}
@@ -642,13 +643,13 @@ LL_Backend_C_Value backend_c_generate_expression(Compiler_Context* cc, LL_Backen
 		break;
 	}
 	default:
-		fprintf(stderr, "TODO: implement generate expr %d\n", expr->kind);
+		eprint("oc_todo: implement generate expr %d\n", expr->kind);
 		break;
 	}
 	return result;
 }
 
-void backend_c_generate_typename_impl(Compiler_Context* cc, LL_Backend_C* b, String_Builder* o, LL_Type* type) {
+void backend_c_generate_typename_impl(Compiler_Context* cc, LL_Backend_C* b, Oc_String_Builder* o, LL_Type* type) {
 	switch (type->kind) {
 	case LL_TYPE_VOID: output_str("void"); break;
 	case LL_TYPE_INT:
@@ -675,7 +676,7 @@ void backend_c_generate_typename_impl(Compiler_Context* cc, LL_Backend_C* b, Str
 		// int ( * p )
 		// need to do this first in case of
 		// int ( * p ) []
-		/* arena_sb_append_cstr(&cc->arena, right, ")"); */
+		/* oc_sb_append_char_str(right, ")"); */
 		backend_c_generate_typename_impl(cc, b, o, ((LL_Type_Pointer*)type)->element_type);
 		output_str("*");
 	   	break;
@@ -693,17 +694,17 @@ void backend_c_generate_typename_impl(Compiler_Context* cc, LL_Backend_C* b, Str
 	   	break;
 	}
 	default:
-		TODO("implement other types");
+		oc_todo("implement other types");
 		break;
 	}
 }
 
-void backend_c_generate_typename(Compiler_Context* cc, LL_Backend_C* b, String_Builder* o, Ast_Base* type, String_View* var_name) {
+void backend_c_generate_typename(Compiler_Context* cc, LL_Backend_C* b, Oc_String_Builder* o, Ast_Base* type, string* var_name) {
 	backend_c_generate_typename_impl(cc, b, o, type->type);
 	if (var_name) {
 		output_str(" ");
-		arena_sb_append_buf(&cc->arena, o, var_name->ptr, var_name->len);
+		oc_sb_append_char_str_len(o, var_name->ptr, var_name->len);
 	}
-	/* arena_sb_append_buf(&cc->arena, &b->o, right.items, right.count); */
+	/* oc_sb_append_char_str_len(&b->o, right.items, right.count); */
 }
 

@@ -109,12 +109,12 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Ast_Base* node);
 LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base** stmt);
 LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type);
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Ast_Base* typename);
-void ll_print_type_raw(LL_Type* type, FILE* fd);
+void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);
 
 
 void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope);
-LL_Scope* ll_scope_get(LL_Scope* scope, String_View symbol_name);
-LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, String_View symbol_name);
+LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
+LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, string symbol_name);
 
-void ll_scope_print(LL_Scope* scope, int indent);
+void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);

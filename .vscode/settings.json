@@ -8,6 +8,8 @@
         "type_traits": "c",
         "utility": "c",
         "arena.h": "c",
-        "common.h": "c"
+        "common.h": "c",
+        "core1.h": "c",
+        "machine_code.h": "c"
     }
 }

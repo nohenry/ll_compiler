@@ -16,4 +16,4 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, int last_precedence, bool from_statement);
 Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser);
 
-void print_node(Ast_Base* node, int indent);
+void print_node(Ast_Base* node, int indent, Oc_Writer* w);

@@ -7,3 +7,6 @@
 /out.c
 tags
 
+*.exe
+*.ilk
+*.pdb

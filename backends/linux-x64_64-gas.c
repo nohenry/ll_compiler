@@ -2,11 +2,11 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-#include "../backend.h"
-#include "../common.h"
-#include "../arena.h"
-#include "../ast.h"
-#include "../typer.h"
+#include "../core/core1.h"
+#include "../src/backend.h"
+#include "../src/common.h"
+#include "../src/ast.h"
+#include "../src/typer.h"
 
 typedef struct {
 	size_t count, capacity;
@@ -14,7 +14,7 @@ typedef struct {
 } Local_List;
 
 typedef struct {
-	String_Builder output;
+	Oc_String_Builder output;
 
 	LL_Ir_Function* fn;
 	Local_List locals;
@@ -43,15 +43,15 @@ static void write_operand(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL_
 		case LL_TYPE_INT:
 		case LL_TYPE_UINT:
 			switch (type->width) {
-			case 8: arena_sb_append_cstr(&cc->arena, &b->output, "al"); break;
-			case 16: arena_sb_append_cstr(&cc->arena, &b->output, "ax"); break;
-			case 32: arena_sb_append_cstr(&cc->arena, &b->output, "eax"); break;
-			case 64: arena_sb_append_cstr(&cc->arena, &b->output, "rax"); break;
-			default: assert(false);
+			case 8: oc_sb_append_char_str(&b->output, "al"); break;
+			case 16: oc_sb_append_char_str(&b->output, "ax"); break;
+			case 32: oc_sb_append_char_str(&b->output, "eax"); break;
+			case 64: oc_sb_append_char_str(&b->output, "rax"); break;
+			default: oc_assert(false);
 			}
 			break;
-		case LL_TYPE_POINTER: arena_sb_append_cstr(&cc->arena, &b->output, "rax"); break;
-		default: assert(false);
+		case LL_TYPE_POINTER: oc_sb_append_char_str(&b->output, "rax"); break;
+		default: oc_assert(false);
 		}
 		break;
 	}
@@ -62,18 +62,18 @@ static void write_operand(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL_
 		case LL_TYPE_INT:
 		case LL_TYPE_UINT:
 			switch (type->width) {
-			case 8: arena_sb_append_cstr(&cc->arena, &b->output, "byte"); break;
-			case 16: arena_sb_append_cstr(&cc->arena, &b->output, "word"); break;
-			case 32: arena_sb_append_cstr(&cc->arena, &b->output, "dword"); break;
-			case 64: arena_sb_append_cstr(&cc->arena, &b->output, "qword"); break;
-			default: assert(false);
+			case 8: oc_sb_append_char_str(&b->output, "byte"); break;
+			case 16: oc_sb_append_char_str(&b->output, "word"); break;
+			case 32: oc_sb_append_char_str(&b->output, "dword"); break;
+			case 64: oc_sb_append_char_str(&b->output, "qword"); break;
+			default: oc_assert(false);
 			}
 			arena_sb_sprintf(&cc->arena, &b->output, " ptr [rbp - %" PRIu64 "]", offset);
 			break;
 		case LL_TYPE_POINTER:
 			arena_sb_sprintf(&cc->arena, &b->output, "qword ptr [rbp - %" PRIu64 "]", offset);
 			break;
-		default: assert(false);
+		default: oc_assert(false);
 		}
 		break;
 	}
@@ -82,18 +82,18 @@ static void write_operand(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL_
 
 void linux_x86_64_gas_init(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b) {
 	memset(&b->output, 0, sizeof(b->output));
-	arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT ".text\n");
-	arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT ".intel_syntax noprefix\n");
+	oc_sb_append_char_str(&b->output, BACKEND_INDENT ".text\n");
+	oc_sb_append_char_str(&b->output, BACKEND_INDENT ".intel_syntax noprefix\n");
 }
 
 bool linux_x86_64_gas_write_to_file(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, char* filepath) {
 	FILE* fptr;
 	if (!(fptr = fopen(filepath, "w"))) {
-		fprintf(stderr, "Unable to open output file: %s\n", filepath);
+		eprint("Unable to open output file: %s\n", filepath);
 		return false;
 	}
 
-	return fwrite(b->output.items, 1, b->output.count, fptr) == b->output.count;
+	return fwrite(b->output.ptr, 1, b->output.len, fptr) == b->output.len;
 }
 
 static void generate_block(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
@@ -105,11 +105,11 @@ static void generate_block(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL
 		switch (opcode) {
 		case LL_IR_OPCODE_RET: break;
 		case LL_IR_OPCODE_STORE:
-			arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "mov ");
+			oc_sb_append_char_str(&b->output, BACKEND_INDENT "mov ");
 			write_operand(cc, b, bir, operands[0]);
-			arena_sb_append_cstr(&cc->arena, &b->output, ", ");
+			oc_sb_append_char_str(&b->output, ", ");
 			write_operand(cc, b, bir, operands[1]);
-			arena_sb_append_cstr(&cc->arena, &b->output, "\n");
+			oc_sb_append_char_str(&b->output, "\n");
 		   	i += 2;
 		   	break;
 		case LL_IR_OPCODE_LOAD: i += 2; break;
@@ -122,9 +122,9 @@ static void generate_block(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b, LL
 		   	break;
 		}
 		case LL_IR_OPCODE_LEA:
-			arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "lea rax, ");
+			oc_sb_append_char_str(&b->output, BACKEND_INDENT "lea rax, ");
 			write_operand(cc, b, bir, operands[1]);
-			arena_sb_append_cstr(&cc->arena, &b->output, "\n");
+			oc_sb_append_char_str(&b->output, "\n");
 			break;
 		}
 	}
@@ -138,26 +138,26 @@ void linux_x86_64_gas_generate(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b
 		LL_Ir_Block* block = fn->entry;
 		b->fn = fn;
 
-		arena_da_reserve(&cc->tmp_arena, &b->locals, fn->locals.count);
+		oc_array_reserve(&cc->tmp_arena, &b->locals, fn->locals.count);
 
 		uint64_t offset = 0;
 		for (int li = 0; li < fn->locals.count; ++li) {
 			Layout l = get_layout(fn->locals.items[li].ident->base.type);
-			offset = align_forward(offset + l.size, l.alignment);
+			offset = oc_align_forward(offset + l.size, l.alignment);
 			b->locals.items[li] = offset;
 		}
 
 		/* printf("function " FMT_SV_FMT ":\n", FMT_SV_ARG(fn->ident->str)); */
 
-		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT ".globl ");
-		arena_sb_append_strview(&cc->arena, &b->output, fn->ident->str);
-		arena_sb_append_cstr(&cc->arena, &b->output, "\n");
+		oc_sb_append_char_str(&b->output, BACKEND_INDENT ".globl ");
+		oc_sb_append_string(&cc->arena, &b->output, fn->ident->str);
+		oc_sb_append_char_str(&b->output, "\n");
 
-		arena_sb_append_strview(&cc->arena, &b->output, fn->ident->str);
-		arena_sb_append_cstr(&cc->arena, &b->output, ":\n");
+		oc_sb_append_string(&cc->arena, &b->output, fn->ident->str);
+		oc_sb_append_char_str(&b->output, ":\n");
 
-		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "push rbp\n");
-		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "mov rbp, rsp\n");
+		oc_sb_append_char_str(&b->output, BACKEND_INDENT "push rbp\n");
+		oc_sb_append_char_str(&b->output, BACKEND_INDENT "mov rbp, rsp\n");
 
 		int bi = 0;
 		while (block) {
@@ -166,8 +166,8 @@ void linux_x86_64_gas_generate(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b
 			block = block->next;
 		}
 
-		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "pop rbp\n");
-		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "ret\n\n");
+		oc_sb_append_char_str(&b->output, BACKEND_INDENT "pop rbp\n");
+		oc_sb_append_char_str(&b->output, BACKEND_INDENT "ret\n\n");
 	}
 }
 
@@ -183,22 +183,22 @@ void linux_x86_64_gas_generate(Compiler_Context* cc, Linux_x86_64_Gas_Backend* b
 /* 		Ast_Function_Declaration* fn_decl = AST_AS(stmt, Ast_Function_Declaration); */
 /* 		if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break; */
 
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT ".globl "); */
-/* 		arena_sb_append_strview(&cc->arena, &b->output, fn_decl->ident->str); */
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, "\n"); */
+/* 		oc_sb_append_char_str(&b->output, BACKEND_INDENT ".globl "); */
+/* 		oc_sb_append_string(&cc->arena, &b->output, fn_decl->ident->str); */
+/* 		oc_sb_append_char_str(&b->output, "\n"); */
 
-/* 		arena_sb_append_strview(&cc->arena, &b->output, fn_decl->ident->str); */
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, ":\n"); */
+/* 		oc_sb_append_string(&cc->arena, &b->output, fn_decl->ident->str); */
+/* 		oc_sb_append_char_str(&b->output, ":\n"); */
 
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "push rbp\n"); */
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "mov rbp, rsp\n"); */
+/* 		oc_sb_append_char_str(&b->output, BACKEND_INDENT "push rbp\n"); */
+/* 		oc_sb_append_char_str(&b->output, BACKEND_INDENT "mov rbp, rsp\n"); */
 
 /* 		if (fn_decl->body) { */
 /* 			linux_x86_64_gas_generate_statement(cc, b, fn_decl->body); */
 /* 		} */
 
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "pop rbp\n"); */
-/* 		arena_sb_append_cstr(&cc->arena, &b->output, BACKEND_INDENT "ret\n\n"); */
+/* 		oc_sb_append_char_str(&b->output, BACKEND_INDENT "pop rbp\n"); */
+/* 		oc_sb_append_char_str(&b->output, BACKEND_INDENT "ret\n\n"); */
 /* 		break; */
 /* 	} */
 /* 	} */
