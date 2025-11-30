@@ -7,11 +7,11 @@ typedef uint32_t LL_Ir_Operand;
 #define LL_IR_OPERAND_VALUE_MASK 0xFFFFFFFu
 #define LL_IR_OPERAND_TYPE_MASK (~LL_IR_OPERAND_VALUE_MASK)
 #define LL_IR_OPERAND_IMMEDIATE_BIT 0x00000000u
-#define LL_IR_OPERAND_REGISTER_BIT 0x10000000u
-#define LL_IR_OPERAND_LOCAL_BIT 0x20000000u
+#define LL_IR_OPERAND_REGISTER_BIT  0x10000000u
+#define LL_IR_OPERAND_LOCAL_BIT     0x20000000u
 #define LL_IR_OPERAND_PARMAETER_BIT 0x30000000u
-#define LL_IR_OPERAND_FUNCTION_BIT 0x40000000u
-#define LL_IR_OPERAND_DATA_BIT 0x50000000u
+#define LL_IR_OPERAND_FUNCTION_BIT  0x40000000u
+#define LL_IR_OPERAND_DATA_BIT      0x50000000u
 
 #define OPD_VALUE(operand) ((operand) & LL_IR_OPERAND_VALUE_MASK)
 #define OPD_TYPE(operand) ((operand) & LL_IR_OPERAND_TYPE_MASK)
@@ -40,7 +40,9 @@ enum {
     LL_IR_OPCODE_STORE,
     LL_IR_OPCODE_MEMCOPY,
     LL_IR_OPCODE_LOAD,
+    // operands: invokee, arg_count, arg0, arg1, ... arg(arg_count-1)
     LL_IR_OPCODE_INVOKE,
+    // operands: result_register, invokee, arg_count, arg0, arg1, ... arg(arg_count-1)
     LL_IR_OPCODE_INVOKEVALUE,
     LL_IR_OPCODE_LEA,
     LL_IR_OPCODE_LEA_INDEX,

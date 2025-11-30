@@ -164,9 +164,9 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b, Oc_Writer* w) {
         LL_Ir_Block_Ref block = fn->entry;
 
         if (fn->ident) {
-            wprint(w, "function {}:\n", fn->ident->str);
+            wprint(w, "function {}({}):\n", fn->ident->str, fi);
         } else {
-            wprint(w, "function:\n");
+            wprint(w, "function({}):\n", fi);
         }
 
         int bi = 0;
@@ -558,19 +558,18 @@ DO_BIN_OP_ASSIGN_OP:
 
         LL_Ir_Operand ops[3 + inv->arguments.count];
 
-        int offset, opcode;
+        uword offset = 0;
+        LL_Ir_Operand opcode;
         if (fn_type->return_type && fn_type->return_type->kind != LL_TYPE_VOID) {
-            result = NEXTREG(fn_type->return_type);
-            ops[0] = result;
             opcode = LL_IR_OPCODE_INVOKEVALUE;
-            offset = 1;
+            result = NEXTREG(fn_type->return_type);
+            ops[offset++] = result;
         } else {
             opcode = LL_IR_OPCODE_INVOKE;
-            offset = 0;
         }
 
-        ops[0 + offset] = invokee;
-        ops[1 + offset] = inv->arguments.count;
+        ops[offset++] = invokee;
+        ops[offset++] = inv->arguments.count;
         for (i = 0; i < inv->arguments.count; ++i) {
             LL_Type* parameter_type;
             if (i >= fn_type->parameter_count - 1 && fn_type->is_variadic) {
@@ -579,16 +578,18 @@ DO_BIN_OP_ASSIGN_OP:
                 parameter_type = fn_type->parameters[i];
             }
 
-            ops[i + 2 + offset] = ir_generate_expression(cc, b, inv->arguments.items[i], false);
-            switch (ops[i + 2 + offset] & LL_IR_OPERAND_TYPE_MASK) {
+            LL_Ir_Operand arg_operand = ir_generate_expression(cc, b, inv->arguments.items[i], false);
+            switch (arg_operand & LL_IR_OPERAND_TYPE_MASK) {
             case LL_IR_OPERAND_IMMEDIATE_BIT:
-                ops[i + 2 + offset] = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, parameter_type, (ops[i + 2 + offset] & LL_IR_OPERAND_VALUE_MASK));
+                arg_operand = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, parameter_type, (arg_operand & LL_IR_OPERAND_VALUE_MASK));
                 break;
             default: break;
             }
+
+            ops[offset++] = arg_operand;
         }
 
-        ir_append_op(cc, b, b->current_block, opcode, ops, 2 + offset + inv->arguments.count);
+        ir_append_op(cc, b, b->current_block, opcode, ops, offset);
 
         break;
     }

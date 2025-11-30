@@ -47,6 +47,7 @@ typedef struct {
     LL_Ir_Function* fn;
     X86_64_Locals_List locals;
     X86_64_Locals_List registers;
+    X86_64_Locals_List parameters;
 
     X86_64_Section section_text;
     X86_64_Section section_data;
@@ -84,7 +85,7 @@ const static X86_64_Operand_Register call_convention_registers_systemv[] = {
 
 const static X86_64_Operand_Register x86_64_backend_active_registers[] = {
     X86_64_OPERAND_REGISTER_rax,
-    X86_64_OPERAND_REGISTER_rbx,
+    X86_64_OPERAND_REGISTER_r12,
 };
 
 X86_64_Call_Convention x86_64_call_convention_systemv(X86_64_Backend* b) {
@@ -556,33 +557,50 @@ static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, L
     return b->stack_used;
 }
 
-static X86_64_Operand_Register x86_64_load_operand(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand operand) {
+static X86_64_Operand_Register x86_64_load_operand_with_type(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand operand, LL_Type* operand_type) {
     X86_64_Instruction_Parameters params = { 0 };
-    X86_64_Get_Variant_Params get_variant = { .mem_right = true };
+    X86_64_Get_Variant_Params get_variant = { 0 };
     X86_64_Operand_Register reg = x86_64_backend_active_registers[b->active_register_top++];
-    LL_Type* type = ir_get_operand_type(b->fn, operand);
 
-    assert(OPD_TYPE(operand) == LL_IR_OPERAND_REGISTER_BIT);
-
-    get_variant.mem_right = true;
     params.reg0 = reg;
-    params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-    params.displacement = -b->registers.items[OPD_VALUE(operand)];
-    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+    switch (OPD_TYPE(operand)) {
+    case LL_IR_OPERAND_REGISTER_BIT:
+        get_variant.mem_right = true;
+        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+        params.displacement = -b->registers.items[OPD_VALUE(operand)];
+        break;
+    case LL_IR_OPERAND_IMMEDIATE_BIT:
+        get_variant.immediate = true;
+        params.immediate = OPD_VALUE(operand);
+        break;
+    case LL_IR_OPERAND_PARMAETER_BIT:
+        get_variant.mem_right = true;
+        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+        params.displacement = -b->parameters.items[OPD_VALUE(operand)];
+        break;
+    default: oc_unreachable("unsupported type"); break;
+    }
+
+    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
 
     return reg;
+}
+
+static X86_64_Operand_Register x86_64_load_operand(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand operand) {
+    LL_Type* type = ir_get_operand_type(b->fn, operand);
+    return x86_64_load_operand_with_type(cc, b, bir, operand, type);
 }
 
 static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
     size_t i;
     int32_t opcode1, opcode2;
     X86_64_Get_Variant_Params get_variant = { 0 };
-    int offset = 0;
 
     for (i = 0; i < block->ops.count; ) {
         LL_Ir_Opcode opcode = (LL_Ir_Opcode)block->ops.items[i];
         LL_Ir_Operand* operands = (LL_Ir_Operand*)&block->ops.items[i + 1];
         X86_64_Instruction_Parameters params = { 0 };
+        uword invoke_offset = 0;
 
         switch (opcode) {
         case LL_IR_OPCODE_STORE: {
@@ -599,6 +617,9 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 case LL_IR_OPERAND_LOCAL_BIT:
                     b->registers.items[OPD_VALUE(operands[0])] = b->locals.items[OPD_VALUE(operands[1])];
                     break;
+                case LL_IR_OPERAND_PARMAETER_BIT:
+                    b->registers.items[OPD_VALUE(operands[0])] = b->parameters.items[OPD_VALUE(operands[1])];
+                    break;
                 case LL_IR_OPERAND_IMMEDIATE_BIT:
                     LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
                     
@@ -610,7 +631,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                     uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, reg);
                     b->registers.items[OPD_VALUE(operands[0])] = offset;
                     break;
-                default: break;
+                default: oc_unreachable("unsupported operand"); break;
             }
         } break;
 
@@ -673,36 +694,37 @@ DO_OPCODE_ARITHMETIC:
             uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, X86_64_OPERAND_REGISTER_rax);
             b->registers.items[OPD_VALUE(operands[0])] = offset;
 
-            break;
-        }
+        } break;
 
         case LL_IR_OPCODE_INVOKEVALUE:
-            offset = 1;
+            invoke_offset = 1;
         case LL_IR_OPCODE_INVOKE: {
             uint8_t reg;
-            uint32_t invokee = operands[0 + offset];
-            uint32_t count = operands[1 + offset];
+            uint32_t invokee = operands[invoke_offset++];
+            uint32_t count = operands[invoke_offset++];
             X86_64_Call_Convention callconv = x86_64_call_convention_systemv(b);
-            LL_Type_Function* fn_type = (LL_Type_Function*)ir_get_operand_type(b->fn, invokee);
+            LL_Ir_Function* invokee_fn = &bir->fns.items[OPD_VALUE(invokee)];
+            LL_Type_Function* fn_type = (LL_Type_Function*)invokee_fn->ident->base.type;
             assert(fn_type->base.kind == LL_TYPE_FUNCTION);
 
             get_variant.mem_right = true;
-            for (uint32_t j = offset; j < count; ++j) {
-                switch (OPD_TYPE(operands[2 + j])) {
+            for (uint32_t j = 0; j < count; ++j) {
+                LL_Ir_Operand arg_operand = operands[invoke_offset++];
+                switch (OPD_TYPE(arg_operand)) {
                     case LL_IR_OPERAND_REGISTER_BIT: 
                         reg = x86_64_call_convention_next_reg(b, &callconv);
-                        LL_Type* type = ir_get_operand_type(b->fn, operands[2 + j]);
+                        LL_Type* type = ir_get_operand_type(b->fn, arg_operand);
 
                         if (reg == X86_64_OPERAND_REGISTER_invalid) {
                             int32_t offset = x86_64_call_convention_next_mem(b, &callconv);
                             params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
                             params.displacement = offset;
-                            params.reg1 = b->registers.items[OPD_VALUE(operands[2 + j])];
+                            params.reg1 = b->registers.items[OPD_VALUE(arg_operand)];
                             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, params);
                         } else {
                             params.reg0 = reg;
                             params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-                            params.displacement = -b->registers.items[OPD_VALUE(operands[2 + j])];
+                            params.displacement = -b->registers.items[OPD_VALUE(arg_operand)];
                             OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
                         }
                         break;
@@ -712,15 +734,15 @@ DO_OPCODE_ARITHMETIC:
                             int32_t offset = -x86_64_call_convention_next_mem(b, &callconv);
                             params.reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
                             params.displacement = offset;
-                            params.immediate = OPD_VALUE(operands[2 + j]);
+                            params.immediate = OPD_VALUE(arg_operand);
                             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_i32, params);
                         } else {
                             params.reg0 = reg;
-                            params.immediate = OPD_VALUE(operands[2 + j]);
+                            params.immediate = OPD_VALUE(arg_operand);
                             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_i32, params);
                         }
                         break;
-                    default: oc_todo("unhadnled argument operand");
+                    default: oc_todo("unhadnled argument operand: {x}", OPD_TYPE(arg_operand));
                 }
             }
 
@@ -747,11 +769,15 @@ DO_OPCODE_ARITHMETIC:
                 b->registers.items[OPD_VALUE(operands[0])] = offset;
             }
 
-            break;
-        }
+        } break;
         case LL_IR_OPCODE_RET:
             params.relative = 0;
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_JMP, rel32, params);
+            break;
+        case LL_IR_OPCODE_RETVALUE:
+            LL_Type_Function* fn_type = (LL_Type_Function*)b->fn->ident->base.type;
+            params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[0], fn_type->return_type);
+            assert(params.reg0 == X86_64_OPERAND_REGISTER_rax);
             break;
         default:
             print("implement op: {x}\n", opcode);
@@ -812,23 +838,44 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
 
 
 
-        // generate body
+        // generate prologue
         size_t function_offset = b->section_text.count;
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
+        // OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbx }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp, .reg1 = X86_64_OPERAND_REGISTER_rsp }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_SUB, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = 0 }));
         size_t stack_size_offset = b->section_text.count - 4;
         fn->generated_offset = (int64_t)function_offset;
 
+        // move registers to stack, if already on stack just use that offset
+        X86_64_Call_Convention callconv = x86_64_call_convention_systemv(b);
+        LL_Type_Function* fn_type = (LL_Type_Function*)fn->ident->base.type;
+        oc_array_reserve(&cc->tmp_arena, &b->parameters, fn_type->parameter_count);
+        assert(fn_type->base.kind == LL_TYPE_FUNCTION);
+
+        for (uint32_t j = 0; j < fn_type->parameter_count; ++j) {
+            X86_64_Parameter param = x86_64_call_convention_next(b, &callconv);
+            if (param.is_reg) {
+                uword offset = x86_64_move_reg_to_stack(cc, b, bir, fn_type->parameters[j], param.reg);
+                b->parameters.items[j] = offset;
+            } else {
+                b->parameters.items[j] = param.stack_offset;
+            }
+        }
+
+
+        // generate body
         while (block) {
             x86_64_generate_block(cc, b, bir, &bir->blocks.items[block]);
             block = bir->blocks.items[block].next;
         }
 
+        // generate epilogue
         uint32_t stack_used = oc_align_forward(b->stack_used, 16);
         int32_t* pstack_size = (int32_t*)&b->section_text.items[stack_size_offset];
         *pstack_size = stack_used;
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_ADD, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = stack_used }));
+        // OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbx }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_RET, noarg, ((X86_64_Instruction_Parameters){ 0 }));
 
@@ -840,6 +887,10 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
 void x86_64_run(Compiler_Context* cc, X86_64_Backend* b) {
     (void)cc;
     uint8* code = VirtualAlloc(NULL, b->section_text.count, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    if (!code) {
+        eprint("Unable to allocate memory\n");
+        return;
+    }
     memcpy(code, b->section_text.items, b->section_text.count);
     sint32 a;
     if (!VirtualProtect(code, b->section_text.count, PAGE_EXECUTE, &a)) {

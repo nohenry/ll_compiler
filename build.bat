@@ -1,5 +1,5 @@
 
-@REM clang -std=gnu11 src/main.c src/lexer.c src/common.c src/parser.c src/typer.c src/backend.c src/eval.c -g -Wall  -o main.exe
+@REM clang -std=gnu11 src/main.c src/lexer.c src/common.c src/parser.c src/typer.c src/backend.c src/eval.c -g -Wall -Wextra -o main.exe
 clang -std=gnu11 src/main.c src/lexer.c src/common.c src/parser.c src/typer.c src/backend.c src/eval.c -g -Wall -Wextra -fsanitize=address  -o main.exe
 
 @REM clang -std=gnu11 src/main.c src/lexer.c src/common.c src/parser.c src/typer.c src/backend.c src/eval.c -g -Wall  -o main.exe
