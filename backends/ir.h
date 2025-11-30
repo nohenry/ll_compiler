@@ -98,6 +98,7 @@ typedef struct {
 
 typedef enum {
     LL_IR_FUNCTION_FLAG_EXTERN = (1u << 0u),
+    LL_IR_FUNCTION_FLAG_NATIVE = (1u << 1u),
 } LL_Ir_Function_Flags;
 
 #define LL_IR_FUNCTION_OFFSET_INVALID ((int64_t)-1)

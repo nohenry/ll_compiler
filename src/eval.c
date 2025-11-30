@@ -5,6 +5,7 @@
 #define FUNCTION() (&bir->const_stack.items[bir->current_function & CURRENT_INDEX])
 
 static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand lvalue, LL_Eval_Value rvalue) {
+    (void)cc;
     LL_Type* type;
     type = ir_get_operand_type(FUNCTION(), lvalue);
 
@@ -39,6 +40,7 @@ static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backe
 }
 
 static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand lvalue) {
+    (void)cc;
     LL_Eval_Value result;
     LL_Type* type;
 
@@ -85,6 +87,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
 
 
 static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src, bool load) {
+    (void)cc;
     LL_Type* to_type = ir_get_operand_type(FUNCTION(), result);
     // @TODO: why did we have this???
     // LL_Type* from_type;

@@ -4,12 +4,43 @@
 #include "../src/ast.h"
 #include "../src/eval.h"
 
+#define NEXTREG(type_) ir_get_next_reg(cc, b, (type_))
+#define FUNCTION() ((b->current_function & CURRENT_CONST_STACK) ? (&b->const_stack.items[b->current_function & CURRENT_INDEX]) : (&b->fns.items[b->current_function & CURRENT_INDEX]))
+#define BLOCK() (&b->blocks.items[b->current_block])
+
+#define IR_APPEND_OP(opcode, ...) do { \
+            LL_Ir_Operand _ops[] = {__VA_ARGS__}; \
+            ir_append_op(cc, b, b->current_block, opcode, _ops, oc_len(_ops)); \
+        } while(0)
+
+#define IR_APPEND_OP_DST(opcode, type_, ...) ir_append_op_dst(cc, b, b->current_block, opcode, type_, ((LL_Ir_Operand[]){__VA_ARGS__}), oc_len(((LL_Ir_Operand[]){__VA_ARGS__})))
+
+#define INDENT "    "
+
+#define IR_INVALID_FUNCTION ((uint32_t)-1)
+
+static LL_Ir_Operand ir_get_next_reg(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* type) {
+    uint32_t reg = FUNCTION()->registers.count; 												\
+    oc_array_append(&cc->arena, &FUNCTION()->registers, ((LL_Ir_Register){ .type = type })); 	\
+    return LL_IR_OPERAND_REGISTER_BIT | reg; 															\
+}
+
 static void ir_append_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block_Ref block, LL_Ir_Opcode opcode, LL_Ir_Operand* operands, size_t operands_count) {
-    oc_array_append(&cc->arena, &b->blocks.items[block].ops, (uint32_t)opcode);
-    oc_array_append_many(&cc->arena, &b->blocks.items[block].ops, (uint32_t*)operands, operands_count);
+    oc_array_append(&cc->arena, &b->blocks.items[block].ops, opcode);
+    oc_array_append_many(&cc->arena, &b->blocks.items[block].ops, operands, operands_count);
+}
+
+static LL_Ir_Operand ir_append_op_dst(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block_Ref block, LL_Ir_Opcode opcode, LL_Type* dst_type, LL_Ir_Operand* operands, size_t operands_count) {
+    LL_Ir_Operand dst = NEXTREG(dst_type);
+    oc_array_append(&cc->arena, &b->blocks.items[block].ops, opcode);
+    oc_array_append(&cc->arena, &b->blocks.items[block].ops, dst);
+    oc_array_append_many(&cc->arena, &b->blocks.items[block].ops, operands, operands_count);
+    return dst;
 }
 
 size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i) {
+    (void)cc;
+    (void)b;
     LL_Ir_Opcode opcode = opcode_list[i];
 
     switch (opcode) {
@@ -64,28 +95,9 @@ static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Blo
     }
 }
 
-#define IR_APPEND_OP(opcode, ...) ({ \
-            LL_Ir_Operand _ops[] = {__VA_ARGS__}; \
-            ir_append_op(cc, b, b->current_block, opcode, _ops, oc_len(_ops)); \
-        })
-
-#define IR_APPEND_OP_DST(opcode, type_, ...) ({ \
-            LL_Ir_Operand dst = NEXTREG(type_); \
-            LL_Ir_Operand _ops[] = {dst,__VA_ARGS__}; \
-            ir_append_op(cc, b, b->current_block, opcode, _ops, oc_len(_ops)); \
-            dst; \
-        })
-
-#define FUNCTION() ((b->current_function & CURRENT_CONST_STACK) ? (&b->const_stack.items[b->current_function & CURRENT_INDEX]) : (&b->fns.items[b->current_function & CURRENT_INDEX]))
-#define BLOCK() (&b->blocks.items[b->current_block])
-#define NEXTREG(type_) ({ 																				\
-            uint32_t reg = FUNCTION()->registers.count; 												\
-            oc_array_append(&cc->arena, &FUNCTION()->registers, ((LL_Ir_Register){ .type = type_ })); 	\
-            LL_IR_OPERAND_REGISTER_BIT | reg; 															\
-        })
-#define INDENT "    "
-
 void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i, Oc_Writer* w) {
+    (void)cc;
+    (void)b;
     LL_Ir_Opcode opcode = opcode_list[i];
     LL_Ir_Operand* operands = &opcode_list[i + 1];
     int offset = 0;
@@ -137,6 +149,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 
 static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block) {
     size_t i;
+    oc_hex_dump(block->ops.items, block->ops.count * sizeof(*block->ops.items), 0, -1);
     for (i = 0; i < block->ops.count; ) {
         ir_print_op(cc, b, block->ops.items, i, &stdout_writer);
         print("\n");
@@ -145,7 +158,7 @@ static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* 
 }
 
 static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b, Oc_Writer* w) {
-    int fi;
+    uint32_t fi;
     for (fi = 0; fi < b->fns.count; ++fi) {
         LL_Ir_Function* fn = &b->fns.items[fi];
         LL_Ir_Block_Ref block = fn->entry;
@@ -169,13 +182,34 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b, Oc_Writer* w) {
 
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b) {
     memset(b, 0, sizeof(*b));
-    b->current_function = -1;
+    b->current_function = IR_INVALID_FUNCTION;
     // first function is used for const eval
     oc_array_append(&cc->arena, &b->fns, ((LL_Ir_Function){}));
     oc_array_append(&cc->arena, &b->blocks, ((LL_Ir_Block){}));
 }
 
+// void ir_insert_native_fn(Compiler_Context* cc, LL_Backend_Ir* b, const char* name, void *fn_ptr) {
+//     string name_str = oc_sprintf(&cc->arena, "%s", name);
+//     Ast_Ident ident = {
+//         .base.kind = name_str,
+//         .str = name_str, .symbol_index = AST_IDENT_SYMBOL_INVALID,
+//     };
+//     oc_arena_dup(cc, b);
+
+//     LL_Ir_Function fn = {
+//         .ident = fn_decl->ident,
+//         .entry = entry_block_ref,
+//         .exit = entry_block_ref,
+//         .flags = 0,
+//         .generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
+//         .block_count = 1,
+//     };
+
+//     fn_decl->ir_index = b->fns.count;
+// }
+
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath) {
+    (void)filepath;
     ir_print(cc, b, &stdout_writer);
     return false;
 }
@@ -258,7 +292,7 @@ LL_Ir_Operand ir_generate_rhs_load_if_needed(Compiler_Context* cc, LL_Backend_Ir
 }
 
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt) {
-    int i;
+    uint32_t i;
     switch (stmt->kind) {
     case AST_KIND_BLOCK:
         for (i = 0; i < AST_AS(stmt, Ast_Block)->count; ++i) {
@@ -268,7 +302,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
     case AST_KIND_VARIABLE_DECLARATION: {
         Ast_Variable_Declaration* var_decl = AST_AS(stmt, Ast_Variable_Declaration);
         if (var_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break;
-        oc_assert(b->current_function != -1);
+        oc_assert(b->current_function != IR_INVALID_FUNCTION);
 
         LL_Ir_Local var = {
             .ident = var_decl->ident,
@@ -319,6 +353,9 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
         if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
             fn.flags |= LL_IR_FUNCTION_FLAG_EXTERN;
         }
+        if (fn_decl->storage_class & LL_STORAGE_CLASS_NATIVE) {
+            fn.flags |= LL_IR_FUNCTION_FLAG_NATIVE;
+        }
         oc_array_append(&cc->arena, &b->fns, fn);
 
         if (fn_decl->body) {
@@ -354,7 +391,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, bool lvalue) {
     LL_Ir_Operand result = 696969;
     LL_Ir_Opcode op, r1, r2;
-    int i;
+    uint32_t i;
 
     switch (expr->kind) {
     case AST_KIND_BLOCK: {
@@ -449,10 +486,11 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
             op = LL_IR_OPCODE_NEQ;
             goto DO_BIN_OP_BOOLEAN;
 DO_BIN_OP_BOOLEAN:
-            r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
-            r1 = ir_generate_lhs_load_if_needed(cc, b, AST_AS(expr, Ast_Operation)->left->type, r1);
             r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
             r2 = ir_generate_lhs_load_if_needed(cc, b, AST_AS(expr, Ast_Operation)->right->type, r2);
+
+            r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+            r1 = ir_generate_lhs_load_if_needed(cc, b, AST_AS(expr, Ast_Operation)->left->type, r1);
 
             result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
             return result;
@@ -472,12 +510,12 @@ DO_BIN_OP_BOOLEAN:
         case LL_TOKEN_KIND_ASSIGN_PLUS:
             op = LL_IR_OPCODE_ADD;
 DO_BIN_OP_ASSIGN_OP:
+            r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+            r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, AST_AS(expr, Ast_Operation)->right->type);
+
             r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
             r1 = ir_generate_cast_if_needed(cc, b, expr->type, r1, AST_AS(expr, Ast_Operation)->left->type);
             r1 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r1);
-
-            r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
-            r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, AST_AS(expr, Ast_Operation)->right->type);
 
             r1 = IR_APPEND_OP_DST(op, expr->type, r1, r2);
 

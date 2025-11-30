@@ -29,6 +29,7 @@ typedef struct {
     struct ll_eval_context* eval_context;
     struct ll_backend_ir* bir;
     struct ll_backend* target;
+	bool quiet;
 } Compiler_Context;
 
 extern string LL_KEYWORD_CONST;
@@ -40,6 +41,7 @@ extern string LL_KEYWORD_DO;
 extern string LL_KEYWORD_MATCH;
 extern string LL_KEYWORD_STRUCT;
 extern string LL_KEYWORD_EXTERN;
+extern string LL_KEYWORD_NATIVE;
 extern string LL_KEYWORD_RETURN;
 extern string LL_KEYWORD_BREAK;
 extern string LL_KEYWORD_CONTINUE;

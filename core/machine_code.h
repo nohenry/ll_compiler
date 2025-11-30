@@ -1305,7 +1305,7 @@ const X86_64_Instruction x86_64_instructions_table[] = {
     [OPCODE_JMP] = {
         .rel8  		= { .opcode = 0xEBu, .operands = MAKE_OPERANDS(imm) },
         .rel32 		= { .opcode = 0xE9u, .operands = MAKE_OPERANDS(imm) },
-        .rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(4)) },
+        .rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(4)) | 0x10 },
         // oc_todo: add far jumps
     },
     X86_64_OPCODE_MAKE_Jcc(OPCODE_JO, 0x70, 0x80u),
@@ -2192,10 +2192,10 @@ static bool x86_64_uses_modrm(X86_64_Variant_Kind kind) {
 }
 
 void oc_x86_64_write_nop(OC_Machine_Code_Writer* b, unsigned char byte_count) {
-#define WRITE_NOP(...) ({ 										\
+#define WRITE_NOP(...) do { 										\
             unsigned char bytes[] = {__VA_ARGS__};					\
             b->append_many((void*)b, bytes, oc_len(bytes));	\
-        })
+        } while (0)
     switch (byte_count) {
     case 2: WRITE_NOP(0x66, 0x90); break;
     case 3: WRITE_NOP(0x0F, 0x1F, 0x00); break;
@@ -2216,7 +2216,8 @@ void oc_x86_64_write_instruction(OC_Machine_Code_Writer* w, X86_64_Variant_Kind 
     int i;
 
     if (instruction.opcode == 0) {
-        w->log_error(w, "invalid opcode");
+        w->log_error(w, "invalid opcode: %d");
+        __asm__("int3");
         return;
     }
 

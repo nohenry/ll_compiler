@@ -98,7 +98,7 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
 }
 
 bool ll_type_eql(LL_Type* a, LL_Type* b) {
-    int i;
+    uint32_t i;
     if (a->kind != b->kind) return false;
 
     switch (a->kind) {
@@ -186,6 +186,7 @@ LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* re
 }
 
 LL_Type* ll_typer_implicit_cast_tofrom(Compiler_Context* cc, LL_Typer* typer, LL_Type* from, LL_Type* to) {
+    (void)cc;
     if (from == to) return to;
 
     if (from == typer->ty_anyint) {
@@ -260,7 +261,7 @@ LL_Type* ll_typer_implicit_cast_leftright(Compiler_Context* cc, LL_Typer* typer,
 
 
 LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base** stmt) {
-    int i;
+    uint32_t i;
     LL_Type** types;
 
     switch ((*stmt)->kind) {
@@ -346,6 +347,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         LL_Type* fn_type = ll_typer_get_fn_type(cc, typer, return_type, types, fn_decl->parameters.count, did_variadic);
         (*stmt)->type = fn_type;
         fn_decl->ident->base.type = fn_type;
+        fn_decl->ident->resolved_scope = fn_scope;
 
         LL_Type_Function* last_fn = typer->current_fn;
         typer->current_fn = (LL_Type_Function*)fn_type;
@@ -393,6 +395,7 @@ static LL_Eval_Value const_value_cast(LL_Eval_Value from, LL_Type* from_type, LL
 }
 
 void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type) {
+    (void)typer;
     if ((*expr)->type == expected_type) {
         return;
     }
@@ -682,7 +685,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         break;
     }
     case AST_KIND_INVOKE: {
-        int pi, di;
+        uword pi, di;
         Ast_Invoke* inv = AST_AS((*expr), Ast_Invoke);
         LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, &inv->expr, NULL);
         if (fn_type->base.kind != LL_TYPE_FUNCTION) {
@@ -875,7 +878,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         break;
     }
 
-    default: eprint("\x1b[31;1mTODO:\x1b[0m typename node %d\n", typename->kind);
+    default: eprint("\x1b[31;1mTODO:\x1b[0m typename node {}\n", typename->kind);
     }
 
     typename->type = result;
@@ -883,7 +886,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 }
 
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
-    int i;
+    uint32_t i;
     switch (type->kind) {
     case LL_TYPE_VOID:     wprint(w, "void"); break;
     case LL_TYPE_INT:      wprint(w, "int{}", type->width); break;
@@ -952,11 +955,18 @@ LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name) {
 }
 
 LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, string symbol_name) {
+    (void)cc;
     LL_Scope* found_scope;
     LL_Scope* current = typer->current_scope;
 
     while (current) {
-        found_scope = ll_scope_get(current, symbol_name);
+        switch (current->kind) {
+        case LL_SCOPE_KIND_PACKAGE:
+        case LL_SCOPE_KIND_FUNCTION:
+            found_scope = ll_scope_get(current, symbol_name);
+            break;
+        default: found_scope = NULL; break;
+        }
         if (found_scope) return found_scope;
         current = current->parent;
     }
@@ -986,7 +996,7 @@ void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w) {
     case LL_SCOPE_KIND_LOCAL: return;
     default: break;
     }
-    for (int i = 0; i < oc_len(scope->children); ++i) {
+    for (uword i = 0; i < oc_len(scope->children); ++i) {
         current = scope->children[i];
         while (current) {
             ll_scope_print(current->scope, indent + 1, w);

@@ -1,16 +1,20 @@
 
+// #define OC_CORE_IMPLEMENTATION
+// #include "../core/core1.h"
+#include <stdio.h>
+#include <stdint.h>
 
-extern int printf(const char* fmt, ...);
-static int fb();
-extern int fc();
+void foo (int* a) {
+
+}
 
 int main(int argc, char** argv) {
-	int array[5] = { 1, 2, 3, 4, 5 };
-
-	return (int)array[4];
+    // foo((int[]){123 });
+    // sizeof((int[]){123});
+    uint32_t a = -1;
+    printf("%x\n", a);
+    // print("hello {}\n", 123);
+    return 0;
 }
 
-
-static int fb() {
-}
 

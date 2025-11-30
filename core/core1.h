@@ -43,6 +43,7 @@ typedef struct {
     #define MEM_RESERVE                     0x00002000  
     #define MEM_COMMIT                      0x00001000  
     #define PAGE_READWRITE          0x04    
+    #define PAGE_EXECUTE 0x10
     typedef void* HANDLE;
 
     #define STD_INPUT_HANDLE    ((sint32)-10)
@@ -51,6 +52,8 @@ typedef struct {
 
     _Noreturn void WINAPI ExitProcess(uint32 uExitCode);
     void* WINAPI VirtualAlloc(void* lpAddress, sword dwSize, sint32 flAllocationType, sint32 flProtect);
+    void* WINAPI VirtualProtect(void* BaseAddress, sword Size, sint32 flNewProtect, sint32* lpflOldProtect);
+
     HANDLE WINAPI GetStdHandle(sint32 nStdHandle);
 
     sint32 WINAPI WriteFile(
@@ -193,6 +196,12 @@ typedef struct {
     uword count, capacity;
 } Oc_String_Builder;
 
+typedef struct {
+    int base;
+    int base_upper;
+    int size;
+} Oc_Format_Config;
+
 #ifndef NULL
 #define NULL     ((void*)0)
 #endif
@@ -214,11 +223,8 @@ typedef struct {
 #define _oc_generic_tmp(___y) typeof(_Generic((___y), float: (float)0, double: (double)0, long double: (long double)0, string: ((string){0}), default: (uword)0))
 #define _oc_generic_cast(x) _Generic((x), string: (x), default: (_oc_generic_tmp(x))(x))
 
-#if __STDC_VERSION__ == 201710L
-// #define OC_MAKE_GENERIC(x) ((Oc_Generic){ typeinfo_kind(x), NULL })
-#else
-#define OC_MAKE_GENERIC(x) ((Oc_Generic){ typeinfo_kind(x), ({ _oc_generic_tmp(x) ___p = _oc_generic_cast(x); &___p; }) })
-#endif
+#define OC_MAKE_GENERIC1(x, n) _oc_generic_tmp(x) ___p_ ## n = _oc_generic_cast(x); 
+#define OC_MAKE_GENERIC1_PARAM(x, n) , ((Oc_Generic){ typeinfo_kind(x), & ___p_ ## n })
 
 #define OC_VA_NARGS(...) OC_VA_NARGS_IMPL(, ##__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
 #define OC_VA_NARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, N, ...) N
@@ -249,22 +255,22 @@ typedef struct {
 
 #define OC_MAP_SEQ(transform_macro, ...) OC_CONCAT(OC_MAP_SEQ_, OC_VA_NARGS(__VA_ARGS__))(transform_macro, ##__VA_ARGS__)
 #define OC_MAP_SEQ_0(transform_macro)
-#define OC_MAP_SEQ_1(transform_macro, a1) transform_macro(a1)
-#define OC_MAP_SEQ_2(transform_macro, a1, a2) transform_macro(a1) transform_macro(a2)
-#define OC_MAP_SEQ_3(transform_macro, a1, a2, a3) transform_macro(a1) transform_macro(a2) transform_macro(a3)
-#define OC_MAP_SEQ_4(transform_macro, a1, a2, a3, a4) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4)
-#define OC_MAP_SEQ_5(transform_macro, a1, a2, a3, a4, a5) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5)
-#define OC_MAP_SEQ_6(transform_macro, a1, a2, a3, a4, a5, a6) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6)
-#define OC_MAP_SEQ_7(transform_macro, a1, a2, a3, a4, a5, a6, a7) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7)
-#define OC_MAP_SEQ_8(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8)
-#define OC_MAP_SEQ_9(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8) transform_macro(a9)
-#define OC_MAP_SEQ_10(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8) transform_macro(a9) transform_macro(a10)
-#define OC_MAP_SEQ_11(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8) transform_macro(a9) transform_macro(a10) transform_macro(a11)
-#define OC_MAP_SEQ_12(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8) transform_macro(a9) transform_macro(a10) transform_macro(a11) transform_macro(a12)
-#define OC_MAP_SEQ_13(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8) transform_macro(a9) transform_macro(a10) transform_macro(a11) transform_macro(a12) transform_macro(a13)
-#define OC_MAP_SEQ_14(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8) transform_macro(a9) transform_macro(a10) transform_macro(a11) transform_macro(a12) transform_macro(a13) transform_macro(a14)
-#define OC_MAP_SEQ_15(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8) transform_macro(a9) transform_macro(a10) transform_macro(a11) transform_macro(a12) transform_macro(a13) transform_macro(a14) transform_macro(a15)
-#define OC_MAP_SEQ_16(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16) transform_macro(a1) transform_macro(a2) transform_macro(a3) transform_macro(a4) transform_macro(a5) transform_macro(a6) transform_macro(a7) transform_macro(a8) transform_macro(a9) transform_macro(a10) transform_macro(a11) transform_macro(a12) transform_macro(a13) transform_macro(a14) transform_macro(a15) transform_macro(a16)
+#define OC_MAP_SEQ_1(transform_macro, a1)                                                                     transform_macro(a1, 1) OC_MAP_SEQ_0(transform_macro)
+#define OC_MAP_SEQ_2(transform_macro, a1, a2)                                                                 transform_macro(a2, 2) OC_MAP_SEQ_1(transform_macro, a1) 
+#define OC_MAP_SEQ_3(transform_macro, a1, a2, a3)                                                             transform_macro(a3, 3) OC_MAP_SEQ_2(transform_macro, a1, a2) 
+#define OC_MAP_SEQ_4(transform_macro, a1, a2, a3, a4)                                                         transform_macro(a4, 4) OC_MAP_SEQ_3(transform_macro, a1, a2, a3) 
+#define OC_MAP_SEQ_5(transform_macro, a1, a2, a3, a4, a5)                                                     transform_macro(a5, 5) OC_MAP_SEQ_4(transform_macro, a1, a2, a3, a4) 
+#define OC_MAP_SEQ_6(transform_macro, a1, a2, a3, a4, a5, a6)                                                 transform_macro(a6, 6) OC_MAP_SEQ_5(transform_macro, a1, a2, a3, a4, a5) 
+#define OC_MAP_SEQ_7(transform_macro, a1, a2, a3, a4, a5, a6, a7)                                             transform_macro(a7, 7) OC_MAP_SEQ_6(transform_macro, a1, a2, a3, a4, a5, a6) 
+#define OC_MAP_SEQ_8(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8)                                         transform_macro(a8, 8) OC_MAP_SEQ_7(transform_macro, a1, a2, a3, a4, a5, a6, a7) 
+#define OC_MAP_SEQ_9(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9)                                     transform_macro(a9, 9) OC_MAP_SEQ_8(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8) 
+#define OC_MAP_SEQ_10(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)                               transform_macro(a10, 10) OC_MAP_SEQ_9(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9) 
+#define OC_MAP_SEQ_11(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11)                          transform_macro(a11, 11) OC_MAP_SEQ_10(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) 
+#define OC_MAP_SEQ_12(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12)                     transform_macro(a12, 12) OC_MAP_SEQ_11(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) 
+#define OC_MAP_SEQ_13(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13)                transform_macro(a13, 13) OC_MAP_SEQ_12(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) 
+#define OC_MAP_SEQ_14(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14)           transform_macro(a14, 14) OC_MAP_SEQ_13(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) 
+#define OC_MAP_SEQ_15(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15)      transform_macro(a15, 15) OC_MAP_SEQ_14(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) 
+#define OC_MAP_SEQ_16(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16) transform_macro(a16, 16) OC_MAP_SEQ_15(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) 
 
 
 
@@ -276,9 +282,12 @@ typedef struct {
 
 #define oc_assert(expr) ((expr) ? 1 : _oc_assert_fail(#expr, __FILE__, __LINE__, __func__))
 #define oc_unreachable(expr) ((expr) ? 1 : _oc_assert_fail(#expr, __FILE__, __LINE__, __func__))
-#define wprint(writer, fmt, ...) _oc_printw((writer), fmt OC_MAP(OC_MAKE_GENERIC, __VA_ARGS__))
-#define print(fmt, ...) _oc_printw(&stdout_writer, fmt OC_MAP(OC_MAKE_GENERIC, __VA_ARGS__))
-#define eprint(fmt, ...) _oc_printw(&stderr_writer, fmt OC_MAP(OC_MAKE_GENERIC, __VA_ARGS__))
+#define wprint(writer, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); _oc_printw((writer), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define print(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); _oc_printw(&stdout_writer, fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define eprint(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); _oc_printw(&stderr_writer, fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+// #define wprint(writer, fmt, ...) _oc_printw((writer), fmt OC_MAP(OC_MAKE_GENERIC, __VA_ARGS__))
+// #define print(fmt, ...) _oc_printw(&stdout_writer, fmt OC_MAP(OC_MAKE_GENERIC, __VA_ARGS__))
+// #define eprint(fmt, ...) _oc_printw(&stderr_writer, fmt OC_MAP(OC_MAKE_GENERIC, __VA_ARGS__))
 #define oc_todo(fmt, ...) do { print("oc_todo - {}:{} - ", __FILE__, __LINE__); oc_exit(-1); } while (0)
 #define oc_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #define oc_pun(value, type) ({ __typeof__(value) _v = (value); *(type*)&_v; })
@@ -287,7 +296,7 @@ typedef struct {
     do {                                                                                         \
         if ((array)->count + 1 > (array)->capacity) {                                            \
             uword new_cap = (array)->capacity ? (array)->capacity * 2 : 16;                      \
-            void* new_ptr = oc_arena_realloc(arena, (array)->items, (array)->capacity, new_cap); \
+            void* new_ptr = oc_arena_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items)); \
             (array)->items = new_ptr;                                                            \
             (array)->capacity = new_cap;                                                         \
         }                                                                                        \
@@ -297,18 +306,18 @@ typedef struct {
     do {                                                                                         \
         if ((array)->count + (len) > (array)->capacity) {                                            \
             uword new_cap = (array)->capacity ? ((array)->count + (len) + (array)->capacity * 2) : (((array)->count + (len)) * 8); \
-            void* new_ptr = oc_arena_realloc(arena, (array)->items, (array)->capacity, new_cap); \
+            void* new_ptr = oc_arena_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items)); \
             (array)->items = new_ptr;                                                            \
             (array)->capacity = new_cap;                                                         \
         }                                                                                        \
-        memcpy((array)->items + (array)->count, ptr, len);  \
-        (array)->count += len;                              \
+        memcpy((array)->items + (array)->count, ptr, (len) * sizeof(*(array)->items));  \
+        (array)->count += (len);                              \
     } while (0)
 #define oc_array_reserve(arena, array, _count)                                                     \
     do {                                                                                           \
         if ((_count) > (array)->capacity) {                                                        \
             uword new_cap = (_count) * 2;                                                           \
-            void* new_ptr = oc_arena_realloc(arena, (array)->items, (array)->capacity, new_cap);   \
+            void* new_ptr = oc_arena_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items));   \
             (array)->items = new_ptr;                                                              \
             (array)->capacity = new_cap;                                                           \
         }                                                                                          \
@@ -344,21 +353,22 @@ void *memset(void *s, int c, size_t n);
 void *memcpy(void *dest, const void *src, size_t n);
 int memcmp(const void *a, const void *b, size_t n);
 int strncmp(const char *a, const char *b, size_t n);
+int strcmp(const char *a, const char *b);
 size_t strlen(const char *s);
 _Noreturn void exit(int status);
-typedef void FILE;
-int fopen_s(FILE**, const char*, const char*);
-int fseek(FILE*, int, int);
-size_t ftell(FILE*);
-unsigned long long fwrite(const void *, unsigned long long a, unsigned long long b, FILE *);
-unsigned long long fread(void *, unsigned long long a, unsigned long long b, FILE *);
-void fclose(FILE*);
+// typedef void FILE;
+// int fopen_s(FILE**, const char*, const char*);
+// int fseek(FILE*, int, int);
+// size_t ftell(FILE*);
+// unsigned long long fwrite(const void *, unsigned long long a, unsigned long long b, FILE *);
+// unsigned long long fread(void *, unsigned long long a, unsigned long long b, FILE *);
+// void fclose(FILE*);
 void* realloc(void *, size_t);
 void* malloc(size_t);
 void* alloca(size_t);
-#define SEEK_CUR    1
-#define SEEK_END    2
-#define SEEK_SET    0
+// #define SEEK_CUR    1
+// #define SEEK_END    2
+// #define SEEK_SET    0
 
 /* -------- Platform Specific -------- */
 void* oc_allocate_pages(uword required_size);
@@ -382,11 +392,12 @@ void oc_sb_append_char_str_len(Oc_String_Builder* sb, const char* c, uword len);
 string oc_sb_to_string(Oc_String_Builder* sb);
 uword oc_sb_writer_write(void* writer, const void* data, uword data_size);
 void oc_sb_init(Oc_String_Builder* sb, Oc_Arena* arena);
-void oc_writer_format_and_write_int(Oc_Writer *writer, uint64 ivalue, uint64 base);
-void oc_writer_format_and_write_float(Oc_Writer *writer, double fvalue);
+void oc_writer_format_and_write_int(Oc_Writer *writer, Oc_Format_Config cfg, uint64 ivalue);
+void oc_writer_format_and_write_float(Oc_Writer *writer, Oc_Format_Config cfg, double fvalue);
 void _oc_printw(void *writer, const char* fmt, ...);
 void _oc_vprintw(void *writer, const char* fmt, va_list args);
 _Noreturn void oc_exit(int status);
+void oc_hex_dump(void* data, int count, int indent, int mark_mod);
 
 extern Oc_Writer stdout_writer;
 extern Oc_Writer stderr_writer;
@@ -398,6 +409,7 @@ extern Oc_Writer stderr_writer;
         }
 
         uword stdout_write(void* writer, const uint8* data, uword data_size) {
+            (void)writer;
             HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
             uword total_written = 0;
 
@@ -413,6 +425,7 @@ extern Oc_Writer stderr_writer;
         }
 
         uword stderr_write(void* writer, const uint8* data, uword data_size) {
+            (void)writer;
             HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
             uword total_written = 0;
 
@@ -450,7 +463,10 @@ extern Oc_Writer stderr_writer;
 
 
 _Noreturn int _oc_assert_fail(const char *assertion, const char *file, unsigned int line, const char *function)  {
-    oc_exit(-1);
+    (void)function;
+    print("assert fail({}:{}): {}\n", file, line, assertion);
+    __asm__("int3");
+    exit(1);
 }
 
 Oc_Arena_Chunk* oc_arena_new_chunk(Oc_Arena* arena, uword size_in_bytes) {
@@ -462,7 +478,7 @@ Oc_Arena_Chunk* oc_arena_new_chunk(Oc_Arena* arena, uword size_in_bytes) {
         chunk->size += aligned_bytes;
         return arena->current;
     } else {
-        chunk->used = sizeof(Oc_Arena_Chunk) / sizeof(uword);
+        chunk->used = 0;
         chunk->size = (aligned_bytes - sizeof(Oc_Arena_Chunk)) / sizeof(uword);
         chunk->next = NULL;
         return chunk;
@@ -487,7 +503,7 @@ void oc_arena_reset(Oc_Arena* arena) {
 }
 
 void* oc_arena_alloc(Oc_Arena* arena, uint64 size) {
-    oc_assert(size != 0);
+    if (size == 0) return NULL;
     // 1 -> 0 -> 0 -> 1
     // 2 -> 1 -> 0 -> 1
     // 7 -> 6 -> 0 -> 1
@@ -497,12 +513,14 @@ void* oc_arena_alloc(Oc_Arena* arena, uint64 size) {
     if (!arena->current) {
         arena->head = arena->current = oc_arena_new_chunk(arena, size);
         if (!arena->head) oc_oom();
-    } else if (arena->current->used + words > arena->current->size) {
-        if (arena->current->next == NULL) {
-            arena->current->next = oc_arena_new_chunk(arena, size);
-            if (!arena->current->next) oc_oom();
+    } else {
+        if (arena->current->used + words > arena->current->size) {
+            if (arena->current->next == NULL) {
+                arena->current->next = oc_arena_new_chunk(arena, size);
+                if (!arena->current->next) oc_oom();
+            }
+            arena->current = arena->current->next;
         }
-        arena->current = arena->current->next;
     }
 
     void* result = arena->current->data + arena->current->used;
@@ -557,6 +575,7 @@ void* oc_arena_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 s
 }
 
 void* oc_arena_dup(Oc_Arena* arena, void* data, uword size) {
+    if (size == 0) return NULL;
     void* new_ptr = oc_arena_alloc(arena, size);
     memcpy(new_ptr, data, size);
     return new_ptr;
@@ -638,26 +657,50 @@ Oc_Writer stderr_writer = {
     .write = (WriteFunction)stderr_write,
 };
 
-void oc_writer_format_and_write_int(Oc_Writer *writer, uint64 ivalue, uint64 base) {
+void oc_writer_format_and_write_int(Oc_Writer *writer, Oc_Format_Config cfg, uint64 ivalue) {
     char int_buffer[128];
-    uword int_buffer_offset = 0;
+    uword int_buffer_offset = sizeof(int_buffer) - 1;
+    char base_base = cfg.base_upper ? 'A' : 'a';
 
-    int_buffer_offset = sizeof(int_buffer) - 1;
+    // int size = 0;
+    // if (cfg.size > 0) {
+    //     if (ivalue == 0) {
+    //         size = 1;
+    //     } else {
+    //         uint64 value = ivalue;
+    //         while (value) {
+    //             uint64 current = value % cfg.base;
+    //             char c = current < 10 ? (current + '0') : (current - 10 + base_base);
+    //             int_buffer[int_buffer_offset--] = c;
+    //             value /= base;
+    //         }
+    //     }
+    // }
+
     if (ivalue == 0) {
-        writer->write(writer, "0", 1);
+        if (cfg.size > 1) {
+            for (int i = 0; i < cfg.size; i++)
+                writer->write(writer, "0", 1);
+        } else {
+            writer->write(writer, "0", 1);
+        }
     } else {
         uint64 value = ivalue;
         while (value) {
-            uint64 current = value % base;
-            char c = current < 10 ? (current + '0') : (current - 10 + 'a');
+            uint64 current = value % cfg.base;
+            char c = current < 10 ? (current + '0') : (current - 10 + base_base);
             int_buffer[int_buffer_offset--] = c;
-            value /= base;
+            value /= cfg.base;
+        }
+        while (int_buffer_offset + cfg.size + 1 > sizeof(int_buffer)) {
+            int_buffer[int_buffer_offset--] = '0';
         }
         writer->write(writer, int_buffer + int_buffer_offset + 1, sizeof(int_buffer) - int_buffer_offset - 1);
     }
 }
 
-void oc_writer_format_and_write_float(Oc_Writer *writer, double fvalue) {
+void oc_writer_format_and_write_float(Oc_Writer *writer, Oc_Format_Config cfg, double fvalue) {
+    (void)cfg;
     char int_buffer[128];
     uword int_buffer_offset = 0;
 
@@ -677,7 +720,7 @@ void oc_writer_format_and_write_float(Oc_Writer *writer, double fvalue) {
         writer->write(writer, int_buffer + int_buffer_offset + 1, sizeof(int_buffer) - int_buffer_offset - 1);
     }
 
-    uint64 decimal_places = 6;
+    int decimal_places = 6;
     double e = 0.5;
     for (int i = 0; i < decimal_places; ++i) e /= 10.0;
     dvalue += e;
@@ -717,7 +760,34 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
         if (c == '{') {
             Oc_Generic value = va_arg(args, Oc_Generic);
 
-            while (*fmt && *fmt != '}') fmt++;
+            int f = 0;
+            static const int f_size = 1;
+            static const int f_base = 2;
+            int f_size_accum = 0;
+            int f_base_accum = 10;
+            int f_base_upper = 0;
+            for (; *fmt && *fmt != '}'; fmt++) {
+                if ((f & f_size) == 0 && *fmt >= '0' && *fmt <= '9') {
+                    f_size_accum *= 10;
+                    f_size_accum += (*fmt - '0');
+                    f |= f_size;
+                }
+                if ((f & f_base) == 0 && *fmt == 'x') {
+                    f_base_accum = 16;
+                    f |= f_base;
+                    f_base_upper = 0;
+                }
+                if ((f & f_base) == 0 && *fmt == 'X') {
+                    f_base_accum = 16;
+                    f |= f_base;
+                    f_base_upper = 1;
+                }
+            }
+            Oc_Format_Config cfg = {
+                .base = f_base_accum,
+                .base_upper = f_base_upper,
+                .size = f_size_accum,
+            };
 
             switch (value.kind) {
             case OC_TYPE_CHAR:
@@ -725,7 +795,7 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                 break;
             case OC_TYPE_UNSIGNED_CHAR: {
                 int ivalue = *(unsigned char*)value.data;
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_SIGNED_CHAR: {
                 int ivalue = *(signed char*)value.data;
@@ -733,11 +803,11 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     ivalue = -ivalue;
                     w->write(w, "-", 1);
                 }
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_UNSIGNED_SHORT: {
                 int ivalue = *(unsigned short*)value.data;
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_SHORT: {
                 int ivalue = *(signed short*)value.data;
@@ -745,11 +815,11 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     ivalue = -ivalue;
                     w->write(w, "-", 1);
                 }
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_UNSIGNED_INT: {
                 int ivalue = *(unsigned int*)value.data;
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_INT: {
                 int ivalue = *(signed int*)value.data;
@@ -757,11 +827,11 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     ivalue = -ivalue;
                     w->write(w, "-", 1);
                 }
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_UNSIGNED_LONG: {
                 uint64 ivalue = *(unsigned long*)value.data;
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_LONG: {
                 sint64 ivalue = *(signed long*)value.data;
@@ -769,11 +839,11 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     ivalue = -ivalue;
                     w->write(w, "-", 1);
                 }
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_UNSIGNED_LONG_LONG: {
                 uint64 ivalue = *(unsigned long long*)value.data;
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_LONG_LONG: {
                 sint64 ivalue = *(signed long long*)value.data;
@@ -781,7 +851,7 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     ivalue = -ivalue;
                     w->write(w, "-", 1);
                 }
-                oc_writer_format_and_write_int(w, ivalue, 10);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_FLOAT: {
                 float dvalue = *(float*)value.data;
@@ -796,7 +866,7 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     w->write(w, "nan", 3);
                     break;
                 }
-                oc_writer_format_and_write_float(w, dvalue);
+                oc_writer_format_and_write_float(w, cfg, dvalue);
             } break;
             case OC_TYPE_DOUBLE: {
                 double dvalue = *(double*)value.data;
@@ -811,7 +881,7 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     w->write(w, "nan", 3);
                     break;
                 }
-                oc_writer_format_and_write_float(w, dvalue);
+                oc_writer_format_and_write_float(w, cfg, dvalue);
             } break;
             case OC_TYPE_LONG_DOUBLE: {
                 long double dvalue = *(long double*)value.data;
@@ -826,7 +896,7 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     w->write(w, "nan", 3);
                     break;
                 }
-                oc_writer_format_and_write_float(w, dvalue);
+                oc_writer_format_and_write_float(w, cfg, dvalue);
             } break;
             case OC_TYPE_STRING: {
                 string* str = (string*)value.data;
@@ -838,28 +908,33 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
             } break;
             case OC_TYPE_POINTER: {
                 uint64 ivalue = *(uword*)value.data;
+                cfg.base = 16;
                 w->write(w, "0x", 2);
-                oc_writer_format_and_write_int(w, ivalue, 16);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_VOLATILE_POINTER: {
                 uint64 ivalue = *(volatile uword*)value.data;
+                cfg.base = 16;
                 w->write(w, "0x", 2);
-                oc_writer_format_and_write_int(w, ivalue, 16);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_POINTER_VOLATILE: {
                 uint64 ivalue = *(volatile uword*)value.data;
+                cfg.base = 16;
                 w->write(w, "0x", 2);
-                oc_writer_format_and_write_int(w, ivalue, 16);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_VOLATILE_POINTER_VOLATILE: {
                 uint64 ivalue = *(volatile uword* volatile)value.data;
+                cfg.base = 16;
                 w->write(w, "0x", 2);
-                oc_writer_format_and_write_int(w, ivalue, 16);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_POINTER_POINTER: {
                 uint64 ivalue = *(uword*)value.data;
+                cfg.base = 16;
                 w->write(w, "0x", 2);
-                oc_writer_format_and_write_int(w, ivalue, 16);
+                oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             }
 
@@ -869,5 +944,45 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
         fmt++;
     }
 }
+
+void oc_hex_dump(void* data, int count, int indent, int mark_mod) {
+    unsigned char *bytes = (unsigned char*)data;
+    for (int i = 0; i < indent; i++) {
+        print("    ");
+    }
+    for (int i = 0; i < count; i++) {
+        if (mark_mod > -1) {
+            if ((i % 16) == 0 && (i > 0) && (i % mark_mod) == 0) {
+                print("\n");
+                for (int j = 0; j < indent; j++) {
+                    print("    ");
+                }
+            }
+        } else {
+            if (i % 16 == 0 && i > 0) {
+                print("\n");
+                for (int j = 0; j < indent; j++) {
+                    print("    ");
+                }
+            } else if (i % 8 == 0 && i > 0) {
+                print(" ");
+            }
+        }
+
+        if (bytes[i] > 0) {
+            print("\x1b[44m{2x}\x1b[0m", bytes[i]);
+        } else {
+            print("{2x}", bytes[i]);
+        }
+
+        if (mark_mod > 0 && (i + 1) % mark_mod == 0 && (i + 1) > 0) {
+            print("|");
+        } else {
+            print(" ");
+        }
+    }
+    print("\n");
+}
+
 
 #endif // OC_CORE_IMPLEMENTATION

@@ -5,6 +5,7 @@
 #include "lexer.h"
 
 static void lexer_prefixed(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out, char next_char, LL_Token_Kind next_char_kind) {
+    (void)cc;
     if (lexer->pos + 1 < lexer->source.len) {
         if (lexer->source.ptr[lexer->pos + 1] == next_char) {
             out->kind = next_char_kind;
@@ -31,6 +32,7 @@ bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
 }
 
 void lexer_consume(Compiler_Context *cc, LL_Lexer* lexer) {
+    (void)cc;
     lexer->has_peeked_token = false;
 }
 
@@ -44,6 +46,7 @@ bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
     while (lexer->pos < lexer->source.len) switch (lexer->source.ptr[lexer->pos]) {
         case '\t':
         case '\n':
+        case '\r':
         case ' ':
             lexer->pos++;
             continue;
@@ -169,6 +172,7 @@ DONE_NUMBER:
         case '"': {
             bool needs_alloc = false;
             Oc_String_Builder alloc_string = { 0 };
+            alloc_string.arena = &cc->arena;
             lexer->pos++;
             size_t last_copied = lexer->pos;
 
@@ -277,6 +281,9 @@ DONE_NUMBER:
 
         case '.': lexer_prefixed(cc, lexer, out, '.', LL_TOKEN_KIND_RANGE); return true;
         
+        case 0:
+            lexer->source.len = lexer->pos;
+            return false;
         default: break;
     }
 

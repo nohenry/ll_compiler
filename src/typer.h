@@ -76,6 +76,7 @@ typedef struct {
     LL_Type** parameters;
     bool is_variadic;
 } LL_Type_Function;
+// static_assert(sizeof(LL_Type*) == 8);
 
 typedef struct ll_type_intern_map_entry {
     LL_Type* value;

@@ -38,6 +38,7 @@ typedef enum {
 typedef enum {
     LL_STORAGE_CLASS_EXTERN = (1 << 0),
     LL_STORAGE_CLASS_STATIC = (1 << 1),
+    LL_STORAGE_CLASS_NATIVE = (1 << 2),
 } LL_Storage_Class;
 
 typedef enum {

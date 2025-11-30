@@ -1030,7 +1030,7 @@ static void linux_x86_64_elf_generate_block(Compiler_Context* cc, Linux_x86_64_E
         case LL_IR_OPCODE_RET:
             params.relative = 0;
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_JMP, rel32, params);
-               break;
+            break;
         case LL_IR_OPCODE_RETVALUE: {
             LL_Type* type = ir_get_operand_type(b->fn, operands[0]);
             switch (OPD_TYPE(operands[0])) {
