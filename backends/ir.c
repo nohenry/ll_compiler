@@ -462,6 +462,24 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
         switch (AST_AS(expr, Ast_Operation)->op.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
+		case '.': {
+            Ast_Operation* opr = AST_AS(expr, Ast_Operation);
+            Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
+
+            Ast_Base* decl = right_ident->resolved_scope->decl;
+            if (!decl) return 0;
+
+            switch (decl->kind) {
+            case AST_KIND_FUNCTION_DECLARATION: result = LL_IR_OPERAND_FUNCTION_BIT | AST_AS(decl, Ast_Function_Declaration)->ir_index; break;
+            default: oc_assert(false);
+            }
+
+            if (!lvalue) {
+                result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, right_ident->base.type, result);
+            }
+
+            return result;
+        } break;
         case '+': op = LL_IR_OPCODE_ADD; break;
         case '-': op = LL_IR_OPCODE_SUB; break;
         case '*': op = LL_IR_OPCODE_MUL; break;
@@ -556,7 +574,7 @@ DO_BIN_OP_ASSIGN_OP:
         LL_Ir_Operand invokee = ir_generate_expression(cc, b, inv->expr, true);
         LL_Type_Function* fn_type = (LL_Type_Function*)inv->expr->type;
 
-        LL_Ir_Operand ops[3 + inv->arguments.count];
+        LL_Ir_Operand ops[3 + inv->ordered_arguments.count];
 
         uword offset = 0;
         LL_Ir_Operand opcode;
@@ -569,16 +587,16 @@ DO_BIN_OP_ASSIGN_OP:
         }
 
         ops[offset++] = invokee;
-        ops[offset++] = inv->arguments.count;
-        for (i = 0; i < inv->arguments.count; ++i) {
+        ops[offset++] = inv->ordered_arguments.count;
+        for (i = 0; i < inv->ordered_arguments.count; ++i) {
             LL_Type* parameter_type;
             if (i >= fn_type->parameter_count - 1 && fn_type->is_variadic) {
                 parameter_type = cc->typer->ty_int32;
             } else {
-                parameter_type = fn_type->parameters[i];
+                parameter_type = inv->ordered_arguments.items[i]->type;
             }
 
-            LL_Ir_Operand arg_operand = ir_generate_expression(cc, b, inv->arguments.items[i], false);
+            LL_Ir_Operand arg_operand = ir_generate_expression(cc, b, inv->ordered_arguments.items[i], false);
             switch (arg_operand & LL_IR_OPERAND_TYPE_MASK) {
             case LL_IR_OPERAND_IMMEDIATE_BIT:
                 arg_operand = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, parameter_type, (arg_operand & LL_IR_OPERAND_VALUE_MASK));

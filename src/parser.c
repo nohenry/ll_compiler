@@ -175,7 +175,7 @@ Ast_Block* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
 Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
     PEEK(&token);
-    Ast_Base* type;
+    Ast_Base* type, *init;
     LL_Parameter_Flags flags = 0;
 
     if (token.kind == LL_TOKEN_KIND_RANGE) {
@@ -187,12 +187,20 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
     }
 
     if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
+    PEEK(&token);
+    if (token.kind == '=') {
+        CONSUME();
+        init = parser_parse_expression(cc, parser, NULL, 0, false);
+    } else {
+        init = NULL;
+    }
     Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
 
     return (Ast_Parameter) {
         .base.kind = AST_KIND_PARAMETER,
         .type = type,
         .ident = ident,
+        .initializer = init,
         .flags = flags,
     };
 }
@@ -301,6 +309,8 @@ int get_binary_precedence(LL_Token token, bool from_statement) {
         case '/':
         case '%':
             return from_statement ? 0 : 130;
+        case '.':
+            return 160;
 #pragma GCC diagnostic pop
         default: return 0;
     }
@@ -357,7 +367,7 @@ Ast_Base* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser
 
     PEEK(&token);
     while (token.kind != ']') {
-        expr1 = parser_parse_primary(cc, parser);
+        expr1 = parser_parse_expression(cc, parser, NULL, 30, false);
         if (token.kind == '=') {
             CONSUME();
             expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
@@ -500,9 +510,17 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                     CONSUME();
 
                     Ast_List arguments = { 0 };
+                    Ast_Base *expr1, *expr2;
                     PEEK(&token);
                     while (token.kind != ')') {
-                        oc_array_append(&cc->arena, &arguments, parser_parse_expression(cc, parser, NULL, 0, false));
+                        expr1 = parser_parse_expression(cc, parser, NULL, 30, false);
+                        PEEK(&token);
+                        if (token.kind == '=') {
+                            CONSUME();
+                            expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
+                            expr1 = CREATE_NODE(AST_KIND_KEY_VALUE, ((Ast_Key_Value) { .key = expr1, .value = expr2 }));
+                        }
+                        oc_array_append(&cc->arena, &arguments, expr1);
 
                         PEEK(&token);
                         if (token.kind != ')') {
@@ -551,11 +569,11 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
 }
 
 Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
-    LL_Token pk;
-    Ast_Base* result;
-    PEEK(&pk);
+    LL_Token token;
+    Ast_Base *result, *right, *body, *update;
+    PEEK(&token);
 
-    switch (pk.kind) {
+    switch (token.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
     case '(':
@@ -569,43 +587,113 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
     case '[':
         result = parser_parse_array_initializer(cc, parser);
         break;
+    case '-':
+        CONSUME();
+        result = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = token, .right = parser_parse_primary(cc, parser) }));
+        break;
 #pragma GCC diagnostic pop
     
     case LL_TOKEN_KIND_INT:
-        result = CREATE_NODE(AST_KIND_LITERAL_INT, ((Ast_Literal){ .i64 = pk.i64 }));
+        result = CREATE_NODE(AST_KIND_LITERAL_INT, ((Ast_Literal){ .i64 = token.i64 }));
         CONSUME();
         break;
 
     case LL_TOKEN_KIND_STRING:
-        result = CREATE_NODE(AST_KIND_LITERAL_STRING, ((Ast_Literal){ .str = pk.str }));
+        result = CREATE_NODE(AST_KIND_LITERAL_STRING, ((Ast_Literal){ .str = token.str }));
         CONSUME();
         break;
 
     case LL_TOKEN_KIND_IDENT:
         CONSUME();
-        if (pk.str.ptr == LL_KEYWORD_RETURN.ptr) {
-            PEEK(&pk);
-            if (pk.kind != ';')
+        if (token.str.ptr == LL_KEYWORD_IF.ptr) {
+            // parse if statement
+            CONSUME();
+            result = parser_parse_expression(cc, parser, NULL, 0, false);
+            PEEK(&token);
+            if (token.kind == '{' || (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr)) {
+                body = (Ast_Base*)parser_parse_block(cc, parser);
+            } else {
+                body = parser_parse_expression(cc, parser, NULL, 0, false);
+                EXPECT(';', &token);
+            }
+
+            // parse else clause
+            PEEK(&token);
+            if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_ELSE.ptr) {
+                CONSUME();
+                PEEK(&token);
+                if (token.kind == '{') {
+                    right = (Ast_Base*)parser_parse_block(cc, parser);
+                } else {
+                    right = parser_parse_expression(cc, parser, NULL, 0, false);
+                    EXPECT(';', &token);
+                }
+            } else {
+                right = NULL;
+            }
+
+            result = CREATE_NODE(AST_KIND_IF, ((Ast_If){ .cond = result, .body = body, .else_clause = right }));
+        } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
+            CONSUME();
+            PEEK(&token);
+            if (token.kind == ';') {
+                result = NULL;
+                CONSUME();
+            } else {
+                result = parser_parse_declaration(cc, parser, false, 0);
+            }
+            PEEK(&token);
+            if (token.kind == ';') {
+                right = NULL;
+            } else {
+                right = parser_parse_expression(cc, parser, NULL, 0, false);
+            }
+            EXPECT(';', &token);
+
+            PEEK(&token);
+            if (token.kind == '{') {
+                update = NULL;
+                body = (Ast_Base*)parser_parse_block(cc, parser);
+            } else {
+                update = parser_parse_expression(cc, parser, NULL, 0, false);
+                PEEK(&token);
+                if (token.kind == '{') {
+                    body = (Ast_Base*)parser_parse_block(cc, parser);
+                } else {
+                    body = parser_parse_expression(cc, parser, NULL, 0, false);
+                }
+            }
+
+            result = CREATE_NODE(AST_KIND_FOR, ((Ast_Loop){ .init = result, .cond = right, .update = update, .body = body }));
+        } else if (token.str.ptr == LL_KEYWORD_DO.ptr) {
+            result = (Ast_Base*)parser_parse_block(cc, parser);
+        } else if (token.str.ptr == LL_KEYWORD_CONST.ptr) {
+            CONSUME();
+            result = parser_parse_expression(cc, parser, NULL, 0, false);
+            result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
+        } else if (token.str.ptr == LL_KEYWORD_RETURN.ptr) {
+            PEEK(&token);
+            if (token.kind != ';')
                 result = parser_parse_expression(cc, parser, NULL, 0, false);
             else result = NULL;
             result = CREATE_NODE(AST_KIND_RETURN, ((Ast_Control_Flow){ .expr = result }));
             break;
-        } else if (pk.str.ptr == LL_KEYWORD_BREAK.ptr) {
-            PEEK(&pk);
-            if (pk.kind != ';')
+        } else if (token.str.ptr == LL_KEYWORD_BREAK.ptr) {
+            PEEK(&token);
+            if (token.kind != ';')
                 result = parser_parse_expression(cc, parser, NULL, 0, false);
             else result = NULL;
             result = CREATE_NODE(AST_KIND_BREAK, ((Ast_Control_Flow){ .expr = result }));
             break;
-        } else if (pk.str.ptr == LL_KEYWORD_CONTINUE.ptr) {
-            PEEK(&pk);
-            if (pk.kind != ';')
+        } else if (token.str.ptr == LL_KEYWORD_CONTINUE.ptr) {
+            PEEK(&token);
+            if (token.kind != ';')
                 result = parser_parse_expression(cc, parser, NULL, 0, false);
             else result = NULL;
             result = CREATE_NODE(AST_KIND_CONTINUE, ((Ast_Control_Flow){ .expr = result }));
             break;
         }
-        result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = pk.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
+        result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
         break;
 
     default:
@@ -707,6 +795,9 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
             print_node(AST_AS(node, Ast_Invoke)->expr, indent + 1, w);
             for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
                 print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->arguments.items[i], indent + 1, w);
+            }
+            for (i = 0; i < AST_AS(node, Ast_Invoke)->ordered_arguments.count; ++i) {
+                print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->ordered_arguments.items[i], indent + 1, w);
             }
             break;
 

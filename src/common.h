@@ -147,3 +147,4 @@ bool ll_type_eql(struct ll_type* a, struct ll_type* b);
 uint32_t log2_u32(uint32_t x);
 #endif
 
+size_t hash_combine(size_t lhs, size_t rhs);

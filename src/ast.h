@@ -73,6 +73,7 @@ typedef struct {
     Ast_Base base;
     Ast_Base* type;
     Ast_Ident* ident;
+    Ast_Base* initializer;
     LL_Parameter_Flags flags;
     uint32_t ir_index;
 } Ast_Parameter;
@@ -90,6 +91,8 @@ typedef enum {
 typedef struct {
     Ast_Base base;
     Ast_Block_Flags flags;
+
+	struct scope_map* scope;
 
     uint32_t count;
     uint32_t capacity;
@@ -115,6 +118,7 @@ typedef struct {
     Ast_Base base;
     Ast_Base* expr;
     Ast_List arguments;
+	Ast_List ordered_arguments;
 } Ast_Invoke;
 
 typedef struct {
@@ -139,6 +143,7 @@ typedef struct {
 typedef struct {
     Ast_Base base;
     Ast_Base* expr;
+    struct scope_map* referenced_scope;
 } Ast_Control_Flow;
 
 typedef struct {

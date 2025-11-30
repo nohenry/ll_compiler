@@ -182,3 +182,11 @@ uint32_t log2_u32(uint32_t x) {
     return y;
 }
 
+size_t hash_combine(size_t lhs, size_t rhs) {
+#if __WORDSIZE == 64
+	lhs ^= rhs + 0x517cc1b727220a95 + (lhs << 6) + (lhs >> 2);
+#else
+	lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+#endif
+	return lhs;
+}

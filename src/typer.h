@@ -14,6 +14,9 @@ typedef enum {
     LL_SCOPE_KIND_LOCAL,
     LL_SCOPE_KIND_PARAMETER,
     LL_SCOPE_KIND_FUNCTION,
+	LL_SCOPE_KIND_LOOP,
+	LL_SCOPE_KIND_BLOCK,
+	LL_SCOPE_KIND_BLOCK_VALUE,
     LL_SCOPE_KIND_PACKAGE,
 } LL_Scope_Kind;
 
@@ -23,6 +26,8 @@ typedef struct scope_map {
     Ast_Ident* ident;
     Ast_Base* decl;
     LL_Scope_Map_Entry* children[LL_DEFAULT_MAP_ENTRY_COUNT];
+	uint32_t label_value;
+	size_t next_anon;
 } LL_Scope;
 
 typedef struct {
@@ -83,6 +88,11 @@ typedef struct ll_type_intern_map_entry {
     struct ll_type_intern_map_entry* next;
 } LL_Type_Intern_Map_Entry;
 
+typedef struct {
+	LL_Scope* scope;
+    Ast_Base** this_arg;
+} LL_Typer_Resolve_Result;
+
 typedef struct ll_typer {
     LL_Type_Intern_Map_Entry* interned_types[LL_DEFAULT_MAP_ENTRY_COUNT];
     LL_Type *ty_int8, *ty_int16, *ty_int32, *ty_int64,
@@ -108,7 +118,7 @@ LL_Typer ll_typer_create(Compiler_Context* cc);
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Ast_Base* node);
 
 LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base** stmt);
-LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type);
+LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Ast_Base* typename);
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);
