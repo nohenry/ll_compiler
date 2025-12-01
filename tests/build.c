@@ -33,17 +33,24 @@ int main(int argc, char** argv) {
 		nob_sb_append_cstr(&dst_sb, ".out");
 		nob_sb_append_null(&dst_sb);
 
+		Nob_String_Builder err_sb = {0};
+		nob_sb_append_cstr(&err_sb, "./cases/");
+		nob_sb_append_cstr(&err_sb, children.items[i]);
+		nob_sb_append_cstr(&err_sb, ".err");
+		nob_sb_append_null(&err_sb);
+
 		Nob_String_Builder  expected_path_sb = {0};
 		nob_sb_append_cstr(&expected_path_sb, "./output/");
 		nob_sb_append_cstr(&expected_path_sb, children.items[i]);
 		nob_sb_append_null(&expected_path_sb);
 
 		nob_cmd_append(&cmds, "../main.exe", "--quiet", "--run", src_sb.items);
-		if (!nob_cmd_run(&cmds, .stdout_path = dst_sb.items)) nob_return_defer(false);
+		if (!nob_cmd_run(&cmds, .stdout_path = dst_sb.items, .stderr_path = err_sb.items)) nob_return_defer(false);
 
 
 		Nob_String_Builder expected_str = {0};
 		Nob_String_Builder actual_str = {0};
+		Nob_String_Builder err_str = {0};
 		if (!nob_read_entire_file(expected_path_sb.items, &expected_str)) {
 			nob_log(NOB_ERROR, "Expected file didn't exist: %s", expected_str.items);
 			nob_return_defer(false);
@@ -51,6 +58,10 @@ int main(int argc, char** argv) {
 		if (!nob_read_entire_file(dst_sb.items, &actual_str)) {
 			nob_log(NOB_ERROR, "Actual file didn't exist: %s", actual_str.items);
 			nob_return_defer(false);
+		}
+        bool has_err = false;
+		if (nob_read_entire_file(err_sb.items, &err_str)) {
+            has_err = err_str.count > 0;
 		}
 
 		Nob_String_View expected = nob_sv_from_parts(expected_str.items, expected_str.count);
@@ -73,12 +84,15 @@ int main(int argc, char** argv) {
 				break;
 			}
 		}
-		pass = pass && (actual_chop.count == 0 && expected_chop.count == 0);
+		pass = pass && (actual_chop.count == 0 && expected_chop.count == 0) && !has_err;
 
 		if (pass) {
 			printf("\x1b[32;1mTEST PASSED\x1b[0m '%s'\n", children.items[i]);
 		} else {
 			printf("\x1b[31;1mTEST FAILED\x1b[0m '%s'\n", children.items[i]);
+            if (has_err) {
+                printf("Stderr: \n%.*s\n", (int)err_str.count, err_str.items);
+            }
 			printf("Expected: \n%.*s\n", (int)expected.count, expected.data);
 			printf("Actual  : \n%.*s\n", (int)actual.count, actual.data);
 		}

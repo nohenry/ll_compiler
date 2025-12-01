@@ -39,7 +39,7 @@
                 },
                 {
                     "name": "keyword.tlang",
-                    "match": "\\b(struct|union|enum|using|true|false|operator|null|inline)\\b"
+                    "match": "\\b(struct|union|enum|using|true|false|operator|null|inline|cast)\\b"
                 }
             ]
         },

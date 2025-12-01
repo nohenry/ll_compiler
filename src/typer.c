@@ -324,14 +324,14 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
             LL_Type* init_type = ll_typer_type_expression(cc, typer, &var_decl->initializer, declared_type, NULL);
             typer->current_scope = var_scope->parent;
 
-            if (!ll_typer_implicit_cast_tofrom(cc, typer, init_type, declared_type)) {
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, var_decl->initializer, declared_type)) {
                 oc_assert(init_type != NULL);
                 oc_assert(declared_type != NULL);
                 eprint("\x1b[31;1merror\x1b[0;1m: variable initializer does not match declared type of variable! Expected ");
                 ll_print_type_raw(declared_type, &stderr_writer);
                 eprint(" but got ");
                 ll_print_type_raw(init_type, &stderr_writer);
-                eprint("\n");
+                eprint("\x1b[0m\n");
             }
         }
 
@@ -452,6 +452,130 @@ static LL_Eval_Value const_value_cast(LL_Eval_Value from, LL_Type* from_type, LL
     return result;
 }
 
+bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Type* dst_type) {
+    (void)cc;
+    (void)typer;
+    if (src_type == dst_type) {
+        return true;
+    }
+
+    switch (src_type->kind) {
+    case LL_TYPE_INT:
+        switch (dst_type->kind) {
+        case LL_TYPE_INT:
+        case LL_TYPE_UINT:
+        case LL_TYPE_FLOAT:
+            return true;
+        default: break;
+        }
+    case LL_TYPE_UINT:
+        switch (dst_type->kind) {
+        case LL_TYPE_INT:
+        case LL_TYPE_UINT:
+        case LL_TYPE_FLOAT:
+            return true;
+        default: break;
+        }
+    default: break;
+    }
+
+    return false;
+}
+
+bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Type* dst_type) {
+    (void)cc;
+    (void)typer;
+    if (src_type == dst_type) {
+        return true;
+    }
+
+    switch (src_type->kind) {
+    case LL_TYPE_INT:
+        switch (dst_type->kind) {
+        case LL_TYPE_INT:
+            if (dst_type->width >= src_type->width) return true;
+            break;
+        default: break;
+        }
+        break;
+    case LL_TYPE_UINT:
+        switch (dst_type->kind) {
+        case LL_TYPE_INT:
+            if (dst_type->width >  src_type->width) return true;
+            break;
+        case LL_TYPE_UINT:
+            if (dst_type->width >= src_type->width) return true;
+            break;
+        default: break;
+        }
+        break;
+    default: break;
+    }
+
+    return false;
+}
+
+bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Eval_Value* src_value, LL_Type* dst_type) {
+    (void)cc;
+    (void)typer;
+    if (src_type == dst_type) {
+        return true;
+    }
+
+    switch (src_type->kind) {
+    case LL_TYPE_ANYINT:
+    case LL_TYPE_INT:
+        switch (dst_type->kind) {
+        case LL_TYPE_INT: {
+            int64_t cmp = (uint64_t)((int64_t)(1ull << 63ull) >> (dst_type->width - 1)) >> (64ull - dst_type->width);
+            int64_t high_cmp = cmp & ~(1ull << (dst_type->width - 1));
+            int64_t low_cmp = 1ull << (dst_type->width - 1);
+
+            if (src_value->ival <= high_cmp && src_value->ival >= low_cmp) return true;
+        } break;
+        case LL_TYPE_UINT: {
+            uint64_t cmp = (uint64_t)((int64_t)(1ull << 63ull) >> (dst_type->width - 1)) >> (64ull - dst_type->width);
+            if (src_value->ival >= 0 && (uint64_t)src_value->ival <= cmp) return true;
+        } break;
+        case LL_TYPE_FLOAT:
+            return true;
+        default: break;
+        }
+    case LL_TYPE_UINT:
+        switch (dst_type->kind) {
+        case LL_TYPE_INT: {
+            uint64_t cmp = (uint64_t)((int64_t)(1ull << 63ull) >> (dst_type->width - 1)) >> (64ull - dst_type->width);
+            uint64_t high_cmp = cmp & ~(1ull << (dst_type->width - 1));
+
+            if (src_value->uval <= high_cmp) return true;
+        } break;
+        case LL_TYPE_UINT: {
+            uint64_t cmp = (uint64_t)((int64_t)(1ull << 63ull) >> (dst_type->width - 1)) >> (64ull - dst_type->width);
+            if (src_value->uval <= cmp) return true;
+        } break;
+        case LL_TYPE_FLOAT:
+            return true;
+        default: break;
+        }
+    default: break;
+    }
+
+    return false;
+}
+
+bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr, LL_Type* dst_type) {
+    LL_Type* src_type = expr->type;
+
+    if (ll_typer_can_implicitly_cast(cc, typer, src_type, dst_type)) return true;
+    if (expr->has_const) {
+        if (ll_typer_can_implicitly_cast_const_value(cc, typer, src_type, &expr->const_value, dst_type)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type) {
     (void)typer;
     if ((*expr)->type == expected_type) {
@@ -515,12 +639,15 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             resolve_result->scope = scope;
         }
         if (expected_type) {
-            result = ll_typer_implicit_cast_tofrom(cc, typer, scope->ident->base.type, expected_type);
-            if (!result)
+            if (ll_typer_can_implicitly_cast(cc, typer, scope->ident->base.type, expected_type)) {
+                result = expected_type;
+            } else {
                 result = scope->ident->base.type;
+            }
         } else {
             result = scope->ident->base.type;
         }
+        // result = scope->ident->base.type;
         break;
     }
     case AST_KIND_LITERAL_INT:
@@ -670,9 +797,41 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         case '/':
             if (expected_type) {
                 result = expected_type;
+
+                if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
+                    eprint("error: Invalid operation '{}' of expressions with type '", opr->op.kind);
+                    ll_print_type_raw(lhs_type, &stderr_writer);
+                    eprint("' and type '");
+                    ll_print_type_raw(rhs_type, &stderr_writer);
+                    eprint("', expecting type '");
+                    ll_print_type_raw(result, &stderr_writer);
+                    eprint("'\n");
+                    break;
+                }
+
+                if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
+                    eprint("error: Invalid operation '{}' of expressions with type '", opr->op.kind);
+                    ll_print_type_raw(lhs_type, &stderr_writer);
+                    eprint("' and type '");
+                    ll_print_type_raw(rhs_type, &stderr_writer);
+                    eprint("', expecting type '");
+                    ll_print_type_raw(result, &stderr_writer);
+                    eprint("'\n");
+                    break;
+                }
+
             } else {
                 result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+                if (result == NULL) {
+                    eprint("error: Invalid operation '{}' of expressions with type '", opr->op.kind);
+                    ll_print_type_raw(lhs_type, &stderr_writer);
+                    eprint("' and type '");
+                    ll_print_type_raw(rhs_type, &stderr_writer);
+                    eprint("'\n");
+                    break;
+                }
             }
+
             ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
             break;
@@ -683,6 +842,18 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         case LL_TOKEN_KIND_ASSIGN_PLUS:
         case '=':
             result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
+                eprint("error: Unable to assign expression with type '", opr->op.kind);
+                ll_print_type_raw(rhs_type, &stderr_writer);
+                eprint("' to type '");
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint("'. Please explicitly cast with cast(");
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint(")\n");
+                break;
+            }
+
             // @oc_todo: look at casting lhs
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
             break;
@@ -694,6 +865,35 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         case LL_TOKEN_KIND_EQUALS:
         case LL_TOKEN_KIND_NEQUALS:
             result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+
+            if (result == NULL) {
+                eprint("error: Invalid comparison '{}' of expressions with type '", opr->op.kind);
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint("' and type '");
+                ll_print_type_raw(rhs_type, &stderr_writer);
+                eprint("'\n");
+                break;
+            }
+
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
+                eprint("error: Invalid comparison '{}' of expressions with type '", opr->op.kind);
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint("' and type '");
+                ll_print_type_raw(rhs_type, &stderr_writer);
+                eprint("'\n");
+                break;
+            }
+
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
+                eprint("error: Invalid operation '{}' of expressions with type '", opr->op.kind);
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint("' and type '");
+                ll_print_type_raw(rhs_type, &stderr_writer);
+                eprint("'\n");
+                break;
+            }
+
+
             ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
             result = typer->ty_bool;
@@ -832,6 +1032,21 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             eprint("\n");
         }
     } break;
+    case AST_KIND_CAST: {
+        Ast_Cast* cast = AST_AS((*expr), Ast_Cast);
+        LL_Type* specified_type = ll_typer_get_type_from_typename(cc, typer, cast->cast_type);
+        LL_Type* src_type = ll_typer_type_expression(cc, typer, &cast->expr, specified_type, NULL);
+        
+        if (!ll_typer_can_cast(cc, typer, src_type, specified_type)) {
+            eprint("\x1b[31;1mTODO:\x1b[0m unable to cast expression of type '");
+            ll_print_type_raw(src_type, &stderr_writer);
+            eprint("' to type '\n");
+            ll_print_type_raw(specified_type, &stderr_writer);
+            eprint("'\n");
+        }
+
+        result = specified_type;
+    } break;
     case AST_KIND_INVOKE: {
         uword pi, di;
         Ast_Invoke* inv = AST_AS((*expr), Ast_Invoke);
@@ -918,7 +1133,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 value = current_arg;
             }
 
-            if (!ll_typer_implicit_cast_tofrom(cc, typer, provided_type, declared_type)) {
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, *value, declared_type)) {
                 eprint("\x1b[31;1merror\x1b[0;1m: provided argument type does not match declared type of function! Expected ");
                 ll_print_type_raw(declared_type, &stderr_writer);
                 eprint(" but got ");

@@ -325,6 +325,9 @@ int get_postfix_precedence(LL_Token token) {
         case '(':
             return 150;
 #pragma GCC diagnostic pop
+        case LL_TOKEN_KIND_IDENT:
+            if (token.str.ptr == LL_KEYWORD_CAST.ptr) return 160;
+            return 0;
         default: return 0;
     }
 }
@@ -485,6 +488,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                 left = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = left }));
                 return left;
             }
+            // fallthrough
         default:
             left = parser_parse_primary(cc, parser);
             break;
@@ -638,6 +642,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
             }
 
             result = CREATE_NODE(AST_KIND_IF, ((Ast_If){ .cond = result, .body = body, .else_clause = right }));
+            break;
         } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
             CONSUME();
             PEEK(&token);
@@ -670,6 +675,17 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
             }
 
             result = CREATE_NODE(AST_KIND_FOR, ((Ast_Loop){ .init = result, .cond = right, .update = update, .body = body }));
+            break;
+        } else if (token.str.ptr == LL_KEYWORD_CAST.ptr) {
+            CONSUME();
+
+            EXPECT('(', &token);
+            result = parser_parse_expression(cc, parser, NULL, 0, false);
+            EXPECT(')', &token);
+            right = parser_parse_expression(cc, parser, NULL, 0, false);
+
+            result = CREATE_NODE(AST_KIND_CAST, ((Ast_Cast){ .cast_type = result, .expr = right }));
+            break;
         } else if (token.str.ptr == LL_KEYWORD_DO.ptr) {
             result = (Ast_Base*)parser_parse_block(cc, parser);
         } else if (token.str.ptr == LL_KEYWORD_CONST.ptr) {
@@ -767,7 +783,8 @@ void print_node_value(Ast_Base* node, Oc_Writer* w) {
         case AST_KIND_FOR: break;
         case AST_KIND_INDEX: break;
         case AST_KIND_CAST:
-            ll_print_type_raw(node->type, &stdout_writer);
+            if (node->type)
+                ll_print_type_raw(node->type, &stdout_writer);
             break;
         case AST_KIND_TYPE_POINTER: break;
         default: oc_unreachable("");
@@ -879,6 +896,7 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
             break;
 
         case AST_KIND_CAST:
+            print_node(AST_AS(node, Ast_Cast)->cast_type, indent + 1, w);
             print_node(AST_AS(node, Ast_Cast)->expr, indent + 1, w);
             break;
 

@@ -63,6 +63,7 @@ enum {
     LL_IR_OPCODE_NEQ, // x
 
     LL_IR_OPCODE_NEG, // x
+    LL_IR_OPCODE_NOT, // x
 
     LL_IR_OPCODE_AND, // x
     LL_IR_OPCODE_OR,  // x
@@ -158,6 +159,7 @@ typedef struct ll_backend_ir {
     LL_Ir_Operand copy_operand;
 
     uint8_t* initializer_ptr;
+    bool last_op_was_load;
 } LL_Backend_Ir;
 
 #define OPERAND_FMT "{}{}"

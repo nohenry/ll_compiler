@@ -182,6 +182,7 @@ typedef struct {
 
 typedef struct {
     Ast_Base base;
+    Ast_Base* cast_type;
     Ast_Base* expr;
 } Ast_Cast;
 

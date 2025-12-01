@@ -28,6 +28,7 @@ static LL_Ir_Operand ir_get_next_reg(Compiler_Context* cc, LL_Backend_Ir* b, LL_
 static void ir_append_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block_Ref block, LL_Ir_Opcode opcode, LL_Ir_Operand* operands, size_t operands_count) {
     oc_array_append(&cc->arena, &b->blocks.items[block].ops, opcode);
     oc_array_append_many(&cc->arena, &b->blocks.items[block].ops, operands, operands_count);
+    b->last_op_was_load = (opcode == LL_IR_OPCODE_LOAD);
 }
 
 static LL_Ir_Operand ir_append_op_dst(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block_Ref block, LL_Ir_Opcode opcode, LL_Type* dst_type, LL_Ir_Operand* operands, size_t operands_count) {
@@ -35,6 +36,7 @@ static LL_Ir_Operand ir_append_op_dst(Compiler_Context* cc, LL_Backend_Ir* b, LL
     oc_array_append(&cc->arena, &b->blocks.items[block].ops, opcode);
     oc_array_append(&cc->arena, &b->blocks.items[block].ops, dst);
     oc_array_append_many(&cc->arena, &b->blocks.items[block].ops, operands, operands_count);
+    b->last_op_was_load = (opcode == LL_IR_OPCODE_LOAD);
     return dst;
 }
 
@@ -103,6 +105,39 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     LL_Ir_Operand* operands = &opcode_list[i + 1];
     int offset = 0;
 
+    if (ir_get_op_count(cc, b, opcode_list, i) > 1) {
+        switch (opcode) {
+            case LL_IR_OPCODE_RETVALUE:
+            case LL_IR_OPCODE_STORE:
+            case LL_IR_OPCODE_MEMCOPY:
+            case LL_IR_OPCODE_LOAD:
+            case LL_IR_OPCODE_LEA:
+            case LL_IR_OPCODE_LEA_INDEX:
+            case LL_IR_OPCODE_CAST:
+            case LL_IR_OPCODE_ADD:
+            case LL_IR_OPCODE_SUB:
+            case LL_IR_OPCODE_MUL:
+            case LL_IR_OPCODE_DIV:
+            case LL_IR_OPCODE_LT:
+            case LL_IR_OPCODE_LTE:
+            case LL_IR_OPCODE_GT:
+            case LL_IR_OPCODE_GTE:
+            case LL_IR_OPCODE_EQ:
+            case LL_IR_OPCODE_NEQ:
+            case LL_IR_OPCODE_NEG:
+            case LL_IR_OPCODE_NOT:
+            case LL_IR_OPCODE_AND:
+            case LL_IR_OPCODE_OR:
+            case LL_IR_OPCODE_XOR:
+            case LL_IR_OPCODE_INVOKEVALUE:
+                ll_print_type_raw(ir_get_operand_type(&b->fns.items[b->current_function], operands[0]), w);
+                break;
+
+            default: break;
+        }
+        wprint(w, "\t");
+    }
+
     switch (opcode) {
     case LL_IR_OPCODE_RET:         wprint(w, INDENT "ret"); break;
     case LL_IR_OPCODE_RETVALUE:    wprint(w, INDENT "ret " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0])); break;
@@ -124,6 +159,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     case LL_IR_OPCODE_EQ:          wprint(w, INDENT OPERAND_FMT " = eq " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_NEQ:         wprint(w, INDENT OPERAND_FMT " = neq " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_NEG:         wprint(w, INDENT OPERAND_FMT " = neg " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+    case LL_IR_OPCODE_NOT:         wprint(w, INDENT OPERAND_FMT " = not " OPERAND_FMT , OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_AND:         wprint(w, INDENT OPERAND_FMT " = and " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_OR:          wprint(w, INDENT OPERAND_FMT " = or " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_XOR:         wprint(w, INDENT OPERAND_FMT " = xor " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
@@ -151,7 +187,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 
 static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block) {
     size_t i;
-    oc_hex_dump(block->ops.items, block->ops.count * sizeof(*block->ops.items), 0, -1);
+    // oc_hex_dump(block->ops.items, block->ops.count * sizeof(*block->ops.items), 0, -1);
     for (i = 0; i < block->ops.count; ) {
         ir_print_op(cc, b, block->ops.items, i, &stdout_writer);
         print("\n");
@@ -170,6 +206,8 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b, Oc_Writer* w) {
         } else {
             wprint(w, "function({}):\n", fi);
         }
+
+        b->current_function = fi;
 
         int bi = 0;
         while (block) {
@@ -570,7 +608,13 @@ DO_BIN_OP_ASSIGN_OP:
     case AST_KIND_CAST: {
         Ast_Cast* cast = AST_AS(expr, Ast_Cast);
         result = ir_generate_expression(cc, b, cast->expr, false);
-        result = IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, cast->base.type, result);
+        if (b->last_op_was_load) {
+            // merge cast into load
+            oc_assert(OPD_TYPE(result) == LL_IR_OPERAND_REGISTER_BIT);
+            FUNCTION()->registers.items[OPD_VALUE(result)].type = cast->base.type;
+        } else {
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, cast->base.type, result);
+        }
         break;
     }
     case AST_KIND_INVOKE: {

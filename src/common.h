@@ -33,6 +33,7 @@ typedef struct {
 } Compiler_Context;
 
 extern string LL_KEYWORD_CONST;
+extern string LL_KEYWORD_CAST;
 extern string LL_KEYWORD_IF;
 extern string LL_KEYWORD_FOR;
 extern string LL_KEYWORD_WHILE;

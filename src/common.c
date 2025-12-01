@@ -85,6 +85,7 @@ bool string_starts_with(string haystack, string needle) {
 }
 
 string LL_KEYWORD_CONST;
+string LL_KEYWORD_CAST;
 string LL_KEYWORD_IF;
 string LL_KEYWORD_FOR;
 string LL_KEYWORD_WHILE;
@@ -126,6 +127,7 @@ string LL_KEYWORD_VOID;
 Compiler_Context ll_compiler_context_create() {
     Compiler_Context result = { 0 };
     LL_KEYWORD_CONST = ll_intern_string(&result, lit("const"));
+    LL_KEYWORD_CAST = ll_intern_string(&result, lit("cast"));
     LL_KEYWORD_IF = ll_intern_string(&result, lit("if"));
     LL_KEYWORD_FOR = ll_intern_string(&result, lit("for"));
     LL_KEYWORD_WHILE = ll_intern_string(&result, lit("while"));

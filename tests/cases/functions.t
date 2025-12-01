@@ -1,4 +1,4 @@
-native void write_int(int d);
+native void write_int(int64 d);
 
 int get_data() {
     return 4;

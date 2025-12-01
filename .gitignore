@@ -10,7 +10,8 @@ tags
 *.exe
 *.ilk
 *.pdb
-*.out
 *.rdi
 .build
 *.dll
+/tests/**/*.out
+/tests/**/*.err
