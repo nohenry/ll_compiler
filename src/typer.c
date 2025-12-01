@@ -1074,7 +1074,6 @@ AST_BREAK_EXIT_SCOPE:
             eprint("\x1b[31;1merror:\x1b[0m if statement condition should be boolean, integer or pointer\n");
             break;
         }
-        ll_print_type(result);
 
         if (iff->body) {
             ll_typer_type_statement(cc, typer, &iff->body);

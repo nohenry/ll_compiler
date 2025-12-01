@@ -1,5 +1,4 @@
 native void write_int(int d);
-native void write_int(int d);
 
 void main() {
     int8 a = 123;

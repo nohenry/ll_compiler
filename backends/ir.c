@@ -725,11 +725,11 @@ DO_BIN_OP_ASSIGN_OP:
 
         if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr) {
             oc_assert(!lvalue);
-            result = LL_IR_OPERAND_IMMEDIATE_BIT | 0u;
+            result = LL_IR_OPERAND_IMMEDIATE_BIT | 1u;
             break;
         } else if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
             oc_assert(!lvalue);
-            result = LL_IR_OPERAND_IMMEDIATE_BIT | 1u;
+            result = LL_IR_OPERAND_IMMEDIATE_BIT | 0u;
             break;
         }
 

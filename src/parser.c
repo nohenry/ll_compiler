@@ -418,7 +418,11 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                     body = (Ast_Base*)parser_parse_block(cc, parser);
                 } else {
                     body = parser_parse_expression(cc, parser, NULL, 0, false);
-                    EXPECT(';', &token);
+                    PEEK(&token);
+                    if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_ELSE.ptr) {
+                    } else {
+                        EXPECT(';', &token);
+                    }
                 }
 
                 // parse else clause
@@ -466,6 +470,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                         body = (Ast_Base*)parser_parse_block(cc, parser);
                     } else {
                         body = parser_parse_expression(cc, parser, NULL, 0, false);
+                        EXPECT(';', &token);
                     }
                 }
 

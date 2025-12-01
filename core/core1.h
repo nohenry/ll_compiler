@@ -564,7 +564,6 @@ void* oc_arena_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 s
         return old_ptr;
     } else {
         // print("oc_arena_realloc: New chunk, copying data :(\n");
-        void* new_ptr = arena->current->data + arena->current->used;
         memcpy(new_ptr, old_ptr, old_size);
         arena->current->used += new_words;
         return new_ptr;
