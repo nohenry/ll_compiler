@@ -64,6 +64,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
     case LL_IR_OPCODE_OR:
     case LL_IR_OPCODE_XOR:
     case LL_IR_OPCODE_ADD: return 4;
+    case LL_IR_OPCODE_NEG: return 3;
 
     case LL_IR_OPCODE_BRANCH: return 2;
     case LL_IR_OPCODE_BRANCH_COND: return 4;
@@ -122,6 +123,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     case LL_IR_OPCODE_GTE:         wprint(w, INDENT OPERAND_FMT " = gte " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_EQ:          wprint(w, INDENT OPERAND_FMT " = eq " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_NEQ:         wprint(w, INDENT OPERAND_FMT " = neq " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+    case LL_IR_OPCODE_NEG:         wprint(w, INDENT OPERAND_FMT " = neg " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_AND:         wprint(w, INDENT OPERAND_FMT " = and " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_OR:          wprint(w, INDENT OPERAND_FMT " = or " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_XOR:         wprint(w, INDENT OPERAND_FMT " = xor " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
@@ -255,7 +257,7 @@ LL_Ir_Operand ir_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Ir* b,
             case LL_TYPE_UINT:
                 if (from_type->width == to_type->width) return from;
                 break;
-            default: eprint("\x1b[31;1mTODO\x1b[0m: handle cast types to %d\n", to_type->kind); break;
+            default: oc_todo("handle cast types to {}\n", (int)to_type->kind); break;
         }
         break;
     case LL_TYPE_UINT:
@@ -264,10 +266,10 @@ LL_Ir_Operand ir_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Ir* b,
             case LL_TYPE_INT:
                 if (from_type->width == to_type->width) return from;
                 break;
-            default: eprint("\x1b[31;1mTODO\x1b[0m: handle cast types to %d\n", to_type->kind); break;
+            default: oc_todo("handle cast types to {}\n", (int)to_type->kind); break;
         }
         break;
-    default: eprint("\x1b[31;1mTODO\x1b[0m: handle cast types from\n"); break;
+    default: oc_todo("handle cast types from\n"); return from;
     }
 
     return IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, to_type, from);
@@ -324,6 +326,9 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
                 }
                 break;
             default:
+                // if (var_decl->initializer->type != var_decl->type->type) {
+                //     op = IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, var_decl->type->type, op);
+                // }
                 IR_APPEND_OP(LL_IR_OPCODE_STORE, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op);
                 break;
             }
@@ -436,7 +441,8 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
         case '-': {
-            /* oc_assert(false); */
+            result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_NEG, expr->type, result);
             break;
         }
         case '*': {

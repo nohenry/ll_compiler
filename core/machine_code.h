@@ -2197,6 +2197,7 @@ void oc_x86_64_write_nop(OC_Machine_Code_Writer* b, unsigned char byte_count) {
             b->append_many((void*)b, bytes, oc_len(bytes));	\
         } while (0)
     switch (byte_count) {
+    case 1: WRITE_NOP(0x90); break;
     case 2: WRITE_NOP(0x66, 0x90); break;
     case 3: WRITE_NOP(0x0F, 0x1F, 0x00); break;
     case 4: WRITE_NOP(0x0F, 0x1F, 0x40, 0x00); break;

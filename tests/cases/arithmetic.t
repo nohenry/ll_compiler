@@ -13,4 +13,7 @@ void main() {
 
     e = (a + b) * (c + d);
     write_int(e);
+
+    write_int(d / b);
+    write_int(e / b);
 }

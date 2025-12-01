@@ -515,7 +515,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             resolve_result->scope = scope;
         }
         if (expected_type) {
-            result = ll_typer_implicit_cast_tofrom(cc, typer, expected_type, scope->ident->base.type);
+            result = ll_typer_implicit_cast_tofrom(cc, typer, scope->ident->base.type, expected_type);
             if (!result)
                 result = scope->ident->base.type;
         } else {
@@ -795,12 +795,6 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 result = expr_type;
             }
 
-            switch (expr_type->kind) {
-            case LL_TYPE_INT:
-            case LL_TYPE_FLOAT:
-                break;
-            default: oc_todo("implement unary op const fold types or error"); break;
-            }
             ll_typer_add_implicit_cast(cc, typer, &AST_AS((*expr), Ast_Operation)->right, result);
         } break;
         case '*': {

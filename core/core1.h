@@ -791,7 +791,7 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                 w->write(w, (uint8*)value.data, 1);
                 break;
             case OC_TYPE_UNSIGNED_CHAR: {
-                int ivalue = *(unsigned char*)value.data;
+                unsigned char ivalue = *(unsigned char*)value.data;
                 oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_SIGNED_CHAR: {
@@ -800,10 +800,10 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     ivalue = -ivalue;
                     w->write(w, "-", 1);
                 }
-                oc_writer_format_and_write_int(w, cfg, ivalue);
+                oc_writer_format_and_write_int(w, cfg, (uint64)ivalue & 0xFF);
             } break;
             case OC_TYPE_UNSIGNED_SHORT: {
-                int ivalue = *(unsigned short*)value.data;
+                unsigned short ivalue = *(unsigned short*)value.data;
                 oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_SHORT: {
@@ -812,10 +812,10 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     ivalue = -ivalue;
                     w->write(w, "-", 1);
                 }
-                oc_writer_format_and_write_int(w, cfg, ivalue);
+                oc_writer_format_and_write_int(w, cfg, (uint64)ivalue & 0xFFFF);
             } break;
             case OC_TYPE_UNSIGNED_INT: {
-                int ivalue = *(unsigned int*)value.data;
+                unsigned int ivalue = *(unsigned int*)value.data;
                 oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
             case OC_TYPE_INT: {
@@ -824,7 +824,7 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     ivalue = -ivalue;
                     w->write(w, "-", 1);
                 }
-                oc_writer_format_and_write_int(w, cfg, ivalue);
+                oc_writer_format_and_write_int(w, cfg, ((uint64)ivalue) & 0xFFFFFFFFu);
             } break;
             case OC_TYPE_UNSIGNED_LONG: {
                 uint64 ivalue = *(unsigned long*)value.data;

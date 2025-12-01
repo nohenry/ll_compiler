@@ -35,15 +35,15 @@ typedef struct {
 } LL_Ir_Register_List;
 
 enum {
-    LL_IR_OPCODE_RET,
-    LL_IR_OPCODE_RETVALUE,
-    LL_IR_OPCODE_STORE,
-    LL_IR_OPCODE_MEMCOPY,
-    LL_IR_OPCODE_LOAD,
+    LL_IR_OPCODE_RET,       // x
+    LL_IR_OPCODE_RETVALUE,  // x
+    LL_IR_OPCODE_STORE,     // x
+    LL_IR_OPCODE_MEMCOPY,   // 
+    LL_IR_OPCODE_LOAD,      // x
     // operands: invokee, arg_count, arg0, arg1, ... arg(arg_count-1)
-    LL_IR_OPCODE_INVOKE,
+    LL_IR_OPCODE_INVOKE,    // x
     // operands: result_register, invokee, arg_count, arg0, arg1, ... arg(arg_count-1)
-    LL_IR_OPCODE_INVOKEVALUE,
+    LL_IR_OPCODE_INVOKEVALUE, // x
     LL_IR_OPCODE_LEA,
     LL_IR_OPCODE_LEA_INDEX,
     LL_IR_OPCODE_CAST,
@@ -51,20 +51,22 @@ enum {
     LL_IR_OPCODE_BRANCH,
     LL_IR_OPCODE_BRANCH_COND,
 
-    LL_IR_OPCODE_ADD,
-    LL_IR_OPCODE_SUB,
-    LL_IR_OPCODE_MUL,
-    LL_IR_OPCODE_DIV,
-    LL_IR_OPCODE_LT,
-    LL_IR_OPCODE_LTE,
-    LL_IR_OPCODE_GT,
-    LL_IR_OPCODE_GTE,
-    LL_IR_OPCODE_EQ,
-    LL_IR_OPCODE_NEQ,
+    LL_IR_OPCODE_ADD, // x
+    LL_IR_OPCODE_SUB, // x
+    LL_IR_OPCODE_MUL, // x
+    LL_IR_OPCODE_DIV, // x
+    LL_IR_OPCODE_LT,  // x
+    LL_IR_OPCODE_LTE, // x
+    LL_IR_OPCODE_GT,  // x
+    LL_IR_OPCODE_GTE, // x
+    LL_IR_OPCODE_EQ,  // x
+    LL_IR_OPCODE_NEQ, // x
 
-    LL_IR_OPCODE_AND,
-    LL_IR_OPCODE_OR,
-    LL_IR_OPCODE_XOR,
+    LL_IR_OPCODE_NEG, // x
+
+    LL_IR_OPCODE_AND, // x
+    LL_IR_OPCODE_OR,  // x
+    LL_IR_OPCODE_XOR, // x
 };
 typedef uint32 LL_Ir_Opcode;
 

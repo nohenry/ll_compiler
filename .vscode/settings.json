@@ -15,6 +15,7 @@
         "stdlib.h": "c",
         "malloc.h": "c",
         "limits.h": "c",
-        "winerror.h": "c"
+        "winerror.h": "c",
+        "stdio.h": "c"
     }
 }
