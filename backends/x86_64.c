@@ -94,7 +94,7 @@ X86_64_Call_Convention x86_64_call_convention_systemv(X86_64_Backend* b) {
     result.registers = call_convention_registers_systemv;
     result.register_count = oc_len(call_convention_registers_systemv);
     result.register_next = 0;
-    result.stack_offset = 0;
+    result.stack_offset = 0x20;
     return result;
 }
 
@@ -224,6 +224,10 @@ void native_write(long long int u) {
     print("{}\n", u);
 }
 
+void native_write_many(int a, int b, int c, int d, int e, int f, int g) {
+    print("{} {} {} {} {} {} {}\n", a, b, c, d, e, f, g);
+}
+
 void* native_malloc(uword u) {
     return malloc(u);
 }
@@ -243,6 +247,7 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
 
 
     ll_native_fn_put(cc, b, lit("write_int"), native_write);
+    ll_native_fn_put(cc, b, lit("write_many"), native_write_many);
     ll_native_fn_put(cc, b, lit("malloc"), native_malloc);
 }
 
@@ -1366,7 +1371,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, fn_type->parameters[j], param.reg);
                 b->parameters.items[j] = offset;
             } else {
-                b->parameters.items[j] = -param.stack_offset - 16;
+                b->parameters.items[j] = -param.stack_offset - 0x10 /* rbp and return address */;
             }
         }
 
@@ -1382,8 +1387,8 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         }
 
         // generate epilogue
-        oc_assert(oc_align_forward(b->stack_used_for_args, 16) == b->stack_used_for_args);
-        uint32_t stack_used = oc_align_forward(b->stack_used, 16) + b->stack_used_for_args;
+        // oc_assert(oc_align_forward(b->stack_used_for_args, 16) == b->stack_used_for_args);
+        uint32_t stack_used = oc_align_forward(b->stack_used + b->stack_used_for_args, 16) ;
         int32_t* pstack_size = (int32_t*)&b->section_text.items[stack_size_offset];
         *pstack_size = stack_used;
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_ADD, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = stack_used }));

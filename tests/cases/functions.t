@@ -1,4 +1,5 @@
 native void write_int(int64 d);
+native void write_many(int a, int b, int c, int d, int e, int f, int g);
 
 int get_data() {
     return 4;
@@ -35,4 +36,5 @@ void main() {
     write_int(4.add(1));
 
     write_int(many_args(1, 2, 3, 4, 5, 6));
+    write_many(1, 2, 3, 4, 5, 6, 7);
 }
