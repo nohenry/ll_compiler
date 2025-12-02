@@ -93,6 +93,7 @@ typedef struct {
     size_t field_count;
     LL_Type** fields;
     uint32_t* offsets;
+    bool has_offsets;
 } LL_Type_Struct;
 
 typedef struct {
@@ -143,7 +144,6 @@ typedef struct ll_typer {
     LL_Scope* current_scope, *root_scope;
 
     LL_Type_Named* current_named;
-    LL_Type_Struct* current_struct;
     LL_Typer_Current_Record* current_record;
     LL_Typer_Record_Values* current_record_values;
 } LL_Typer;

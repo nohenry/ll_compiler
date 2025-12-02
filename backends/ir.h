@@ -181,4 +181,4 @@ LL_Type* ir_get_operand_type(LL_Ir_Function* fn, LL_Ir_Operand operand);
 size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i);
 void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i, Oc_Writer* w);
 
-void ir_calculate_struct_offsets(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* type);
+void ir_calculate_struct_offsets(LL_Type* type);

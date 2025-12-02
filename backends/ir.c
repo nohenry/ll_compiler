@@ -431,25 +431,27 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
     }
 }
 
-void ir_calculate_struct_offsets(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* type) {
-    (void)b;
+void ir_calculate_struct_offsets(LL_Type* type) {
     if (type->kind != LL_TYPE_STRUCT) return;
 
     LL_Type_Struct* struct_type = (LL_Type_Struct*)type;
-    if (struct_type->offsets != NULL) return;
-
-    struct_type->offsets = oc_arena_alloc(&cc->arena, sizeof(*struct_type->offsets) * struct_type->field_count);
+    if (struct_type->has_offsets) return;
     
     uint32_t offset = 0;
     struct_type->base.struct_alignment = 1;
     for (uint32_t i = 0; i < struct_type->field_count; ++i) {
+        ir_calculate_struct_offsets(struct_type->fields[i]);
+
         LL_Backend_Layout l = x86_64_get_layout(struct_type->fields[i]);
         if (l.alignment > struct_type->base.struct_alignment) {
             struct_type->base.struct_alignment = l.alignment;
         }
-        offset = oc_align_forward(offset + max(l.size, l.alignment), l.alignment);
+        offset = oc_align_forward(offset, l.alignment);
         struct_type->offsets[i] = offset;
+        offset = oc_align_forward(offset + max(l.size, l.alignment), l.alignment);
     }
+
+    struct_type->has_offsets = true;
 }
 
 static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, uint32_t* offset, bool lvalue) {
@@ -500,7 +502,7 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         }
         oc_assert(struct_type->base.kind == LL_TYPE_STRUCT);
 
-        ir_calculate_struct_offsets(cc, b, &struct_type->base);
+        ir_calculate_struct_offsets(&struct_type->base);
         Ast_Variable_Declaration* field_decl = AST_AS(field_scope->decl, Ast_Variable_Declaration);
         oc_assert(field_decl->base.kind == AST_KIND_VARIABLE_DECLARATION);
 
@@ -1011,21 +1013,31 @@ DO_BIN_OP_ASSIGN_OP:
 }
 
 LL_Type* ir_get_operand_type(LL_Ir_Function* fn, LL_Ir_Operand operand) {
+    LL_Type* result = NULL;
     switch (operand & LL_IR_OPERAND_TYPE_MASK) {
     case LL_IR_OPERAND_IMMEDIATE_BIT:
         oc_assert(false);
         return NULL;
     case LL_IR_OPERAND_REGISTER_BIT:
-        return fn->registers.items[operand & LL_IR_OPERAND_VALUE_MASK].type;
+        result = fn->registers.items[operand & LL_IR_OPERAND_VALUE_MASK].type;
+        break;
     case LL_IR_OPERAND_LOCAL_BIT:
-        return fn->locals.items[operand & LL_IR_OPERAND_VALUE_MASK].ident->base.type;
+        result = fn->locals.items[operand & LL_IR_OPERAND_VALUE_MASK].ident->base.type;
+        break;
     case LL_IR_OPERAND_PARMAETER_BIT: {
         LL_Type_Function* fn_type = (LL_Type_Function*)fn->ident->base.type;
-        return fn_type->parameters[operand & LL_IR_OPERAND_VALUE_MASK];
-    }
+        result = fn_type->parameters[operand & LL_IR_OPERAND_VALUE_MASK];
+    } break;
     case LL_IR_OPERAND_FUNCTION_BIT:
-        return fn->ident->base.type;
+        result = fn->ident->base.type;
+        break;
     default: oc_assert(false);
     }
+
+    if (result && result->kind == LL_TYPE_NAMED) {
+        result = ((LL_Type_Named*)result)->actual_type;
+    }
+
+    return result;
 }
 

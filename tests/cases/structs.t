@@ -11,6 +11,10 @@ struct Foobar {
     int b;
 }
 
+void do_smth_with_struct(Foobar f) {
+    write_int(f.a);
+}
+
 void main() {
     Foobar foo;
     foo.a = 123;
@@ -18,4 +22,8 @@ void main() {
 
     foo.s.d = 69;
     write_int(foo.s.d);
+
+    do_smth_with_struct(foo);
+    Foobar foo1 = foo;
+    // write_int(foo1.a);
 }

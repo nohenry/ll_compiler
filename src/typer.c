@@ -119,6 +119,13 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
 
         return stbds_siphash_bytes(tts, sizeof(*tts) * (fn_type->parameter_count + 1 /* for return type */), seed);
     }
+    case LL_TYPE_STRUCT: {
+        LL_Type_Struct* struct_type = (LL_Type_Struct*)type;
+        tts = alloca(sizeof(*tts) * struct_type->field_count);
+        memcpy(tts, struct_type->fields, sizeof(*struct_type->fields) * struct_type->field_count);
+
+        return stbds_siphash_bytes(tts, sizeof(*tts) * struct_type->field_count, seed);
+    }
     default: return stbds_siphash_bytes(type, sizeof(*type), seed);
     }
 }
@@ -145,7 +152,20 @@ bool ll_type_eql(LL_Type* a, LL_Type* b) {
         }
 
         return true;
-    }
+    } break;
+    case LL_TYPE_STRUCT: {
+        LL_Type_Struct *fa = (LL_Type_Struct*)a, *fb = (LL_Type_Struct*)b;
+        if (fa->field_count != fb->field_count) return false;
+        for (i = 0; i < fb->field_count; ++i) {
+            if (fa->fields[i] != fb->fields[i]) return false;
+        }
+
+        return true;
+    } break;
+    case LL_TYPE_NAMED: {
+        LL_Type_Named *fa = (LL_Type_Named*)a, *fb = (LL_Type_Named*)b;
+        return fa->scope->ident->str.ptr == fb->scope->ident->str.ptr;
+    } break;
     /* return stbds_siphash_bytes(type, sizeof(*type), seed); */
     default: return true;
     }
@@ -224,6 +244,9 @@ LL_Type* ll_typer_get_struct_type(Compiler_Context* cc, LL_Typer* typer, LL_Type
         res = *t;
     } else {
         struct_type.fields  = oc_arena_dup(&cc->arena, struct_type.fields, sizeof(*struct_type.fields) * struct_type.field_count);
+        struct_type.offsets = oc_arena_alloc(&cc->arena, sizeof(*struct_type.offsets) * struct_type.field_count);
+        struct_type.has_offsets = false;
+
         // struct_type.offsets = oc_arena_dup(&cc->arena, struct_type.offsets, sizeof(*struct_type.offsets) * struct_type.field_count);
         res = oc_arena_dup(&cc->arena, &struct_type, sizeof(struct_type));
         MAP_PUT(typer->interned_types, res, res, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
@@ -468,17 +491,14 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         struct_scope->decl->type = oc_arena_dup(&cc->arena, &named_type, sizeof(named_type));
         struct_scope->ident->base.type = struct_scope->decl->type;
 
-        LL_Type_Struct struct_type = { 0 };
         LL_Typer_Current_Record record = { 0 };
         LL_Typer_Record_Values record_values = { 0 };
         
         LL_Type_Named* last_named = typer->current_named;
-        LL_Type_Struct* last_struct = typer->current_struct;
         LL_Typer_Current_Record* last_current_record = typer->current_record;
         LL_Typer_Record_Values* last_current_record_values = typer->current_record_values;
 
         typer->current_named = (LL_Type_Named*)struct_scope->decl->type;
-        typer->current_struct = &struct_type;
         typer->current_record = &record;
         typer->current_record_values = &record_values;
         typer->current_scope = struct_scope;
@@ -490,7 +510,6 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         typer->current_scope = struct_scope->parent;
         typer->current_record_values = last_current_record_values;
         typer->current_record = last_current_record;
-        typer->current_struct = last_struct;
         typer->current_named = last_named;
 
         LL_Type* actual_class_type = ll_typer_get_struct_type(cc, typer, record.items, record.count);
@@ -1565,7 +1584,7 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     }
     case LL_TYPE_STRUCT: {
         LL_Type_Struct* struct_type = (LL_Type_Struct*)type;
-        wprint(w, "struct {{ ");
+        wprint(w, "struct {} {{ ", struct_type->field_count);
         for (i = 0; i < struct_type->field_count; ++i) {
             if (struct_type->fields[i]) {
                 ll_print_type_raw(struct_type->fields[i], w);

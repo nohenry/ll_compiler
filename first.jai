@@ -1,9 +1,10 @@
-test :: (a: int, b: int, c: int, d: int) #c_call {
-    // print("% % % %\n", a, b, c, d);
+test :: (a: int, b: int, c: int, d: int, e: int, f: int) -> int #c_call {
+    #asm { int 68; };
+    return a + b + c + d + e + f;
 }
 
 main :: () {
-    // #asm { int 69; };
+    #asm { int 69; };
     a := 1;
     b := 2;
     c := 3;
@@ -11,11 +12,7 @@ main :: () {
     e := 5;
     f := 6;
     g := 7;
-    // test(a, b, c, f * g);
-    h := a + b + c + d + e + f + g;
+    test(a, b, c, d, e, f);
+    // h := a + b + c + d + e + f + g;
     #asm { int 69; };
-}
-
-#run {
-    main();
 }
