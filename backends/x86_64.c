@@ -73,7 +73,7 @@ typedef struct {
 typedef struct {
     const X86_64_Operand_Register* registers;
     uint8_t register_count, register_next;
-    int32_t stack_offset;
+    uint32_t stack_offset;
 } X86_64_Call_Convention;
 
 const static X86_64_Operand_Register call_convention_registers_systemv[] = {
@@ -659,7 +659,7 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
             break;
         case LL_IR_OPERAND_PARMAETER_BIT:
             if (src_type == dst_type) {
-                b->registers.items[OPD_VALUE(dst)] = -b->parameters.items[OPD_VALUE(src)] - 8;
+                b->registers.items[OPD_VALUE(dst)] = b->parameters.items[OPD_VALUE(src)];
             } else {
                 params.reg0 = reg;
                 params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
@@ -719,6 +719,7 @@ static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backe
 
     } break; // LL_TYPE_STRUCT
     case LL_TYPE_POINTER:
+    case LL_TYPE_STRING:
     case LL_TYPE_ANYBOOL:
     case LL_TYPE_BOOL:
     case LL_TYPE_ANYINT:
@@ -1365,7 +1366,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, fn_type->parameters[j], param.reg);
                 b->parameters.items[j] = offset;
             } else {
-                b->parameters.items[j] = param.stack_offset;
+                b->parameters.items[j] = -param.stack_offset - 16;
             }
         }
 
