@@ -135,6 +135,12 @@ START_SWITCH:
             break;
         default:
 HANDLE_IDENT:
+            PEEK(&token);
+            if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_STRUCT.ptr) {
+                result = parser_parse_struct(cc, parser);
+                return result;
+            }
+
             result = parser_parse_expression(cc, parser, NULL, 0, true);
             if (result && (result->kind == AST_KIND_IF || result->kind == AST_KIND_FOR)) break;
 
@@ -203,6 +209,30 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         .initializer = init,
         .flags = flags,
     };
+}
+
+Ast_Base* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
+    LL_Token token;
+    CONSUME(); // struct kw
+
+    Ast_List items = { 0 };
+    Ast_Ident* ident;
+
+    PEEK(&token);
+    if (token.kind == LL_TOKEN_KIND_IDENT) {
+        CONSUME();
+        ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
+    }
+
+    EXPECT('{', &token);
+    PEEK(&token);
+    while (token.kind != '}') {
+        oc_array_append(&cc->arena, &items, parser_parse_statement(cc, parser));
+        PEEK(&token);
+    }
+    EXPECT('}', &token);
+
+    return CREATE_NODE(AST_KIND_STRUCT, ((Ast_Struct){ .ident = ident, .body = items }));
 }
 
 Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_Base* type, LL_Storage_Class storage_class) {
@@ -487,6 +517,9 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                 left = parser_parse_expression(cc, parser, NULL, 0, false);
                 left = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = left }));
                 return left;
+            } else if (token.str.ptr == LL_KEYWORD_STRUCT.ptr) {
+                left = parser_parse_struct(cc, parser);
+                return left;
             }
             // fallthrough
         default:
@@ -732,7 +765,7 @@ void print_storage_class(LL_Storage_Class storage_class, Oc_Writer* w) {
     if (storage_class & LL_STORAGE_CLASS_NATIVE) wprint(w, "native ");
 }
 
-const char* get_node_kind(Ast_Base* node) {
+const char* ast_get_node_kind(Ast_Base* node) {
     switch (node->kind) {
         case AST_KIND_LITERAL_INT: return "Int_Literal";
         case AST_KIND_LITERAL_STRING: return "String_Literal";
@@ -755,6 +788,7 @@ const char* get_node_kind(Ast_Base* node) {
         case AST_KIND_FOR: return "For";
         case AST_KIND_INDEX: return "Index";
         case AST_KIND_CAST: return "Cast";
+        case AST_KIND_STRUCT: return "Struct";
         case AST_KIND_TYPE_POINTER: return "Pointer";
         default: oc_unreachable("");
     }
@@ -786,6 +820,9 @@ void print_node_value(Ast_Base* node, Oc_Writer* w) {
             if (node->type)
                 ll_print_type_raw(node->type, &stdout_writer);
             break;
+        case AST_KIND_STRUCT:
+            print_node_value(&AST_AS(node, Ast_Struct)->ident->base, w);
+            break;
         case AST_KIND_TYPE_POINTER: break;
         default: oc_unreachable("");
     }
@@ -800,7 +837,7 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
     for (i = 0; i < indent; ++i) {
         wprint(w, "  ");
     }
-    const char* node_kind = get_node_kind(node);
+    const char* node_kind = ast_get_node_kind(node);
     wprint(w, "{} ", node_kind);
     print_node_value(node, w);
     wprint(w, "\n");
@@ -898,6 +935,12 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
         case AST_KIND_CAST:
             print_node(AST_AS(node, Ast_Cast)->cast_type, indent + 1, w);
             print_node(AST_AS(node, Ast_Cast)->expr, indent + 1, w);
+            break;
+
+        case AST_KIND_STRUCT:
+            for (i = 0; i < AST_AS(node, Ast_Struct)->body.count; ++i) {
+                print_node(AST_AS(node, Ast_Struct)->body.items[i], indent + 1, w);
+            }
             break;
 
         case AST_KIND_TYPE_POINTER:

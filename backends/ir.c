@@ -130,7 +130,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
             case LL_IR_OPCODE_OR:
             case LL_IR_OPCODE_XOR:
             case LL_IR_OPCODE_INVOKEVALUE:
-                ll_print_type_raw(ir_get_operand_type(&b->fns.items[b->current_function], operands[0]), w);
+                // ll_print_type_raw(ir_get_operand_type(&b->fns.items[b->current_function], operands[0]), w);
                 break;
 
             default: break;
@@ -431,6 +431,88 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
     }
 }
 
+void ir_calculate_struct_offsets(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* type) {
+    (void)b;
+    if (type->kind != LL_TYPE_STRUCT) return;
+
+    LL_Type_Struct* struct_type = (LL_Type_Struct*)type;
+    if (struct_type->offsets != NULL) return;
+
+    struct_type->offsets = oc_arena_alloc(&cc->arena, sizeof(*struct_type->offsets) * struct_type->field_count);
+    
+    uint32_t offset = 0;
+    struct_type->base.struct_alignment = 1;
+    for (uint32_t i = 0; i < struct_type->field_count; ++i) {
+        LL_Backend_Layout l = x86_64_get_layout(struct_type->fields[i]);
+        if (l.alignment > struct_type->base.struct_alignment) {
+            struct_type->base.struct_alignment = l.alignment;
+        }
+        offset = oc_align_forward(offset + max(l.size, l.alignment), l.alignment);
+        struct_type->offsets[i] = offset;
+    }
+}
+
+static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, uint32_t* offset, bool lvalue) {
+    LL_Ir_Operand result;
+    static uint32_t _current_offset;
+
+    switch (expr->kind) {
+    case AST_KIND_IDENT: {
+        Ast_Ident* ident = AST_AS(expr, Ast_Ident);
+
+        Ast_Base* decl = ident->resolved_scope->decl;
+        switch (decl->kind) {
+        case AST_KIND_VARIABLE_DECLARATION: result = LL_IR_OPERAND_LOCAL_BIT | AST_AS(decl, Ast_Variable_Declaration)->ir_index; break;
+        case AST_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | AST_AS(decl, Ast_Parameter)->ir_index; break;
+        default: oc_assert(false);
+        }
+
+        // if (!lvalue) {
+        //     result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ident->base.type, result);
+        // }
+        
+        break;
+    }
+    case AST_KIND_BINARY_OP: {
+        Ast_Operation* opr = AST_AS(expr, Ast_Operation);
+        oc_assert(opr->op.kind == '.');
+        oc_assert(opr->right->kind == AST_KIND_IDENT);
+        
+        if (offset == NULL) {
+            offset = &_current_offset;
+        }
+        result = ir_generate_member_access(cc, b, opr->left, offset, lvalue);
+
+
+        Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
+        LL_Scope* field_scope = right_ident->resolved_scope;
+        oc_assert(field_scope->kind == LL_SCOPE_KIND_FIELD);
+
+        // @TODO: probably should assert that this struct scope is the same as the lhs of the dot
+        LL_Scope* struct_scope = field_scope->parent;
+        oc_assert(struct_scope->kind == LL_SCOPE_KIND_STRUCT);
+
+        LL_Type_Struct* struct_type;
+        if (struct_scope->decl->type->kind == LL_TYPE_NAMED) {
+            struct_type = (LL_Type_Struct*)((LL_Type_Named*)struct_scope->decl->type)->actual_type;
+        } else {
+            struct_type = (LL_Type_Struct*)struct_scope->decl->type;
+        }
+        oc_assert(struct_type->base.kind == LL_TYPE_STRUCT);
+
+        ir_calculate_struct_offsets(cc, b, &struct_type->base);
+        Ast_Variable_Declaration* field_decl = AST_AS(field_scope->decl, Ast_Variable_Declaration);
+        oc_assert(field_decl->base.kind == AST_KIND_VARIABLE_DECLARATION);
+
+        uint32_t field_offset = struct_type->offsets[field_decl->ir_index];
+        *offset += field_offset;
+    } break;
+    default: oc_todo("implement this"); break;
+    }
+
+    return result;
+}
+
 LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, bool lvalue) {
     LL_Ir_Operand result = 696969;
     LL_Ir_Opcode op, r1, r2;
@@ -515,6 +597,13 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 
             switch (decl->kind) {
             case AST_KIND_FUNCTION_DECLARATION: result = LL_IR_OPERAND_FUNCTION_BIT | AST_AS(decl, Ast_Function_Declaration)->ir_index; break;
+            case AST_KIND_VARIABLE_DECLARATION: {
+                static uint32_t offset_value = 0;
+                offset_value = 0;
+                result = ir_generate_member_access(cc, b, expr, &offset_value, lvalue);
+                LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
+                result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
+            } break;
             default: oc_assert(false);
             }
 
@@ -750,7 +839,6 @@ DO_BIN_OP_ASSIGN_OP:
 
         LL_Ir_Operand lvalue_op;
         if (op->left->type->kind == LL_TYPE_POINTER || op->left->type->kind == LL_TYPE_STRING) {
-            print("doing pointer\n");
             lvalue_op = ir_generate_expression(cc, b, op->left, false);
         } else {
             lvalue_op = ir_generate_expression(cc, b, op->left, true);
@@ -914,8 +1002,9 @@ DO_BIN_OP_ASSIGN_OP:
 
         return 0;
     }
+    case AST_KIND_STRUCT: break;
     default:
-        eprint("oc_todo: implement generate expr %d\n", expr->kind);
+        eprint("oc_todo: implement generate expr {}\n", ast_get_node_kind(expr));
         break;
     }
     return result;

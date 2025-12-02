@@ -211,6 +211,27 @@ LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* re
     return res;
 }
 
+LL_Type* ll_typer_get_struct_type(Compiler_Context* cc, LL_Typer* typer, LL_Type** field_types, size_t field_count) {
+    LL_Type_Struct struct_type = { 0 }; // have to zero for deterministic hashing
+    struct_type.base.kind = LL_TYPE_STRUCT;
+    struct_type.field_count = field_count;
+    struct_type.fields = field_types;
+
+    LL_Type* res;
+    LL_Type** t = MAP_GET(typer->interned_types, (LL_Type*)&struct_type, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
+
+    if (t) {
+        res = *t;
+    } else {
+        struct_type.fields  = oc_arena_dup(&cc->arena, struct_type.fields, sizeof(*struct_type.fields) * struct_type.field_count);
+        // struct_type.offsets = oc_arena_dup(&cc->arena, struct_type.offsets, sizeof(*struct_type.offsets) * struct_type.field_count);
+        res = oc_arena_dup(&cc->arena, &struct_type, sizeof(struct_type));
+        MAP_PUT(typer->interned_types, res, res, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
+    }
+
+    return res;
+}
+
 LL_Type* ll_typer_implicit_cast_tofrom(Compiler_Context* cc, LL_Typer* typer, LL_Type* from, LL_Type* to) {
     (void)cc;
     if (from == to) return to;
@@ -314,7 +335,12 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         LL_Type* declared_type = ll_typer_get_type_from_typename(cc, typer, var_decl->type);
         var_decl->ident->base.type = declared_type;
 
-        LL_Scope_Simple* var_scope = (LL_Scope_Simple*)create_scope(LL_SCOPE_KIND_LOCAL, var_decl);
+		LL_Scope* var_scope;
+		if (typer->current_scope->kind == LL_SCOPE_KIND_STRUCT) {
+			var_scope = create_scope(LL_SCOPE_KIND_FIELD, var_decl);
+		} else {
+			var_scope = create_scope(LL_SCOPE_KIND_LOCAL, var_decl);
+		}
         var_scope->ident = var_decl->ident;
         ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope);
 
@@ -334,6 +360,17 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                 eprint("\x1b[0m\n");
             }
         }
+
+		if (typer->current_scope->kind == LL_SCOPE_KIND_STRUCT) {
+            var_decl->ir_index = typer->current_record->count;
+			oc_array_append(&cc->arena, typer->current_record, declared_type);
+			if (var_decl->initializer) {
+				LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, var_decl->initializer);
+				oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .field_scope = var_scope, .value = value, .has_init = true }));
+			} else {
+				oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .has_init = false }));
+			}
+		}
 
         break;
     }
@@ -417,6 +454,48 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
         break;
     }
+    case AST_KIND_STRUCT: {
+        Ast_Struct* strct = AST_AS(*stmt, Ast_Struct);
+
+        LL_Scope* struct_scope = create_scope(LL_SCOPE_KIND_STRUCT, *stmt);
+        struct_scope->ident = strct->ident;
+        ll_typer_scope_put(cc, typer, struct_scope);
+
+        LL_Type_Named named_type = { 0 };
+        named_type.base.kind = LL_TYPE_NAMED;
+        named_type.scope = struct_scope;
+
+        struct_scope->decl->type = oc_arena_dup(&cc->arena, &named_type, sizeof(named_type));
+        struct_scope->ident->base.type = struct_scope->decl->type;
+
+        LL_Type_Struct struct_type = { 0 };
+        LL_Typer_Current_Record record = { 0 };
+        LL_Typer_Record_Values record_values = { 0 };
+        
+        LL_Type_Named* last_named = typer->current_named;
+        LL_Type_Struct* last_struct = typer->current_struct;
+        LL_Typer_Current_Record* last_current_record = typer->current_record;
+        LL_Typer_Record_Values* last_current_record_values = typer->current_record_values;
+
+        typer->current_named = (LL_Type_Named*)struct_scope->decl->type;
+        typer->current_struct = &struct_type;
+        typer->current_record = &record;
+        typer->current_record_values = &record_values;
+        typer->current_scope = struct_scope;
+
+        for (i = 0; i < strct->body.count; ++i) {
+            ll_typer_type_statement(cc, typer, &strct->body.items[i]);
+        }
+
+        typer->current_scope = struct_scope->parent;
+        typer->current_record_values = last_current_record_values;
+        typer->current_record = last_current_record;
+        typer->current_struct = last_struct;
+        typer->current_named = last_named;
+
+        LL_Type* actual_class_type = ll_typer_get_struct_type(cc, typer, record.items, record.count);
+        ((LL_Type_Named*)struct_scope->decl->type)->actual_type = actual_class_type;
+    } break;
     default: return ll_typer_type_expression(cc, typer, stmt, NULL, NULL);
     }
 
@@ -746,12 +825,30 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
 
             if (result.scope) {
-                LL_Scope* member_scope = ll_scope_get(result.scope, right_ident->str);
+                LL_Scope* member_scope;
+
+                if (result.scope->kind == LL_SCOPE_KIND_STRUCT) {
+                    member_scope = ll_scope_get(result.scope, right_ident->str);
+                } else {
+                    LL_Type_Named* member_type = (LL_Type_Named*)result.scope->ident->base.type;
+                    if (member_type->base.kind == LL_TYPE_NAMED) {
+                        member_scope = ll_scope_get(member_type->scope, right_ident->str);
+                    } else {
+                        member_scope = ll_scope_get(result.scope, right_ident->str);
+                    }
+                }
                 
                 if (!member_scope) {
                     eprint("\x1b[31;1merror\x1b[0;1m: member {} not found\x1b[0m\n", right_ident->str);
                     return NULL;
                 }
+                oc_assert(member_scope->kind == LL_SCOPE_KIND_FIELD);
+                // Ast_Variable_Declaration* decl = AST_AS(member_scope->decl, Ast_Variable_Declaration);
+                // oc_assert(decl->base.kind == AST_KIND_VARIABLE_DECLARATION);
+                // decl->ir_index = 
+                
+
+                // if (member_scope->kind)
                 right_ident->resolved_scope = member_scope;
                 right_ident->base.type = member_scope->ident->base.type;
 
@@ -1241,9 +1338,12 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             case LL_SCOPE_KIND_FUNCTION:
                 cf->referenced_scope = current_scope;
                 goto AST_RETURN_EXIT_SCOPE;
+                oc_todo("add error: return outside a funtion");
+            case LL_SCOPE_KIND_STRUCT:
             case LL_SCOPE_KIND_PACKAGE:
                 oc_todo("add error: return outside a funtion");
                 goto AST_BREAK_EXIT_SCOPE;
+            case LL_SCOPE_KIND_FIELD:
             case LL_SCOPE_KIND_LOCAL:
             case LL_SCOPE_KIND_BLOCK_VALUE:
             case LL_SCOPE_KIND_BLOCK:
@@ -1278,9 +1378,12 @@ AST_RETURN_EXIT_SCOPE:
             case LL_SCOPE_KIND_FUNCTION:
                 oc_todo("add error: break without a block");
                 goto AST_BREAK_EXIT_SCOPE;
+            case LL_SCOPE_KIND_STRUCT:
             case LL_SCOPE_KIND_PACKAGE:
                 oc_todo("add error: break outside a funtion");
                 goto AST_BREAK_EXIT_SCOPE;
+            case LL_SCOPE_KIND_FIELD:
+                break;
             case LL_SCOPE_KIND_LOCAL:
                 break;
             case LL_SCOPE_KIND_PARAMETER:
@@ -1395,6 +1498,15 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         } else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_VOID.ptr) {
             result = typer->ty_void;
         }
+        if (result) break;
+
+        LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS(typename, Ast_Ident)->str);
+        if (!scope) {
+            eprint("\x1b[31;1merror\x1b[0;1m: type symbol '{}' not found!\n", AST_AS(typename, Ast_Ident)->str);
+        }
+        AST_AS(typename, Ast_Ident)->resolved_scope = scope;
+
+        result = scope->decl->type;
 
         // oc_todo: search identifier in symbol table
         break;
@@ -1451,6 +1563,25 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
         wprint(w, ")");
         break;
     }
+    case LL_TYPE_STRUCT: {
+        LL_Type_Struct* struct_type = (LL_Type_Struct*)type;
+        wprint(w, "struct {{ ");
+        for (i = 0; i < struct_type->field_count; ++i) {
+            if (struct_type->fields[i]) {
+                ll_print_type_raw(struct_type->fields[i], w);
+                if (struct_type->offsets) {
+                    wprint(w, "({})", struct_type->offsets[i]);
+                }
+                wprint(w, "; ");
+            }
+        }
+        wprint(w, "}");
+    } break;
+    case LL_TYPE_NAMED:
+        wprint(w, "named {} (", ((LL_Type_Named*)type)->scope->ident->str);
+        ll_print_type_raw(((LL_Type_Named*)type)->actual_type, w);
+        wprint(w, ")");
+        break;
     default: oc_assert(false); break;
     }
 }
@@ -1533,18 +1664,21 @@ void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w) {
 
     switch (scope->kind) {
     case LL_SCOPE_KIND_LOCAL:       wprint(w, "Local"); break;
+    case LL_SCOPE_KIND_FIELD:       wprint(w, "Field"); break;
     case LL_SCOPE_KIND_FUNCTION:    wprint(w, "Function"); break;
     case LL_SCOPE_KIND_PACKAGE:     wprint(w, "Module"); break;
     case LL_SCOPE_KIND_PARAMETER:   wprint(w, "Parmeter"); break;
     case LL_SCOPE_KIND_BLOCK:       wprint(w, "Block"); break;
     case LL_SCOPE_KIND_BLOCK_VALUE: wprint(w, "Block_Value"); break;
     case LL_SCOPE_KIND_LOOP:        wprint(w, "Loop"); break;
+    case LL_SCOPE_KIND_STRUCT:      wprint(w, "Struct"); break;
     }
     if (scope->ident)
         wprint(w, " '{}'", scope->ident->str);
     wprint(w, "\n");
 
     switch (scope->kind) {
+    case LL_SCOPE_KIND_FIELD:
     case LL_SCOPE_KIND_LOCAL: return;
     default: break;
     }

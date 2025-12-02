@@ -30,6 +30,7 @@ typedef enum {
     AST_KIND_IF,
     AST_KIND_FOR,
 
+    AST_KIND_STRUCT,
     AST_KIND_INDEX,
     AST_KIND_CAST,
     AST_KIND_TYPE_POINTER,
@@ -167,7 +168,8 @@ typedef struct {
     Ast_Ident* ident;
     Ast_Base* initializer optional;
     LL_Storage_Class storage_class;
-    uint32_t ir_index;
+    uint32_t ir_index; // for locals, it's the locals index
+                       // for structs, it's the type field index
 } Ast_Variable_Declaration;
 
 typedef struct {
@@ -182,6 +184,12 @@ typedef struct {
 
 typedef struct {
     Ast_Base base;
+    Ast_Ident* ident;
+    Ast_List body;
+} Ast_Struct;
+
+typedef struct {
+    Ast_Base base;
     Ast_Base* cast_type;
     Ast_Base* expr;
 } Ast_Cast;
@@ -192,3 +200,5 @@ typedef struct {
 } Ast_Type_Pointer;
 
 #define AST_AS(value, Type) ((Type*)(value))
+
+const char* ast_get_node_kind(Ast_Base* node);

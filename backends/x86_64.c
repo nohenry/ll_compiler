@@ -256,7 +256,20 @@ LL_Backend_Layout x86_64_get_layout(LL_Type* ty) {
     case LL_TYPE_ARRAY: {
         sub_layout = x86_64_get_layout(((LL_Type_Array*)ty)->element_type);
         return (LL_Backend_Layout) { .size = max(sub_layout.size, sub_layout.alignment) * ty->width, .alignment = sub_layout.alignment };
-    }
+    } break;
+    case LL_TYPE_STRUCT: {
+        LL_Type_Struct* struct_type = (LL_Type_Struct*)ty;
+        oc_assert(struct_type->offsets != NULL);
+        if (struct_type->field_count == 0) return (LL_Backend_Layout) { .size = 0, .alignment = 1 };
+
+        sub_layout = x86_64_get_layout(struct_type->fields[struct_type->field_count - 1]);
+        size_t size = struct_type->offsets[struct_type->field_count - 1] + max(sub_layout.size, sub_layout.alignment);
+
+        return (LL_Backend_Layout) { .size = size, .alignment = struct_type->base.struct_alignment };
+    } break;
+    case LL_TYPE_NAMED: {
+        return x86_64_get_layout(((LL_Type_Named*)ty)->actual_type);
+    } break;
     default: return (LL_Backend_Layout) { .size = 0, .alignment = 1 };
     }
 }
@@ -1188,16 +1201,22 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
 
 void x86_64_run(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
     (void)cc;
-    uint8* data = VirtualAlloc(NULL, b->section_data.count, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
-    if (!data) {
-        eprint("Unable to allocate memory\n");
-        return;
+
+    uint8* data = NULL;
+    if (b->section_data.count) {
+        data = VirtualAlloc(NULL, b->section_data.count, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+        if (!data) {
+            oc_assert(false && "Unable to allocate memory\n");
+            return;
+        }
+        memcpy(data, b->section_data.items, b->section_data.count);
+    } else {
+        oc_assert(b->internal_relocations.count == 0);
     }
-    memcpy(data, b->section_data.items, b->section_data.count);
 
     uint8* code = VirtualAlloc(NULL, b->section_text.count, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
     if (!code) {
-        eprint("Unable to allocate memory\n");
+        oc_assert(false && "Unable to allocate memory\n");
         return;
     }
     memcpy(code, b->section_text.items, b->section_text.count);
@@ -1214,7 +1233,7 @@ void x86_64_run(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
     sint32 a;
     if (!VirtualProtect(code, b->section_text.count, PAGE_EXECUTE, &a)) {
         extern sint32 GetLastError();
-        eprint("Unable to change protection: {x}\n", GetLastError());
+        oc_assert(false && "Unable to change protection: {x}\n");
         return;
     }
 

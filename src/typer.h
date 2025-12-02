@@ -12,11 +12,13 @@ typedef struct scope_map_entry {
 
 typedef enum {
     LL_SCOPE_KIND_LOCAL,
+	LL_SCOPE_KIND_FIELD,
     LL_SCOPE_KIND_PARAMETER,
     LL_SCOPE_KIND_FUNCTION,
-	LL_SCOPE_KIND_LOOP,
-	LL_SCOPE_KIND_BLOCK,
-	LL_SCOPE_KIND_BLOCK_VALUE,
+    LL_SCOPE_KIND_LOOP,
+    LL_SCOPE_KIND_BLOCK,
+    LL_SCOPE_KIND_BLOCK_VALUE,
+    LL_SCOPE_KIND_STRUCT,
     LL_SCOPE_KIND_PACKAGE,
 } LL_Scope_Kind;
 
@@ -26,8 +28,8 @@ typedef struct scope_map {
     Ast_Ident* ident;
     Ast_Base* decl;
     LL_Scope_Map_Entry* children[LL_DEFAULT_MAP_ENTRY_COUNT];
-	uint32_t label_value;
-	size_t next_anon;
+    uint32_t label_value;
+    size_t next_anon;
 } LL_Scope;
 
 typedef struct {
@@ -50,12 +52,15 @@ typedef enum {
     LL_TYPE_FUNCTION,
     LL_TYPE_POINTER,
     LL_TYPE_ARRAY,
+    LL_TYPE_STRUCT,
+    LL_TYPE_NAMED,
 } LL_Type_Kind;
 
 typedef struct ll_type {
     LL_Type_Kind kind;
     union {
         size_t width;
+        size_t struct_alignment;
     };
 } LL_Type;
 
@@ -83,15 +88,44 @@ typedef struct {
 } LL_Type_Function;
 // static_assert(sizeof(LL_Type*) == 8);
 
+typedef struct {
+    LL_Type base;
+    size_t field_count;
+    LL_Type** fields;
+    uint32_t* offsets;
+} LL_Type_Struct;
+
+typedef struct {
+    LL_Type base;
+    LL_Scope* scope;
+    LL_Type* actual_type;
+} LL_Type_Named;
+
 typedef struct ll_type_intern_map_entry {
     LL_Type* value;
     struct ll_type_intern_map_entry* next;
 } LL_Type_Intern_Map_Entry;
 
 typedef struct {
-	LL_Scope* scope;
+    LL_Scope* scope;
     Ast_Base** this_arg;
 } LL_Typer_Resolve_Result;
+
+typedef struct {
+    uint32_t count, capacity;
+    LL_Type** items;
+} LL_Typer_Current_Record;
+
+typedef struct {
+    LL_Scope* field_scope;
+    LL_Eval_Value value;
+    bool has_init;
+} LL_Typer_Record_Value;
+
+typedef struct {
+    uint32_t count, capacity;
+    LL_Typer_Record_Value* items;
+} LL_Typer_Record_Values;
 
 typedef struct ll_typer {
     LL_Type_Intern_Map_Entry* interned_types[LL_DEFAULT_MAP_ENTRY_COUNT];
@@ -107,6 +141,11 @@ typedef struct ll_typer {
     LL_Type_Function* current_fn;
     LL_Type* block_type;
     LL_Scope* current_scope, *root_scope;
+
+    LL_Type_Named* current_named;
+    LL_Type_Struct* current_struct;
+    LL_Typer_Current_Record* current_record;
+    LL_Typer_Record_Values* current_record_values;
 } LL_Typer;
 
 

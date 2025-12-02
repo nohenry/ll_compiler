@@ -23,7 +23,5 @@ void main() {
     write_int(*bb);
     write_int(b[3]);
 
-    int8* f = bb;
-
     // uint32[5] aaa = [1, 2, 3, 4, 5];
 }

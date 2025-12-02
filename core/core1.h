@@ -754,6 +754,11 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
     while (*fmt) {
         char c = *fmt;
         if (c == '{') {
+            if (*(fmt + 1) == '{') {
+                w->write(w, "{", 1);
+                fmt += 2;
+                continue;
+            }
             Oc_Generic value = va_arg(args, Oc_Generic);
 
             int f = 0;
