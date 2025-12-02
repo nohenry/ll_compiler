@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
 
     ll_backend_generate_statement_from_ir(&cc, &backend_elf, backend_ir.backend);
     ll_backend_write_to_file(&cc, &backend_elf, "out.bin");
-    if (run) ll_backend_execute(&cc, &backend_elf);
+    if (run) ll_backend_execute(&cc, &backend_elf, backend_ir.backend);
 
     /* x86_64_run_tests(&cc, backend_elf.backend); */
 

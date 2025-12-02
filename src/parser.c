@@ -680,7 +680,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
             CONSUME();
 
             EXPECT('(', &token);
-            result = parser_parse_expression(cc, parser, NULL, 0, false);
+            result = parser_parse_expression(cc, parser, NULL, 0, true);
             EXPECT(')', &token);
             right = parser_parse_expression(cc, parser, NULL, 0, false);
 

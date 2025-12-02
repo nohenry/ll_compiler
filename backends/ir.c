@@ -700,7 +700,8 @@ DO_BIN_OP_ASSIGN_OP:
                     k = kv->key->const_value.uval;
                 } else {
                     LL_Ir_Operand kvalue = ir_generate_expression(cc, b, kv->key, false);
-                    result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, element_type, b->copy_operand, kvalue, layout.size);
+                    LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, element_type);
+                    result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_type, b->copy_operand, kvalue, layout.size);
                     IR_APPEND_OP(LL_IR_OPCODE_STORE, result, vvalue);
                 }
             } else {
@@ -724,7 +725,8 @@ DO_BIN_OP_ASSIGN_OP:
                             /* memcpy(&b->initializer_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
                         }
                     } else {
-                        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, element_type, b->copy_operand, (uint32_t)k, layout.size);
+                        LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, element_type);
+                        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_type, b->copy_operand, (uint32_t)k, layout.size);
                         IR_APPEND_OP(LL_IR_OPCODE_STORE, result, vvalue);
                     }
                     break;
@@ -747,7 +749,7 @@ DO_BIN_OP_ASSIGN_OP:
         Ast_Operation* op = AST_AS(expr, Ast_Operation);
 
         LL_Ir_Operand lvalue_op;
-        if (op->left->type->kind == LL_TYPE_POINTER) {
+        if (op->left->type->kind == LL_TYPE_POINTER || op->left->type->kind == LL_TYPE_STRING) {
             print("doing pointer\n");
             lvalue_op = ir_generate_expression(cc, b, op->left, false);
         } else {
@@ -756,7 +758,8 @@ DO_BIN_OP_ASSIGN_OP:
         LL_Ir_Operand rvalue_op = ir_generate_expression(cc, b, op->right, false);
         LL_Backend_Layout layout = cc->target->get_layout(expr->type);
 
-        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, expr->type, lvalue_op, rvalue_op, max(layout.size, layout.alignment));
+        LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, expr->type);
+        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_type, lvalue_op, rvalue_op, max(layout.size, layout.alignment));
 
         if (!lvalue && expr->type->kind != LL_TYPE_ARRAY) {
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, result);

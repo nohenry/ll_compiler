@@ -48,8 +48,8 @@ enum {
     LL_IR_OPCODE_LEA_INDEX,
     LL_IR_OPCODE_CAST,      // x
 
-    LL_IR_OPCODE_BRANCH,
-    LL_IR_OPCODE_BRANCH_COND,
+    LL_IR_OPCODE_BRANCH,      // x
+    LL_IR_OPCODE_BRANCH_COND, // x
 
     LL_IR_OPCODE_ADD, // x
     LL_IR_OPCODE_SUB, // x

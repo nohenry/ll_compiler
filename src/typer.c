@@ -468,6 +468,7 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
             return true;
         default: break;
         }
+        break;
     case LL_TYPE_UINT:
         switch (dst_type->kind) {
         case LL_TYPE_INT:
@@ -475,7 +476,16 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         case LL_TYPE_FLOAT:
             return true;
         default: break;
+        };
+        break;
+    case LL_TYPE_POINTER:
+        switch (dst_type->kind) {
+        case LL_TYPE_POINTER:
+            return true;
+        default: break;
         }
+        break;
+
     default: break;
     }
 
@@ -506,6 +516,13 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
         case LL_TYPE_UINT:
             if (dst_type->width >= src_type->width) return true;
             break;
+        default: break;
+        }
+        break;
+    case LL_TYPE_POINTER:
+        switch (dst_type->kind) {
+        case LL_TYPE_POINTER:
+            return ((LL_Type_Pointer*)src_type)->element_type == typer->ty_void || ((LL_Type_Pointer*)dst_type)->element_type == typer->ty_void;
         default: break;
         }
         break;
@@ -1198,6 +1215,9 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             break;
         case LL_TYPE_POINTER:
             result = ((LL_Type_Pointer*)result)->element_type;
+            break;
+        case LL_TYPE_STRING:
+            result = typer->ty_uint8;
             break;
         default:
             eprint("\x1b[31;1merror\x1b[0;1m: index expression requires an array or pointer type on the left, but found type ");

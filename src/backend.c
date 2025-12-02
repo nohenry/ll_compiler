@@ -70,9 +70,9 @@ bool ll_backend_write_to_file(Compiler_Context* cc, LL_Backend* b, char* filepat
     }
 }
 
-void ll_backend_execute(Compiler_Context* cc, LL_Backend* b) {
+void ll_backend_execute(Compiler_Context* cc, LL_Backend* b, LL_Backend_Ir* bir) {
     switch (b->kind) {
-    case LL_BACKEND_LINUX_X86_64_ELF: return x86_64_run(cc, b->backend); break;
+    case LL_BACKEND_LINUX_X86_64_ELF: return x86_64_run(cc, b->backend, bir); break;
     default: oc_unreachable(""); return;
     }
 }

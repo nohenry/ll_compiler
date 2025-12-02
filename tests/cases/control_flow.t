@@ -27,7 +27,7 @@ void main() {
     }
 
     int sum = 0;
-    for int i = 0; i < 40; i += 1 sum += i;
+    for int i = 0; i < 40; i += 1   sum += i;
     
     write_int(sum);
 }

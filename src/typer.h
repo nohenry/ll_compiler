@@ -132,3 +132,6 @@ LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
 LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, string symbol_name);
 
 void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
+
+
+LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type);
