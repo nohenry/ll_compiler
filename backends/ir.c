@@ -484,7 +484,9 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
             offset = &_current_offset;
         }
         result = ir_generate_member_access(cc, b, opr->left, offset, lvalue);
-
+        if (opr->left->type->kind == LL_TYPE_POINTER) {
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, opr->left->type, result);
+        }
 
         Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
         LL_Scope* field_scope = right_ident->resolved_scope;

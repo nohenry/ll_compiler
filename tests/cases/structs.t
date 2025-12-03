@@ -18,6 +18,7 @@ void do_smth_with_struct(Foobar f) {
 void struct_ref(Foobar* f) {
     Foobar ff = *f;
     write_int(ff.a);
+    write_int(f.a);
 }
 
 void small_struct(SmallStruct ss) {
@@ -29,6 +30,7 @@ void small_struct_ref(SmallStruct* ssp) {
     SmallStruct ss = *ssp;
     write_int(ss.c);
     write_int(ss.d);
+    write_int(ssp.d);
 }
 
 void main() {

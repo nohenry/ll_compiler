@@ -846,16 +846,15 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             if (result.scope) {
                 LL_Scope* member_scope;
 
-                if (result.scope->kind == LL_SCOPE_KIND_STRUCT) {
-                    member_scope = ll_scope_get(result.scope, right_ident->str);
-                } else {
-                    LL_Type_Named* member_type = (LL_Type_Named*)result.scope->ident->base.type;
-                    if (member_type->base.kind == LL_TYPE_NAMED) {
-                        member_scope = ll_scope_get(member_type->scope, right_ident->str);
-                    } else {
-                        member_scope = ll_scope_get(result.scope, right_ident->str);
-                    }
+                LL_Type* base_type = result.scope->ident->base.type;
+                LL_Scope* base_scope = NULL;
+                if (base_type->kind == LL_TYPE_POINTER) base_type = ((LL_Type_Pointer*)base_type)->element_type;
+                while (base_type->kind == LL_TYPE_NAMED) {
+                    base_scope = ((LL_Type_Named*)base_type)->scope;
+                    base_type = ((LL_Type_Named*)base_type)->actual_type;
                 }
+
+                member_scope = ll_scope_get(base_scope, right_ident->str);
                 
                 if (!member_scope) {
                     eprint("\x1b[31;1merror\x1b[0;1m: member {} not found\x1b[0m\n", right_ident->str);

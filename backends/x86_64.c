@@ -952,6 +952,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 switch (OPD_TYPE(operands[1])) {
                 case LL_IR_OPERAND_REGISTER_BIT: {
                     params.reg1 = x86_64_load_operand(cc, b, bir, operands[1]) | X86_64_REG_BASE;
+                    params.displacement = displacement;
                     b->active_register_top -= 1;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                 } break;
@@ -962,7 +963,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                 } break;
                 case LL_IR_OPERAND_DATA_BIT: {
-                    params.immediate = 0;
+                    params.immediate = displacement;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_i64, params);
                     oc_array_append(&cc->tmp_arena, &b->internal_relocations, ((X86_64_Internal_Relocation) {
                         .data_item = OPD_VALUE(operands[1]),
@@ -1009,7 +1010,6 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
             } break;
             default: ll_print_type(type); oc_todo("add lea types"); break;
             }
-
         } break;
 
         case LL_IR_OPCODE_AND:
@@ -1436,7 +1436,7 @@ void x86_64_run(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
         LL_Ir_Data_Item* data_item = &bir->data_items.items[relocation.data_item];
 
         int64_t* dst_offset = (int64_t*)&code[relocation.text_rel_byte_offset];
-        *dst_offset = ((int64_t)data + data_item->binary_offset);
+        *dst_offset += ((int64_t)data + data_item->binary_offset);
     }
 
     sint32 a;
