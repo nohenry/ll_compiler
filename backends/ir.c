@@ -105,38 +105,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     LL_Ir_Operand* operands = &opcode_list[i + 1];
     int offset = 0;
 
-    if (ir_get_op_count(cc, b, opcode_list, i) > 1) {
-        switch (opcode) {
-            case LL_IR_OPCODE_RETVALUE:
-            case LL_IR_OPCODE_STORE:
-            case LL_IR_OPCODE_MEMCOPY:
-            case LL_IR_OPCODE_LOAD:
-            case LL_IR_OPCODE_LEA:
-            case LL_IR_OPCODE_LEA_INDEX:
-            case LL_IR_OPCODE_CAST:
-            case LL_IR_OPCODE_ADD:
-            case LL_IR_OPCODE_SUB:
-            case LL_IR_OPCODE_MUL:
-            case LL_IR_OPCODE_DIV:
-            case LL_IR_OPCODE_LT:
-            case LL_IR_OPCODE_LTE:
-            case LL_IR_OPCODE_GT:
-            case LL_IR_OPCODE_GTE:
-            case LL_IR_OPCODE_EQ:
-            case LL_IR_OPCODE_NEQ:
-            case LL_IR_OPCODE_NEG:
-            case LL_IR_OPCODE_NOT:
-            case LL_IR_OPCODE_AND:
-            case LL_IR_OPCODE_OR:
-            case LL_IR_OPCODE_XOR:
-            case LL_IR_OPCODE_INVOKEVALUE:
-                ll_print_type_raw(ir_get_operand_type(&b->fns.items[b->current_function], operands[0]), w);
-                break;
 
-            default: break;
-        }
-        wprint(w, "\t");
-    }
 
     switch (opcode) {
     case LL_IR_OPCODE_RET:         wprint(w, INDENT "ret"); break;
@@ -182,6 +151,41 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
         }
         break;
     }
+    }
+
+    if (ir_get_op_count(cc, b, opcode_list, i) > 1) {
+        wprint(w, "\t\t");
+        switch (opcode) {
+            case LL_IR_OPCODE_RETVALUE:
+            case LL_IR_OPCODE_STORE:
+            case LL_IR_OPCODE_MEMCOPY:
+            case LL_IR_OPCODE_LOAD:
+            case LL_IR_OPCODE_LEA:
+            case LL_IR_OPCODE_LEA_INDEX:
+            case LL_IR_OPCODE_CAST:
+            case LL_IR_OPCODE_ADD:
+            case LL_IR_OPCODE_SUB:
+            case LL_IR_OPCODE_MUL:
+            case LL_IR_OPCODE_DIV:
+            case LL_IR_OPCODE_LT:
+            case LL_IR_OPCODE_LTE:
+            case LL_IR_OPCODE_GT:
+            case LL_IR_OPCODE_GTE:
+            case LL_IR_OPCODE_EQ:
+            case LL_IR_OPCODE_NEQ:
+            case LL_IR_OPCODE_NEG:
+            case LL_IR_OPCODE_NOT:
+            case LL_IR_OPCODE_AND:
+            case LL_IR_OPCODE_OR:
+            case LL_IR_OPCODE_XOR:
+            case LL_IR_OPCODE_INVOKEVALUE:
+                if (OPD_TYPE(operands[0]) != LL_IR_OPERAND_IMMEDIATE_BIT) {
+                    ll_print_type_raw(ir_get_operand_type(&b->fns.items[b->current_function], operands[0]), w);
+                }
+                break;
+
+            default: break;
+        }
     }
 }
 
@@ -469,9 +473,9 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         default: oc_assert(false);
         }
 
-        // if (!lvalue) {
-        //     result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ident->base.type, result);
-        // }
+        if (ident->base.type->kind == LL_TYPE_POINTER) {
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ident->base.type, result);
+        }
         
         break;
     }
@@ -483,10 +487,7 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         if (offset == NULL) {
             offset = &_current_offset;
         }
-        result = ir_generate_member_access(cc, b, opr->left, offset, lvalue);
-        if (opr->left->type->kind == LL_TYPE_POINTER) {
-            result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, opr->left->type, result);
-        }
+        result = ir_generate_member_access(cc, b, opr->left, offset, false);
 
         Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
         LL_Scope* field_scope = right_ident->resolved_scope;
@@ -509,7 +510,17 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         oc_assert(field_decl->base.kind == AST_KIND_VARIABLE_DECLARATION);
 
         uint32_t field_offset = struct_type->offsets[field_decl->ir_index];
-        *offset += field_offset;
+
+        if (opr->left->type->kind == LL_TYPE_POINTER && opr->left->kind == AST_KIND_BINARY_OP) {
+            LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->left->type);
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | *offset, 1);
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, opr->left->type, result);
+
+            *offset = field_offset;
+        } else {
+            *offset += field_offset;
+        }
+
     } break;
     default: oc_todo("implement this"); break;
     }
@@ -605,8 +616,9 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
                 static uint32_t offset_value = 0;
                 offset_value = 0;
                 result = ir_generate_member_access(cc, b, expr, &offset_value, lvalue);
-                LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
-                result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
+
+                LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
+                result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
             } break;
             default: oc_assert(false);
             }
@@ -733,13 +745,28 @@ DO_BIN_OP_ASSIGN_OP:
         ops[offset++] = inv->ordered_arguments.count;
         for (i = 0; i < inv->ordered_arguments.count; ++i) {
             LL_Type* parameter_type;
+            bool arg_lea = false;
+            bool arg_lvalue = false;
             if (i >= fn_type->parameter_count - 1 && fn_type->is_variadic) {
                 parameter_type = cc->typer->ty_int32;
             } else {
                 parameter_type = inv->ordered_arguments.items[i]->type;
+                if (i == 0 && inv->has_this_arg) {
+                    if (fn_type->parameters[i]->kind == LL_TYPE_POINTER) {
+                        if (parameter_type->kind != LL_TYPE_POINTER) {
+                            arg_lvalue = true;
+                            if (inv->ordered_arguments.items[i]->kind != AST_KIND_INDEX && inv->ordered_arguments.items[i]->kind != AST_KIND_BINARY_OP) {
+                                arg_lea = true;
+                            }
+                        }
+                    }
+                }
             }
 
-            LL_Ir_Operand arg_operand = ir_generate_expression(cc, b, inv->ordered_arguments.items[i], false);
+            LL_Ir_Operand arg_operand = ir_generate_expression(cc, b, inv->ordered_arguments.items[i], arg_lvalue);
+            if (arg_lea) {
+                arg_operand = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, parameter_type, arg_operand);
+            }
             switch (arg_operand & LL_IR_OPERAND_TYPE_MASK) {
             case LL_IR_OPERAND_IMMEDIATE_BIT:
                 arg_operand = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, parameter_type, (arg_operand & LL_IR_OPERAND_VALUE_MASK));

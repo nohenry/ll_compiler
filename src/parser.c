@@ -840,6 +840,16 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
     const char* node_kind = ast_get_node_kind(node);
     wprint(w, "{} ", node_kind);
     print_node_value(node, w);
+    if (node->type) {
+        uint32_t max_indent = 7;
+        if (max_indent > indent) {
+            for (i = 0; i < (max_indent - indent); ++i) {
+                wprint(w, "  ");
+            }
+        }
+        wprint(w, "\t\t\t");
+        ll_print_type_raw(node->type, w);
+    }
     wprint(w, "\n");
     switch (node->kind) {
         case AST_KIND_BINARY_OP: 
@@ -852,9 +862,9 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
 
         case AST_KIND_INVOKE: 
             print_node(AST_AS(node, Ast_Invoke)->expr, indent + 1, w);
-            for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
-                print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->arguments.items[i], indent + 1, w);
-            }
+            // for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
+            //     print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->arguments.items[i], indent + 1, w);
+            // }
             for (i = 0; i < AST_AS(node, Ast_Invoke)->ordered_arguments.count; ++i) {
                 print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->ordered_arguments.items[i], indent + 1, w);
             }
@@ -933,7 +943,7 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
             break;
 
         case AST_KIND_CAST:
-            print_node(AST_AS(node, Ast_Cast)->cast_type, indent + 1, w);
+            if (AST_AS(node, Ast_Cast)->cast_type) print_node(AST_AS(node, Ast_Cast)->cast_type, indent + 1, w);
             print_node(AST_AS(node, Ast_Cast)->expr, indent + 1, w);
             break;
 

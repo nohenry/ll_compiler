@@ -493,6 +493,9 @@ static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, L
 static void x86_64_get_cast_info(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* dst_type, LL_Type* src_type, uint32_t* opcode, X86_64_Variant_Kind* kind, bool mem_right) {
     X86_64_Get_Variant_Params get_variant = { .mem_right = mem_right };
 
+    dst_type = get_base_type(dst_type);
+    src_type = get_base_type(src_type);
+
     if (dst_type != src_type) {
         switch (src_type->kind) {
         case LL_TYPE_UINT:
@@ -582,9 +585,9 @@ static void x86_64_get_cast_info(Compiler_Context* cc, X86_64_Backend* b, LL_Bac
             default: oc_todo(""); break;
             }
             break;
-
         default:
             ll_print_type(src_type);
+            ll_print_type(dst_type);
             oc_todo("add types");
             break;
         }
@@ -917,6 +920,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
             LL_Type* type = get_base_type(ptr_type->element_type);
 
             switch (type->kind) {
+            case LL_TYPE_POINTER:
             case LL_TYPE_STRUCT:
             case LL_TYPE_ARRAY:
             case LL_TYPE_STRING:

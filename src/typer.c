@@ -855,18 +855,11 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 }
 
                 member_scope = ll_scope_get(base_scope, right_ident->str);
-                
                 if (!member_scope) {
-                    eprint("\x1b[31;1merror\x1b[0;1m: member {} not found\x1b[0m\n", right_ident->str);
-                    return NULL;
+                    goto TRY_MEMBER_FUNCTION_CALL;
                 }
-                oc_assert(member_scope->kind == LL_SCOPE_KIND_FIELD);
-                // Ast_Variable_Declaration* decl = AST_AS(member_scope->decl, Ast_Variable_Declaration);
-                // oc_assert(decl->base.kind == AST_KIND_VARIABLE_DECLARATION);
-                // decl->ir_index = 
                 
-
-                // if (member_scope->kind)
+                oc_assert(member_scope->kind == LL_SCOPE_KIND_FIELD);
                 right_ident->resolved_scope = member_scope;
                 right_ident->base.type = member_scope->ident->base.type;
 
@@ -877,14 +870,20 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 (*expr)->type = right_ident->base.type;
                 return right_ident->base.type;
             } else {
+TRY_MEMBER_FUNCTION_CALL:
                 ll_typer_type_expression(cc, typer, &opr->right, NULL, &result);
                 if (result.scope->kind == LL_SCOPE_KIND_FUNCTION) {
                     LL_Type_Function* fn_type = (LL_Type_Function*)result.scope->ident->base.type;
                     oc_assert(fn_type->base.kind == LL_TYPE_FUNCTION);
 
                     if (fn_type->parameter_count > 0) {
-                        
-                        if (ll_typer_implicit_cast_tofrom(cc, typer, opr->left->type, fn_type->parameters[0])) {
+                        LL_Type* member_arg_parameter = fn_type->parameters[0];
+                        if (member_arg_parameter->kind == LL_TYPE_POINTER && opr->left->type->kind != LL_TYPE_POINTER) {
+                            // auto reference
+                            member_arg_parameter = ((LL_Type_Pointer*)member_arg_parameter)->element_type;
+                        }
+
+                        if (ll_typer_implicit_cast_tofrom(cc, typer, opr->left->type, member_arg_parameter)) {
                             right_ident->resolved_scope = result.scope;
                             right_ident->base.type = (LL_Type*)fn_type;
 
@@ -1205,18 +1204,27 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         int ordered_arg_count = 0;
         int variadic_arg_count = 0;
 
-        for (pi = 1, di = 0; pi < inv->arguments.count + 1; ++pi, ++di) {
+        if (resolve.this_arg) {
+            LL_Type* declared_type = fn_type->parameters[0];
+            inv->has_this_arg = true;
+
+            (void)ll_typer_type_expression(cc, typer, resolve.this_arg, declared_type, NULL);
+
+            ordered_arg_count++;
+            ordered_args[0] = *resolve.this_arg;
+            if (!ordered_args[0]->type) {
+                ordered_args[0]->type = declared_type;
+            }
+            di = 1;
+        } else {
+            di = 0;
+        }
+
+        uword arg_count = inv->arguments.count;
+        for (pi = 0 /* , di = 0 */; pi < arg_count; ++pi, ++di) {
             LL_Type *declared_type, *provided_type;
             Ast_Base** value;
-
-            Ast_Base** current_arg;
-            if (resolve.this_arg) {
-                current_arg = resolve.this_arg;
-                pi = 0;
-                resolve.this_arg = NULL;
-            } else {
-                current_arg = &inv->arguments.items[pi - 1];
-            }
+            Ast_Base** current_arg = &inv->arguments.items[pi];
             
             if ((*current_arg)->kind == AST_KIND_KEY_VALUE) {
                 if (!fn_decl || !fn_scope) {
@@ -1596,9 +1604,10 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
         wprint(w, "}");
     } break;
     case LL_TYPE_NAMED:
-        wprint(w, "named {} (", ((LL_Type_Named*)type)->scope->ident->str);
-        ll_print_type_raw(((LL_Type_Named*)type)->actual_type, w);
-        wprint(w, ")");
+        wprint(w, "named {}", ((LL_Type_Named*)type)->scope->ident->str);
+        // wprint(w, "named {} (", ((LL_Type_Named*)type)->scope->ident->str);
+        // ll_print_type_raw(((LL_Type_Named*)type)->actual_type, w);
+        // wprint(w, ")");
         break;
     default: oc_assert(false); break;
     }

@@ -120,6 +120,7 @@ typedef struct {
     Ast_Base* expr;
     Ast_List arguments;
 	Ast_List ordered_arguments;
+    bool has_this_arg;
 } Ast_Invoke;
 
 typedef struct {

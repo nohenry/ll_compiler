@@ -53,8 +53,8 @@ int main(int argc, char** argv) {
     cc.bir = backend_ir.backend;
     cc.target = &backend_elf;
 
-    if (!cc.quiet) print_node(root, 0, &stdout_writer);
     ll_typer_run(&cc, &typer, root);
+    if (!cc.quiet) print_node(root, 0, &stdout_writer);
 
 
     // ll_backend_generate_statement(&cc, &backend_c, root);

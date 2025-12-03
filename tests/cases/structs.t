@@ -6,7 +6,7 @@ struct SmallStruct {
 }
 
 struct Foobar {
-    SmallStruct s;
+    SmallStruct* s;
     int a;
     int b;
 }
@@ -42,6 +42,7 @@ void main() {
     write_int(foo.s.d);
 
     do_smth_with_struct(foo);
+    foo.do_smth_with_struct();
     Foobar foo1 = foo;
     write_int(foo1.a);
 
@@ -49,10 +50,13 @@ void main() {
     Foobar foo2 = *pfoo1;
     write_int(foo2.s.d);
 
-    struct_ref(&foo1);
+    struct_ref(&foo);
+    foo.struct_ref();
 
     foo.s.c = 43;
     foo.s.d = 12;
-    small_struct(foo.s);
-    small_struct_ref(&foo.s);
+    small_struct(*foo.s);
+    // foo.s.small_struct();
+    small_struct_ref(foo.s);
+    foo.s.small_struct_ref();
 }
