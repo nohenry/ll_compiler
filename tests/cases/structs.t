@@ -33,6 +33,16 @@ void small_struct_ref(SmallStruct* ssp) {
     write_int(ssp.d);
 }
 
+void pass_struct_over_stack(int a, int b, int c, int d, int e, int f, SmallStruct ss) {
+    write_int(ss.c);
+    write_int(ss.d);
+}
+
+void pass_struct_over_stack_ref(int a, int b, int c, int d, int e, int f, SmallStruct* ss) {
+    write_int(ss.c);
+    write_int(ss.d);
+}
+
 void main() {
     Foobar foo;
     foo.a = 123;
@@ -59,4 +69,9 @@ void main() {
     // foo.s.small_struct();
     small_struct_ref(foo.s);
     foo.s.small_struct_ref();
+
+    foo.s.c = 156;
+    foo.s.d = 87;
+    pass_struct_over_stack(2, 4, 6, 8, 10, 12, *foo.s);
+    pass_struct_over_stack_ref(2, 4, 6, 8, 10, 12, foo.s);
 }
