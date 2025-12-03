@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/main.exe",
-            "args": ["--run", "./tests/cases/functions.t"],
+            "args": ["--run", "./tests/cases/structs.t"],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}",
             "environment": [],

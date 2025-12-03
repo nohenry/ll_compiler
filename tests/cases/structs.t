@@ -1,18 +1,34 @@
 native void write_int(int64 d);
 
-struct SubStruct {
+struct SmallStruct {
     int c;
     int d;
 }
 
 struct Foobar {
-    SubStruct s;
+    SmallStruct s;
     int a;
     int b;
 }
 
 void do_smth_with_struct(Foobar f) {
     write_int(f.a);
+}
+
+void struct_ref(Foobar* f) {
+    Foobar ff = *f;
+    write_int(ff.a);
+}
+
+void small_struct(SmallStruct ss) {
+    write_int(ss.c);
+    write_int(ss.d);
+}
+
+void small_struct_ref(SmallStruct* ssp) {
+    SmallStruct ss = *ssp;
+    write_int(ss.c);
+    write_int(ss.d);
 }
 
 void main() {
@@ -25,5 +41,16 @@ void main() {
 
     do_smth_with_struct(foo);
     Foobar foo1 = foo;
-    // write_int(foo1.a);
+    write_int(foo1.a);
+
+    Foobar* pfoo1 = &foo;
+    Foobar foo2 = *pfoo1;
+    write_int(foo2.s.d);
+
+    struct_ref(&foo1);
+
+    foo.s.c = 43;
+    foo.s.d = 12;
+    small_struct(foo.s);
+    small_struct_ref(&foo.s);
 }

@@ -130,7 +130,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
             case LL_IR_OPCODE_OR:
             case LL_IR_OPCODE_XOR:
             case LL_IR_OPCODE_INVOKEVALUE:
-                // ll_print_type_raw(ir_get_operand_type(&b->fns.items[b->current_function], operands[0]), w);
+                ll_print_type_raw(ir_get_operand_type(&b->fns.items[b->current_function], operands[0]), w);
                 break;
 
             default: break;
@@ -576,7 +576,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
         }
         case '&': {
             result = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, true);
-            if (AST_AS(expr, Ast_Operation)->right->kind != AST_KIND_INDEX) {
+            if (AST_AS(expr, Ast_Operation)->right->kind != AST_KIND_INDEX && AST_AS(expr, Ast_Operation)->right->kind != AST_KIND_BINARY_OP) {
                 result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
             }
             break;

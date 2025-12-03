@@ -1271,7 +1271,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 ll_print_type_raw(declared_type, &stderr_writer);
                 eprint(" but got ");
                 ll_print_type_raw(provided_type, &stderr_writer);
-                eprint("\n");
+                eprint("\x1b[0m\n");
             }
 
             ll_typer_add_implicit_cast(cc, typer, value, declared_type);
