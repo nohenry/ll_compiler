@@ -289,6 +289,13 @@ static inline LL_Type* get_base_type(LL_Type* type) {
     return type;
 }
 
+static inline bool is_small_struct(LL_Type* type) {
+    assert(type->kind == LL_TYPE_STRUCT);
+    LL_Backend_Layout struct_layout = x86_64_get_layout(type);
+    size_t actual_size = max(struct_layout.size, struct_layout.alignment);
+    return actual_size <= 8;
+}
+
 typedef struct {
     bool immediate, mem_right, single;
 } X86_64_Get_Variant_Params;
@@ -434,16 +441,12 @@ static void x86_64_generate_mov_to_register(Compiler_Context* cc, X86_64_Backend
     }
 }
 
-static void x86_64_generate_memcpy(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand dst, LL_Ir_Operand src, LL_Ir_Operand byte_size, LL_Type* operand_type) {
+static void x86_64_generate_memcpy_assum_rdi_rsi(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, LL_Ir_Operand byte_size, LL_Type* operand_type) {
     X86_64_Instruction_Parameters params = { 0 };
     X86_64_Get_Variant_Params get_variant = { 0 };
-    LL_Type* type = ir_get_operand_type(b->fn, dst);
     LL_Backend_Layout elem_layout = x86_64_get_layout(type);
 
     size_t alignment = min(8, elem_layout.alignment);
-
-    x86_64_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rdi, dst, false);
-    x86_64_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rsi, src, false);
 
     LL_Ir_Operand size_value;
     switch (OPD_TYPE(byte_size)) {
@@ -473,6 +476,41 @@ static void x86_64_generate_memcpy(Compiler_Context* cc, X86_64_Backend* b, LL_B
     OC_X86_64_WRITE_INSTRUCTION(b, opcodes[alignment], noarg, ((X86_64_Instruction_Parameters) { .rep = X86_64_PREFIX_REP }) );
 }
 
+static void x86_64_generate_memcpy(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand dst, LL_Ir_Operand src, LL_Ir_Operand byte_size, LL_Type* operand_type) {
+    LL_Type* type = ir_get_operand_type(b->fn, dst);
+
+    x86_64_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rdi, dst, false);
+    x86_64_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rsi, src, false);
+    x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, type, byte_size, operand_type);
+}
+
+static uword x86_64_make_struct_copy(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, LL_Ir_Operand reg) {
+    X86_64_Instruction_Parameters params = { 0 };
+    oc_assert(type->kind == LL_TYPE_STRUCT);
+
+    LL_Backend_Layout l = x86_64_get_layout(type);
+    uword stride = max(l.size, l.alignment);
+    uword offset = b->stack_used;
+    b->stack_used = oc_align_forward(offset + stride, l.alignment);
+
+    params.reg0 = X86_64_OPERAND_REGISTER_rdi;
+    params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+    params.displacement = -(long long int)b->stack_used;
+    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_LEA, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
+
+    oc_assert(OPD_TYPE(reg) == LL_IR_OPERAND_REGISTER_BIT);
+    params.reg0 = X86_64_OPERAND_REGISTER_rsi;
+    params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+    params.displacement = -b->registers.items[OPD_VALUE(reg)];
+    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
+
+    // x86_64_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rsi, reg, false);
+    oc_x86_64_write_nop(b, 1);
+
+    x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, type, LL_IR_OPERAND_IMMEDIATE_BIT | l.size, NULL);
+
+    return b->stack_used;
+}
 
 static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, X86_64_Operand_Register reg) {
     X86_64_Instruction_Parameters params = { 0 };
@@ -1223,19 +1261,35 @@ DO_OPCODE_ARITHMETIC_PREOP:
 
                         // don't need to switch on type here, large struct comes in as pointer, so we can just copy that ptr direcly
                         if (reg == X86_64_OPERAND_REGISTER_invalid) {
-                            X86_64_Operand_Register tmp_reg = x86_64_load_operand(cc, b, bir, arg_operand);
-                            b->active_register_top -= 1;
+                            X86_64_Operand_Register tmp_reg;
+
+                            if (type->kind == LL_TYPE_STRUCT && !is_small_struct(type)) {
+                                tmp_reg = x86_64_backend_active_registers[b->active_register_top];
+                                params.reg0 = tmp_reg;
+                                params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                                params.displacement = -x86_64_make_struct_copy(cc, b, bir, type, arg_operand);
+
+                                OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_LEA, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+                            } else {
+                                tmp_reg = x86_64_load_operand(cc, b, bir, arg_operand);
+                                b->active_register_top -= 1;
+                            }
 
                             int32_t offset = x86_64_call_convention_next_mem(b, &callconv);
-                            params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
                             params.displacement = offset;
+                            params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
                             params.reg1 = tmp_reg;
                             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, params);
                         } else {
                             params.reg0 = reg;
                             params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-                            params.displacement = -b->registers.items[OPD_VALUE(arg_operand)];
-                            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+                            if (type->kind == LL_TYPE_STRUCT && !is_small_struct(type)) {
+                                params.displacement = -x86_64_make_struct_copy(cc, b, bir, type, arg_operand);
+                                OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_LEA, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+                            } else {
+                                params.displacement = -b->registers.items[OPD_VALUE(arg_operand)];
+                                OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+                            }
                         }
                         break;
 
