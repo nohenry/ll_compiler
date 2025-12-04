@@ -47,6 +47,20 @@ void modify_struct(Foobar f) {
     f.b = 145;
 }
 
+Foobar return_struct() {
+    Foobar result;
+    result.a = 10;
+    result.b = 20;
+    return result;
+}
+
+SmallStruct return_small_struct() {
+    SmallStruct result;
+    result.c = 100;
+    result.d = 200;
+    return result;
+}
+
 void main() {
     Foobar foo;
     foo.a = 123;
@@ -82,4 +96,16 @@ void main() {
     foo.b = 90;
     modify_struct(foo);
     write_int(foo.b);
+
+    Foobar returned = return_struct();
+    write_int(returned.a);
+    write_int(returned.b);
+
+    SmallStruct returned_ss = return_small_struct();
+    write_int(returned_ss.c);
+    write_int(returned_ss.d);
+    returned.s = &returned_ss;
+
+    write_int(returned.s.c);
+    write_int(returned.s.d);
 }
