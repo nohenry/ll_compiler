@@ -1,6 +1,6 @@
 
 #define  NOB_IMPLEMENTATION
-#include "../nob.h"
+#include "nob.h"
 
 int main(int argc, char** argv) {
 	Nob_File_Paths children = {0};
