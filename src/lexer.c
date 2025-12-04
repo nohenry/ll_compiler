@@ -97,24 +97,47 @@ DO_IDENTIFIER:
         }
         case '0' ... '9': {
             uint64_t integral = 0;
+            double decimal = 0.0;
+            uint64_t decimal_divider = 10;
             uint64_t base = 10;
             uint64_t value;
             bool did_zero = false;
+            int64_t dot_index = -1;
+            out->kind = LL_TOKEN_KIND_INT;
 
             while (lexer->pos < lexer->source.len) switch (lexer->source.ptr[lexer->pos]) {
+                case '.':
+                    if (dot_index != -1) {
+                        lexer->pos = dot_index;
+                        goto DONE_NUMBER;
+                    }
+                    dot_index = lexer->pos;
+                    lexer->pos++;
+                    out->kind = LL_TOKEN_KIND_FLOAT;
+                    break;
                 case '0': did_zero = true; // fallthrough
                 case '1' ... '9': {
                     value = (uint64_t)(lexer->source.ptr[lexer->pos] - '0');
                     if (value >= base) goto DONE_NUMBER;
                     lexer->pos++;
 
-                    integral *= base;
-                    integral += value;
+                    if (dot_index != -1) {
+                        decimal += (double)value / (double)decimal_divider;
+                        decimal_divider *= 10;
+                    } else {
+                        integral *= base;
+                        integral += value;
+                    }
                     break;
                 }
                 case 'a':
                 case 'c' ... 'n': {
 NUMBER_LOWER_ALPHA:
+                    if (dot_index != -1) {
+                        lexer->pos = dot_index;
+                        out->kind = LL_TOKEN_KIND_INT;
+                        goto DONE_NUMBER;
+                    }
                     value = (uint64_t)(lexer->source.ptr[lexer->pos] - 'a' + 10);
                     if (value >= base) goto DONE_NUMBER;
                     lexer->pos++;
@@ -126,6 +149,11 @@ NUMBER_LOWER_ALPHA:
                 case 'A':
                 case 'C' ... 'N': {
 NUMBER_UPPER_ALPHA:
+                    if (dot_index != -1) {
+                        lexer->pos = dot_index;
+                        out->kind = LL_TOKEN_KIND_INT;
+                        goto DONE_NUMBER;
+                    }
                     value = (uint64_t)(lexer->source.ptr[lexer->pos] - 'A' + 10);
                     if (value >= base) goto DONE_NUMBER;
                     lexer->pos++;
@@ -165,8 +193,11 @@ NUMBER_UPPER_ALPHA:
                 default: goto DONE_NUMBER;
             }
 DONE_NUMBER:
-            out->kind = LL_TOKEN_KIND_INT;
-            out->u64 = integral;
+            if (out->kind == LL_TOKEN_KIND_INT) {
+                out->u64 = integral;
+            } else if (out->kind == LL_TOKEN_KIND_FLOAT) {
+                out->f64 = (double)integral + decimal;
+            } else oc_unreachable("");
             return true;
         }
         case '"': {

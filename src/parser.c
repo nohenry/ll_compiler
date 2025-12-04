@@ -564,6 +564,11 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
         CONSUME();
         break;
 
+    case LL_TOKEN_KIND_FLOAT:
+        result = CREATE_NODE(AST_KIND_LITERAL_FLOAT, ((Ast_Literal){ .f64 = token.f64 }));
+        CONSUME();
+        break;
+
     case LL_TOKEN_KIND_STRING:
         result = CREATE_NODE(AST_KIND_LITERAL_STRING, ((Ast_Literal){ .str = token.str }));
         CONSUME();
@@ -697,6 +702,7 @@ void print_storage_class(LL_Storage_Class storage_class, Oc_Writer* w) {
 const char* ast_get_node_kind(Ast_Base* node) {
     switch (node->kind) {
         case AST_KIND_LITERAL_INT: return "Int_Literal";
+        case AST_KIND_LITERAL_FLOAT: return "Float_Literal";
         case AST_KIND_LITERAL_STRING: return "String_Literal";
         case AST_KIND_IDENT: return "Identifier";
         case AST_KIND_BINARY_OP: return "Binary_Operator";
@@ -726,6 +732,7 @@ const char* ast_get_node_kind(Ast_Base* node) {
 void print_node_value(Ast_Base* node, Oc_Writer* w) {
     switch (node->kind) {
         case AST_KIND_LITERAL_INT:    wprint(w, "{}", AST_AS(node, Ast_Literal)->u64); break;
+        case AST_KIND_LITERAL_FLOAT:  wprint(w, "{}", AST_AS(node, Ast_Literal)->f64); break;
         case AST_KIND_LITERAL_STRING: wprint(w, "{}", AST_AS(node, Ast_Literal)->str); break;
         case AST_KIND_IDENT:          wprint(w, "{}", AST_AS(node, Ast_Ident)->str); break;
         case AST_KIND_BINARY_OP: lexer_print_token_raw_to_writer(&AST_AS(node, Ast_Operation)->op, w); break;

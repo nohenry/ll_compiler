@@ -784,6 +784,23 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             result = typer->ty_anyint;
         }
         break;
+    case AST_KIND_LITERAL_FLOAT:
+        (*expr)->has_const = 1u;
+        (*expr)->const_value.fval = (int64_t)AST_AS((*expr), Ast_Literal)->f64;
+
+        if (expected_type) {
+            switch (expected_type->kind) {
+            case LL_TYPE_FLOAT:
+                result = expected_type;
+                break;
+            default:
+                result = typer->ty_anyint;
+                break;
+            }
+        } else {
+            result = typer->ty_anyint;
+        }
+        break;
     case AST_KIND_LITERAL_STRING:
         result = typer->ty_string;
         break;
@@ -1482,7 +1499,7 @@ AST_BREAK_EXIT_SCOPE:
         result = NULL;
     } break;
     default:
-        eprint("\x1b[31;1mTODO:\x1b[0m type expression %d\n", (*expr)->kind);
+        eprint("\x1b[31;1mTODO:\x1b[0m type expression {}\n", (*expr)->kind);
         result = NULL;
         break;
     }
@@ -1542,6 +1559,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
     }
     case AST_KIND_INDEX: {
         LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Operation)->left);
+        ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Operation)->right, NULL, NULL);
         LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Operation)->right);
         result = ll_typer_get_array_type(cc, typer, element_type, value.uval);
         break;

@@ -726,7 +726,7 @@ typedef struct {
 
     union {
         struct { X86_64_Instruction_Variant r8_rm8, r32_rm32, rm32_r32, rm8_r8; };
-        struct { X86_64_Instruction_Variant r128_rm128, r256_rm256, rm128_r128, rm256_r256, r64_rm32, rm32_r64; };
+        struct { X86_64_Instruction_Variant r128_rm128, rm128_r128, r256_rm256, rm256_r256, r64_rm32, rm32_r64; };
     };
     union {
         struct { X86_64_Instruction_Variant r32_rm32_i8, r64_rm64_i8; };
@@ -836,9 +836,9 @@ typedef enum {
 } X86_64_Variant_Kind;
 
 #define X86_64_VARIANT_KIND_r128_rm128 X86_64_VARIANT_KIND_r8_rm8
-#define X86_64_VARIANT_KIND_rm128_r128 X86_64_VARIANT_KIND_rm8_r8
-#define X86_64_VARIANT_KIND_r256_rm256 X86_64_VARIANT_KIND_r32_rm32
-#define X86_64_VARIANT_KIND_rm256_r256 X86_64_VARIANT_KIND_rm32_r32
+#define X86_64_VARIANT_KIND_rm128_r128 X86_64_VARIANT_KIND_r32_rm32
+#define X86_64_VARIANT_KIND_r256_rm256 X86_64_VARIANT_KIND_rm32_r32
+#define X86_64_VARIANT_KIND_rm256_r256 X86_64_VARIANT_KIND_rm8_r8
 
 #define X86_64_VARIANT_KIND_r128_rm128_i8 X86_64_VARIANT_KIND_r32_rm32_i8
 #define X86_64_VARIANT_KIND_r256_rm256_i8 X86_64_VARIANT_KIND_r64_rm64_i8

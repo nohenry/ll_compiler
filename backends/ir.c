@@ -556,16 +556,36 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
         break;
     }
     case AST_KIND_LITERAL_INT:
-        if (AST_AS(expr, Ast_Literal)->u64 <= 0xFFFFFFF) {
-            return LL_IR_OPERAND_IMMEDIATE_BIT | AST_AS(expr, Ast_Literal)->u64;
-        } else {
+        if (expr->type->kind == LL_TYPE_FLOAT) {
             uint32_t literal_index = FUNCTION()->literals.count;
-            oc_assert(literal_index <= 0xFFFFFFF);
-            oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = AST_AS(expr, Ast_Literal)->u64 }));
-
+            if (expr->type->width <= 32) {
+                oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f32 = (float)AST_AS(expr, Ast_Literal)->u64 }));
+            } else if (expr->type->width <= 64) {
+                oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f64 = AST_AS(expr, Ast_Literal)->u64 }));
+            } else oc_todo("bigger types");
             return LL_IR_OPERAND_IMMEDIATE64_BIT | literal_index;
+        } else {
+            if (AST_AS(expr, Ast_Literal)->u64 <= 0xFFFFFFF) {
+                return LL_IR_OPERAND_IMMEDIATE_BIT | AST_AS(expr, Ast_Literal)->u64;
+            } else {
+                uint32_t literal_index = FUNCTION()->literals.count;
+                oc_assert(literal_index <= 0xFFFFFFF);
+                oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = AST_AS(expr, Ast_Literal)->u64 }));
+
+                return LL_IR_OPERAND_IMMEDIATE64_BIT | literal_index;
+            }
         }
         break;
+    case AST_KIND_LITERAL_FLOAT:
+        uint32_t literal_index = FUNCTION()->literals.count;
+        if (expr->type->width <= 32) {
+            oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f32 = (float)AST_AS(expr, Ast_Literal)->f64 }));
+        } else if (expr->type->width <= 64) {
+            oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f64 = AST_AS(expr, Ast_Literal)->f64 }));
+        } else {
+            oc_assert(false);
+        }
+        return LL_IR_OPERAND_IMMEDIATE64_BIT | literal_index;
     case AST_KIND_LITERAL_STRING: {
         Ast_Literal* lit = AST_AS(expr, Ast_Literal);
         oc_assert((b->data_items.count & 0xF0000000u) == 0); // oc_todo: maybe support more

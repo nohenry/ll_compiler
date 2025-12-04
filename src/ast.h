@@ -8,6 +8,7 @@
 
 typedef enum {
     AST_KIND_LITERAL_INT,
+    AST_KIND_LITERAL_FLOAT,
     AST_KIND_LITERAL_STRING,
     AST_KIND_IDENT,
 
@@ -104,6 +105,7 @@ typedef struct {
     Ast_Base base;
     union {
         uint64_t u64;
+        double f64;
         string str;
     };
 } Ast_Literal;

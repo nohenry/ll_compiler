@@ -111,6 +111,8 @@ typedef enum {
 
 typedef union {
     uint64_t as_u64;
+    uint32_t as_u32;
+    float as_f32;
     double as_f64;
 } LL_Ir_Literal;
 

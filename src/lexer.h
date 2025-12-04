@@ -9,6 +9,7 @@ typedef enum {
     LL_TOKEN_KIND_IDENT = 256,
     LL_TOKEN_KIND_BUILTIN,
     LL_TOKEN_KIND_INT,
+    LL_TOKEN_KIND_FLOAT,
     LL_TOKEN_KIND_STRING,
 
     /* assigns */
@@ -31,6 +32,7 @@ typedef struct {
     LL_Token_Kind kind;
     union {
         uint64_t u64;
+        double f64;
         string str;
     };
 } LL_Token;
