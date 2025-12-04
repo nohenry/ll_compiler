@@ -422,7 +422,7 @@ Ast_Base* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser
 
 Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_Base* left, int last_precedence, bool from_statement) {
     LL_Token token;
-    Ast_Base *right, *body, *update;
+    Ast_Base *right;
     if (left == NULL) {
         PEEK(&token);
         switch (token.kind) {
@@ -560,7 +560,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
 #pragma GCC diagnostic pop
     
     case LL_TOKEN_KIND_INT:
-        result = CREATE_NODE(AST_KIND_LITERAL_INT, ((Ast_Literal){ .i64 = token.i64 }));
+        result = CREATE_NODE(AST_KIND_LITERAL_INT, ((Ast_Literal){ .u64 = token.u64 }));
         CONSUME();
         break;
 
@@ -725,7 +725,7 @@ const char* ast_get_node_kind(Ast_Base* node) {
 
 void print_node_value(Ast_Base* node, Oc_Writer* w) {
     switch (node->kind) {
-        case AST_KIND_LITERAL_INT:    wprint(w, "{}", AST_AS(node, Ast_Literal)->i64); break;
+        case AST_KIND_LITERAL_INT:    wprint(w, "{}", AST_AS(node, Ast_Literal)->u64); break;
         case AST_KIND_LITERAL_STRING: wprint(w, "{}", AST_AS(node, Ast_Literal)->str); break;
         case AST_KIND_IDENT:          wprint(w, "{}", AST_AS(node, Ast_Ident)->str); break;
         case AST_KIND_BINARY_OP: lexer_print_token_raw_to_writer(&AST_AS(node, Ast_Operation)->op, w); break;

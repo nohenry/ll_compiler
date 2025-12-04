@@ -16,4 +16,7 @@ void main() {
 
     write_int(d / b);
     write_int(e / b);
+
+    uint64 large_int = 0x451287362387879F;
+    write_int(large_int);
 }

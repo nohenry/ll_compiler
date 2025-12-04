@@ -30,7 +30,7 @@ typedef enum {
 typedef struct {
     LL_Token_Kind kind;
     union {
-        int64_t i64;
+        uint64_t u64;
         string str;
     };
 } LL_Token;

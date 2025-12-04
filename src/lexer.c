@@ -96,15 +96,15 @@ DO_IDENTIFIER:
             oc_assert(false);
         }
         case '0' ... '9': {
-            int64_t integral = 0;
-            int64_t base = 10;
-            int64_t value;
+            uint64_t integral = 0;
+            uint64_t base = 10;
+            uint64_t value;
             bool did_zero = false;
 
             while (lexer->pos < lexer->source.len) switch (lexer->source.ptr[lexer->pos]) {
                 case '0': did_zero = true; // fallthrough
                 case '1' ... '9': {
-                    value = (int64_t)(lexer->source.ptr[lexer->pos] - '0');
+                    value = (uint64_t)(lexer->source.ptr[lexer->pos] - '0');
                     if (value >= base) goto DONE_NUMBER;
                     lexer->pos++;
 
@@ -115,7 +115,7 @@ DO_IDENTIFIER:
                 case 'a':
                 case 'c' ... 'n': {
 NUMBER_LOWER_ALPHA:
-                    value = (int64_t)(lexer->source.ptr[lexer->pos] - 'a' + 10);
+                    value = (uint64_t)(lexer->source.ptr[lexer->pos] - 'a' + 10);
                     if (value >= base) goto DONE_NUMBER;
                     lexer->pos++;
 
@@ -126,7 +126,7 @@ NUMBER_LOWER_ALPHA:
                 case 'A':
                 case 'C' ... 'N': {
 NUMBER_UPPER_ALPHA:
-                    value = (int64_t)(lexer->source.ptr[lexer->pos] - 'A' + 10);
+                    value = (uint64_t)(lexer->source.ptr[lexer->pos] - 'A' + 10);
                     if (value >= base) goto DONE_NUMBER;
                     lexer->pos++;
 
@@ -166,7 +166,7 @@ NUMBER_UPPER_ALPHA:
             }
 DONE_NUMBER:
             out->kind = LL_TOKEN_KIND_INT;
-            out->i64 = integral;
+            out->u64 = integral;
             return true;
         }
         case '"': {
@@ -337,7 +337,7 @@ void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w) {
         wprint(w, "{}", token->str);
         break;
     case LL_TOKEN_KIND_INT:
-        wprint(w, "{}", token->i64);
+        wprint(w, "{}", token->u64);
         break;
     case LL_TOKEN_KIND_STRING:
         wprint(w, "{}", token->str);

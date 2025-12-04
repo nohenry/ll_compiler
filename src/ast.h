@@ -103,7 +103,7 @@ typedef struct {
 typedef struct {
     Ast_Base base;
     union {
-        int64_t i64;
+        uint64_t u64;
         string str;
     };
 } Ast_Literal;

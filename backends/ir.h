@@ -6,12 +6,13 @@
 typedef uint32_t LL_Ir_Operand;
 #define LL_IR_OPERAND_VALUE_MASK 0xFFFFFFFu
 #define LL_IR_OPERAND_TYPE_MASK (~LL_IR_OPERAND_VALUE_MASK)
-#define LL_IR_OPERAND_IMMEDIATE_BIT 0x00000000u
-#define LL_IR_OPERAND_REGISTER_BIT  0x10000000u
-#define LL_IR_OPERAND_LOCAL_BIT     0x20000000u
-#define LL_IR_OPERAND_PARMAETER_BIT 0x30000000u
-#define LL_IR_OPERAND_FUNCTION_BIT  0x40000000u
-#define LL_IR_OPERAND_DATA_BIT      0x50000000u
+#define LL_IR_OPERAND_IMMEDIATE_BIT   0x00000000u
+#define LL_IR_OPERAND_REGISTER_BIT    0x10000000u
+#define LL_IR_OPERAND_LOCAL_BIT       0x20000000u
+#define LL_IR_OPERAND_PARMAETER_BIT   0x30000000u
+#define LL_IR_OPERAND_FUNCTION_BIT    0x40000000u
+#define LL_IR_OPERAND_DATA_BIT        0x50000000u
+#define LL_IR_OPERAND_IMMEDIATE64_BIT 0x60000000u
 
 #define OPD_VALUE(operand) ((operand) & LL_IR_OPERAND_VALUE_MASK)
 #define OPD_TYPE(operand) ((operand) & LL_IR_OPERAND_TYPE_MASK)
@@ -108,6 +109,16 @@ typedef enum {
 
 #define LL_IR_FUNCTION_OFFSET_INVALID ((int64_t)-1)
 
+typedef union {
+    uint64_t as_u64;
+    double as_f64;
+} LL_Ir_Literal;
+
+typedef struct {
+    uint32_t count, capacity;
+    LL_Ir_Literal* items;
+} LL_Ir_Literals_List;
+
 typedef struct {
     Ast_Ident* ident;
     LL_Ir_Block_Ref entry;
@@ -116,6 +127,8 @@ typedef struct {
     LL_Ir_Register_List registers;
     LL_Ir_Function_Flags flags;
     uint32_t block_count;
+
+    LL_Ir_Literals_List literals;
 
     int64_t generated_offset;
 } LL_Ir_Function;
@@ -169,6 +182,7 @@ typedef struct ll_backend_ir {
         (v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_PARMAETER_BIT ? "p" : \
         (v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_FUNCTION_BIT ? "f" : \
         (v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_DATA_BIT ? "d" : \
+        (v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_IMMEDIATE64_BIT ? "lit" : \
         "" \
         ), (v & LL_IR_OPERAND_VALUE_MASK)
 

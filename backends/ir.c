@@ -556,12 +556,15 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
         break;
     }
     case AST_KIND_LITERAL_INT:
-        if (AST_AS(expr, Ast_Literal)->i64 >= 0 && AST_AS(expr, Ast_Literal)->i64 <= 0xFFFFFFF) {
-            return AST_AS(expr, Ast_Literal)->i64;
+        if (AST_AS(expr, Ast_Literal)->u64 <= 0xFFFFFFF) {
+            return LL_IR_OPERAND_IMMEDIATE_BIT | AST_AS(expr, Ast_Literal)->u64;
         } else {
-            eprint("oc_todo: implement bigger ints\n");
+            uint32_t literal_index = FUNCTION()->literals.count;
+            oc_assert(literal_index <= 0xFFFFFFF);
+            oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = AST_AS(expr, Ast_Literal)->u64 }));
+
+            return LL_IR_OPERAND_IMMEDIATE64_BIT | literal_index;
         }
-        oc_assert(!lvalue);
         break;
     case AST_KIND_LITERAL_STRING: {
         Ast_Literal* lit = AST_AS(expr, Ast_Literal);

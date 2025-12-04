@@ -767,7 +767,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
     }
     case AST_KIND_LITERAL_INT:
         (*expr)->has_const = 1u;
-        (*expr)->const_value.ival = AST_AS((*expr), Ast_Literal)->i64;
+        (*expr)->const_value.ival = (int64_t)AST_AS((*expr), Ast_Literal)->u64;
 
         if (expected_type) {
             switch (expected_type->kind) {
