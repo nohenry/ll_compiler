@@ -52,15 +52,14 @@ LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename) {
 #define CONSUME() lexer_consume(cc, &(parser)->lexer)
 #define UNEXPECTED() unexpected_token(cc, parser, __FILE__, __LINE__)
 #define EXPECT(kind, out) expect_token(cc, parser, kind, out, __FILE__, __LINE__)
-#define CREATE_NODE(_kind, value) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), value); create_node(cc, parser, (Ast_Base*)&v, sizeof(v)); })
+#define CREATE_NODE(_kind, value) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), value); create_node(cc, (Ast_Base*)&v, sizeof(v)); })
 
 #define _CREATE_ASSIGN_KIND(_kind, type) _Generic((type), \
         Ast_Base : (void)0,                       \
         default : v.base.kind = _kind                    \
     )
 
-static Ast_Base* create_node(Compiler_Context* cc, LL_Parser* parser, Ast_Base* node, size_t size) {
-    (void)parser;
+static Ast_Base* create_node(Compiler_Context* cc, Ast_Base* node, size_t size) {
     return oc_arena_dup(&cc->arena, node, size);
 }
 
@@ -145,7 +144,7 @@ HANDLE_IDENT:
             if (result && (result->kind == AST_KIND_IF || result->kind == AST_KIND_FOR)) break;
 
             PEEK(&token);
-            if (token.kind == LL_TOKEN_KIND_IDENT)
+            if (token.kind == LL_TOKEN_KIND_IDENT) // this includes macro keyword
                 result = parser_parse_declaration(cc, parser, result, storage_class);
             else
                 EXPECT(';', &token);
@@ -242,6 +241,10 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
     }
 
     if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return NULL;
+    if (token.str.ptr == LL_KEYWORD_MACRO.ptr) {
+        storage_class |= LL_STORAGE_CLASS_MACRO;
+        EXPECT(LL_TOKEN_KIND_IDENT, &token);
+    }
     Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
 
     bool fn = false;
@@ -900,4 +903,201 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
 
         default: oc_unreachable("");
     }
+}
+
+Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone_Params params) {
+    uint32_t i;
+    Ast_Base* result;
+    if (!node) return NULL;
+
+    switch (node->kind) {
+    case AST_KIND_BINARY_OP:
+        result = CREATE_NODE(node->kind, ((Ast_Operation) {
+            .left = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->left, params),
+            .op = AST_AS(node, Ast_Operation)->op,
+            .right = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->right, params),
+        }));
+        break;
+    case AST_KIND_PRE_OP: 
+        result = CREATE_NODE(node->kind, ((Ast_Operation) {
+            .op = AST_AS(node, Ast_Operation)->op,
+            .right = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->right, params),
+        }));
+        break;
+
+    case AST_KIND_INVOKE: {
+        Ast_List newargs = { 0 };
+        for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Invoke)->arguments.items[i], params));
+        }
+        result = CREATE_NODE(node->kind, ((Ast_Invoke) {
+            .expr = AST_AS(node, Ast_Invoke)->expr,
+            .arguments = newargs,
+        }));
+        // for (i = 0; i < AST_AS(node, Ast_Invoke)->ordered_arguments.count; ++i) {
+        //     print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->ordered_arguments.items[i], indent + 1, w);
+        // }
+    } break;
+
+    case AST_KIND_INITIALIZER: 
+    case AST_KIND_ARRAY_INITIALIZER: {
+        Ast_List newargs = { 0 };
+        for (i = 0; i < AST_AS(node, Ast_Initializer)->count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Initializer)->items[i], params));
+        }
+        result = CREATE_NODE(node->kind, ((Ast_Initializer) {
+            .items = newargs.items,
+            .count = newargs.count,
+            .capacity = newargs.capacity,
+        }));
+        // for (i = 0; i < AST_AS(node, Ast_Initializer)->count; ++i) {
+        //     print_node((Ast_Base*)AST_AS(node, Ast_Initializer)->items[i], indent + 1, w);
+        // }
+    } break;
+
+    case AST_KIND_KEY_VALUE: 
+        result = CREATE_NODE(node->kind, ((Ast_Key_Value) {
+            .key = ast_clone_node_deep(cc, AST_AS(node, Ast_Key_Value)->key, params),
+            .value = ast_clone_node_deep(cc, AST_AS(node, Ast_Key_Value)->value, params),
+        }));
+        break;
+
+    case AST_KIND_CONST:
+        result = CREATE_NODE(node->kind, ((Ast_Marker) {
+            .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Marker)->expr, params),
+        }));
+        break;
+    case AST_KIND_VARIABLE_DECLARATION:
+        result = CREATE_NODE(node->kind, ((Ast_Variable_Declaration) {
+            .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Variable_Declaration)->type, params),
+            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, params),
+            .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Variable_Declaration)->initializer, params),
+            .storage_class = AST_AS(node, Ast_Variable_Declaration)->storage_class,
+        }));
+        break;
+
+    case AST_KIND_FUNCTION_DECLARATION: {
+        Ast_Parameter_List newargs = { 0 };
+        for (i = 0; i < AST_AS(node, Ast_Function_Declaration)->parameters.count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ((Ast_Parameter){
+                .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->parameters.items[i].type, params),
+                .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Function_Declaration)->parameters.items[i].ident, params),
+                .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->parameters.items[i].initializer, params),
+                .flags = AST_AS(node, Ast_Function_Declaration)->parameters.items[i].flags,
+            }));
+        }
+
+        result = CREATE_NODE(node->kind, ((Ast_Function_Declaration) {
+            .return_type = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->return_type, params),
+            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Function_Declaration)->ident, params),
+            .body = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->body, params),
+            .storage_class = AST_AS(node, Ast_Function_Declaration)->storage_class,
+            .parameters = newargs,
+        }));
+    } break;
+
+    case AST_KIND_PARAMETER:
+        result = CREATE_NODE(node->kind, ((Ast_Parameter){
+            .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Parameter)->type, params),
+            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Parameter)->ident, params),
+            .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Parameter)->initializer, params),
+            .flags = AST_AS(node, Ast_Parameter)->flags,
+        }));
+        break;
+    case AST_KIND_CONTINUE:
+    case AST_KIND_BREAK:
+    case AST_KIND_RETURN:
+        result = CREATE_NODE(node->kind, ((Ast_Control_Flow){
+            .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Control_Flow)->expr, params),
+        }));
+        break;
+    case AST_KIND_IF:
+        result = CREATE_NODE(node->kind, ((Ast_If){
+            .cond = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->cond, params),
+            .body = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->body, params),
+            .else_clause = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->else_clause, params),
+        }));
+        break;
+    case AST_KIND_FOR:
+        result = CREATE_NODE(node->kind, ((Ast_Loop){
+            .init = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->init, params),
+            .cond = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->cond, params),
+            .update = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->update, params),
+            .body = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->body, params),
+        }));
+        break;
+
+    case AST_KIND_INDEX:
+        result = CREATE_NODE(node->kind, ((Ast_Operation){
+            .left = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->left, params),
+            .op = AST_AS(node, Ast_Operation)->op,
+            .right = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->right, params),
+        }));
+        break;
+
+    case AST_KIND_CAST:
+        result = CREATE_NODE(node->kind, ((Ast_Cast){
+            .cast_type = ast_clone_node_deep(cc, AST_AS(node, Ast_Cast)->cast_type, params),
+            .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Cast)->expr, params),
+        }));
+        break;
+
+    case AST_KIND_STRUCT: {
+        Ast_List newargs = { 0 };
+        for (i = 0; i < AST_AS(node, Ast_Struct)->body.count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Struct)->body.items[i], params));
+        }
+        result = CREATE_NODE(node->kind, ((Ast_Struct){
+            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Struct)->ident, params),
+            .body = newargs,
+        }));
+    } break;
+
+    case AST_KIND_TYPE_POINTER:
+        result = CREATE_NODE(node->kind, ((Ast_Type_Pointer){
+            .element = ast_clone_node_deep(cc, AST_AS(node, Ast_Type_Pointer)->element, params),
+        }));
+        break;
+
+    case AST_KIND_BLOCK: {
+        Ast_Block_Flags flags = AST_AS(node, Ast_Block)->flags;
+        if (params.expand_first_block) {
+            params.expand_first_block = false;
+            flags |= AST_BLOCK_FLAG_MACRO_EXPANSION;
+        }
+        Ast_List newargs = { 0 };
+        for (i = 0; i < AST_AS(node, Ast_Block)->count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Block)->items[i], params));
+        }
+        result = CREATE_NODE(AST_KIND_BLOCK, ((Ast_Block){
+            .flags = flags,
+            .items = newargs.items,
+            .count = newargs.count,
+            .capacity = newargs.capacity,
+        }));
+    } break;
+
+    case AST_KIND_LITERAL_INT: {
+        result = CREATE_NODE(node->kind, ((Ast_Literal){
+            .u64 = AST_AS(node, Ast_Literal)->u64,
+        }));
+    } break;
+    case AST_KIND_LITERAL_FLOAT: {
+        result = CREATE_NODE(node->kind, ((Ast_Literal){
+            .f64 = AST_AS(node, Ast_Literal)->f64,
+        }));
+    } break;
+    case AST_KIND_LITERAL_STRING: {
+        result = CREATE_NODE(node->kind, ((Ast_Literal){
+            .str = AST_AS(node, Ast_Literal)->str,
+        }));
+    } break;
+    case AST_KIND_IDENT: {
+        result = CREATE_NODE(node->kind, ((Ast_Ident){
+            .str = AST_AS(node, Ast_Ident)->str,
+        }));
+    } break;
+    // default: oc_unreachable(""); break;
+    }
+    return result;
 }

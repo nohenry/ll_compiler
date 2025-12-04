@@ -336,17 +336,27 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
     switch ((*stmt)->kind) {
     case AST_KIND_BLOCK: {
+        Ast_Block* blk = AST_AS((*stmt), Ast_Block);
         LL_Scope* block_scope = NULL;
-        if (typer->current_scope->kind != LL_SCOPE_KIND_LOOP && typer->current_scope->kind != LL_SCOPE_KIND_PACKAGE) {
-            block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *stmt);
-            ll_typer_scope_put(cc, typer, block_scope);
+
+        if (
+            typer->current_scope->kind != LL_SCOPE_KIND_LOOP
+            && typer->current_scope->kind != LL_SCOPE_KIND_PACKAGE
+        ) {
+            if (blk->flags & AST_BLOCK_FLAG_MACRO_EXPANSION) {
+                block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *stmt);
+            } else {
+                block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *stmt);
+            }
+
+            ll_typer_scope_put(cc, typer, block_scope, false);
             typer->current_scope = block_scope;
         }
 
-        AST_AS((*stmt), Ast_Block)->scope = block_scope;
+        blk->scope = block_scope;
 
-        for (i = 0; i < AST_AS((*stmt), Ast_Block)->count; ++i) {
-            ll_typer_type_statement(cc, typer, &AST_AS((*stmt), Ast_Block)->items[i]);
+        for (i = 0; i < blk->count; ++i) {
+            ll_typer_type_statement(cc, typer, &blk->items[i]);
         }
 
         if (block_scope) {
@@ -365,7 +375,17 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 			var_scope = create_scope(LL_SCOPE_KIND_LOCAL, var_decl);
 		}
         var_scope->ident = var_decl->ident;
-        ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope);
+        if (var_decl->ident->str.ptr[0] == '$') {
+            string name = var_decl->ident->str;
+            name.ptr++;
+            name.len--;
+            name = ll_intern_string(cc, name);
+            var_decl->ident->str = name;
+
+            ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope, true);
+        } else {
+            ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope, false);
+        }
 
         if (var_decl->initializer) {
 
@@ -404,7 +424,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         fn_scope->ident = fn_decl->ident;
         fn_decl->ident->resolved_scope = fn_scope;
 
-        ll_typer_scope_put(cc, typer, fn_scope);
+        ll_typer_scope_put(cc, typer, fn_scope, false);
         bool did_variadic = false;
         bool did_default = false;
 
@@ -447,7 +467,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                 LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, &fn_decl->parameters.items[i]);
                 param_scope->ident = fn_decl->parameters.items[i].ident;
 
-                ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope);
+                ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope, false);
             }
         } else types = NULL;
 
@@ -470,8 +490,11 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
             if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
                 eprint("\x1b[31;1merror\x1b[0;1m: Extern function shouldn't have a body\x1b[0m\n");
             }
-            ll_typer_type_statement(cc, typer, &fn_decl->body);
+            if ((fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) == 0) {
+                ll_typer_type_statement(cc, typer, &fn_decl->body);
+            }
         }
+
         typer->current_scope = fn_scope->parent;
         typer->current_fn = last_fn;
 
@@ -482,7 +505,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
         LL_Scope* struct_scope = create_scope(LL_SCOPE_KIND_STRUCT, *stmt);
         struct_scope->ident = strct->ident;
-        ll_typer_scope_put(cc, typer, struct_scope);
+        ll_typer_scope_put(cc, typer, struct_scope, false);
 
         LL_Type_Named named_type = { 0 };
         named_type.base.kind = LL_TYPE_NAMED;
@@ -718,16 +741,21 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
     case AST_KIND_BLOCK: {
         LL_Type* last_block_type = typer->block_type;
         typer->block_type = expected_type;
+        Ast_Block* blk = AST_AS((*expr), Ast_Block);
 
-        LL_Scope* block_scope = NULL;
+        LL_Scope* block_scope = NULL; 
         if (typer->current_scope->kind != LL_SCOPE_KIND_LOOP) {
-            // merge block scope into loop
-            block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *expr);
-            ll_typer_scope_put(cc, typer, block_scope);
+            if (blk->flags & AST_BLOCK_FLAG_MACRO_EXPANSION) {
+                block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *expr);
+            } else {
+                block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *expr);
+            }
+
+            ll_typer_scope_put(cc, typer, block_scope, false);
             typer->current_scope = block_scope;
         }
 
-        AST_AS((*expr), Ast_Block)->scope = block_scope;
+        blk->scope = block_scope;
 
         for (i = 0; i < AST_AS((*expr), Ast_Block)->count; ++i) {
             ll_typer_type_statement(cc, typer, &AST_AS((*expr), Ast_Block)->items[i]);
@@ -748,6 +776,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS((*expr), Ast_Ident)->str);
         if (!scope) {
             eprint("\x1b[31;1merror\x1b[0;1m: symbol '{}' not found!\n", AST_AS((*expr), Ast_Ident)->str);
+            return NULL;
         }
         AST_AS((*expr), Ast_Ident)->resolved_scope = scope;
         if (resolve_result) {
@@ -1209,13 +1238,17 @@ TRY_MEMBER_FUNCTION_CALL:
         }
 
         // if we're directly calling a function:
-        if (inv->expr->kind == AST_KIND_IDENT) {
-            Ast_Ident* ident = AST_AS(inv->expr, Ast_Ident);
-            if (ident->resolved_scope->kind == LL_SCOPE_KIND_FUNCTION) {
-                fn_decl = (Ast_Function_Declaration*)ident->resolved_scope->decl;
-                fn_scope = ident->resolved_scope;
-            }
+        if (resolve.scope && resolve.scope->kind == LL_SCOPE_KIND_FUNCTION) {
+            fn_decl = (Ast_Function_Declaration*)resolve.scope->decl;
+            fn_scope = resolve.scope;
         }
+        // if (!fn_decl && inv->expr->kind == AST_KIND_IDENT) {
+        //     Ast_Ident* ident = AST_AS(inv->expr, Ast_Ident);
+        //     if (ident->resolved_scope->kind == LL_SCOPE_KIND_FUNCTION) {
+        //         fn_decl = (Ast_Function_Declaration*)ident->resolved_scope->decl;
+        //         fn_scope = ident->resolved_scope;
+        //     }
+        // }
 
         Ast_Base** ordered_args = oc_arena_alloc(&cc->arena, sizeof(ordered_args[0]) * (fn_type->parameter_count + inv->arguments.count));
         int ordered_arg_count = 0;
@@ -1342,6 +1375,14 @@ TRY_MEMBER_FUNCTION_CALL:
         inv->ordered_arguments.count = ordered_arg_count;
         inv->ordered_arguments.items = ordered_args;
 
+        if (fn_decl && (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO)) {
+            if (fn_decl->body) {
+                Ast_Base* new_body = ast_clone_node_deep(cc, fn_decl->body, (LL_Ast_Clone_Params) { .expand_first_block = true });
+                (void)ll_typer_type_expression(cc, typer, &new_body, expected_type, resolve_result);
+                *expr = new_body;
+            }
+        }
+
         result = fn_type->return_type;
     } break;
     case AST_KIND_INDEX: {
@@ -1392,6 +1433,7 @@ TRY_MEMBER_FUNCTION_CALL:
             case LL_SCOPE_KIND_BLOCK:
             case LL_SCOPE_KIND_PARAMETER:
             case LL_SCOPE_KIND_LOOP:
+            case LL_SCOPE_KIND_MACRO_EXPANSION:
                 break;
             }
             current_scope = current_scope->parent;
@@ -1430,6 +1472,8 @@ AST_RETURN_EXIT_SCOPE:
             case LL_SCOPE_KIND_LOCAL:
                 break;
             case LL_SCOPE_KIND_PARAMETER:
+                break;
+            case LL_SCOPE_KIND_MACRO_EXPANSION:
                 break;
             }
             current_scope = current_scope->parent;
@@ -1470,7 +1514,7 @@ AST_BREAK_EXIT_SCOPE:
         Ast_Loop* loop = AST_AS((*expr), Ast_Loop);
 
         LL_Scope* loop_scope = create_scope(LL_SCOPE_KIND_LOOP, *expr);
-        ll_typer_scope_put(cc, typer, loop_scope);
+        ll_typer_scope_put(cc, typer, loop_scope, false);
         typer->current_scope = loop_scope;
         if (loop->init) ll_typer_type_statement(cc, typer, &loop->init);
 
@@ -1636,28 +1680,32 @@ void ll_print_type(LL_Type* type) {
     print("\n");
 }
 
-void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope) {
+void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist) {
     size_t hash;
     int kind;
+    LL_Scope* parent;
+    if (hoist) parent = typer->current_scope->parent;
+    else parent = typer->current_scope;
+
     if (scope->ident) {
         kind = 0;
         hash = stbds_siphash_bytes(&kind, sizeof(kind), MAP_DEFAULT_SEED);
         hash = hash_combine(hash, stbds_hash_string(scope->ident->str, MAP_DEFAULT_SEED));
     } else {
         kind = 1;
-        size_t anon = typer->current_scope->next_anon++;
+        size_t anon = parent->next_anon++;
         hash = stbds_siphash_bytes(&kind, sizeof(kind), MAP_DEFAULT_SEED);
         hash = hash_combine(hash, stbds_siphash_bytes(&anon, sizeof(anon), MAP_DEFAULT_SEED));
     }
-    hash = hash % oc_len(typer->current_scope->children);
-    LL_Scope_Map_Entry* current = typer->current_scope->children[hash];
+    hash = hash % oc_len(parent->children);
+    LL_Scope_Map_Entry* current = parent->children[hash];
 
     LL_Scope_Map_Entry* new_entry = oc_arena_alloc(&cc->arena, sizeof(*new_entry));
     new_entry->scope = scope;
     new_entry->next = current;
 
-    typer->current_scope->children[hash] = new_entry;
-    scope->parent = typer->current_scope;
+    parent->children[hash] = new_entry;
+    scope->parent = parent;
 }
 
 LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name) {
@@ -1681,14 +1729,29 @@ LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, s
     LL_Scope* found_scope;
     LL_Scope* current = typer->current_scope;
 
+    bool expansion = false;
+    bool out_of_macro_expansion = false;
+    if (symbol_name.ptr[0] == '$') {
+        expansion = true;
+        symbol_name.ptr++;
+        symbol_name.len--;
+    }
+
     while (current) {
         switch (current->kind) {
+        case LL_SCOPE_KIND_MACRO_EXPANSION:
+            found_scope = ll_scope_get(current, symbol_name);
+            out_of_macro_expansion = true;
+            break;
         case LL_SCOPE_KIND_PACKAGE:
+            found_scope = ll_scope_get(current, symbol_name);
+            break;
         case LL_SCOPE_KIND_FUNCTION:
         case LL_SCOPE_KIND_BLOCK:
         case LL_SCOPE_KIND_BLOCK_VALUE:
         case LL_SCOPE_KIND_LOOP:
-            found_scope = ll_scope_get(current, symbol_name);
+            if (!out_of_macro_expansion || expansion)
+                found_scope = ll_scope_get(current, symbol_name);
             break;
         default: found_scope = NULL; break;
         }
@@ -1715,6 +1778,7 @@ void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w) {
     case LL_SCOPE_KIND_PARAMETER:   wprint(w, "Parmeter"); break;
     case LL_SCOPE_KIND_BLOCK:       wprint(w, "Block"); break;
     case LL_SCOPE_KIND_BLOCK_VALUE: wprint(w, "Block_Value"); break;
+    case LL_SCOPE_KIND_MACRO_EXPANSION: wprint(w, "Macro_Expansion"); break;
     case LL_SCOPE_KIND_LOOP:        wprint(w, "Loop"); break;
     case LL_SCOPE_KIND_STRUCT:      wprint(w, "Struct"); break;
     }

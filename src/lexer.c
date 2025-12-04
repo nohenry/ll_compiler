@@ -74,7 +74,8 @@ DONE_PHANTOM:
             goto DO_IDENTIFIER;
         case 'A' ... 'Z':
         case 'a' ... 'z':
-        case '_': {
+        case '_': 
+        case '$': {
             out->kind = LL_TOKEN_KIND_IDENT;
 DO_IDENTIFIER:
             out->str.ptr = lexer->source.ptr + lexer->pos;
@@ -85,6 +86,7 @@ DO_IDENTIFIER:
                 case 'a' ... 'z':
                 case '0' ... '9':
                 case '_':
+                case '$':
                     lexer->pos++;
                     out->str.len++;
                     break;

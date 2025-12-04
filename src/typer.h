@@ -18,6 +18,7 @@ typedef enum {
     LL_SCOPE_KIND_LOOP,
     LL_SCOPE_KIND_BLOCK,
     LL_SCOPE_KIND_BLOCK_VALUE,
+    LL_SCOPE_KIND_MACRO_EXPANSION,
     LL_SCOPE_KIND_STRUCT,
     LL_SCOPE_KIND_PACKAGE,
 } LL_Scope_Kind;
@@ -166,7 +167,7 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
 bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Eval_Value* src_value, LL_Type* dst_type);
 bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr, LL_Type* dst_type);
 
-void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope);
+void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist);
 LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
 LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, string symbol_name);
 

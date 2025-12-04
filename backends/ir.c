@@ -380,6 +380,8 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
     }
     case AST_KIND_FUNCTION_DECLARATION: {
         Ast_Function_Declaration* fn_decl = AST_AS(stmt, Ast_Function_Declaration);
+        // we do not generate macros
+        if (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) return;
 
         LL_Ir_Block_Ref entry_block_ref = b->blocks.count;
         LL_Ir_Block entry_block = { 0 };

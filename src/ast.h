@@ -41,6 +41,7 @@ typedef enum {
     LL_STORAGE_CLASS_EXTERN = (1 << 0),
     LL_STORAGE_CLASS_STATIC = (1 << 1),
     LL_STORAGE_CLASS_NATIVE = (1 << 2),
+    LL_STORAGE_CLASS_MACRO  = (1 << 3),
 } LL_Storage_Class;
 
 typedef enum {
@@ -87,7 +88,8 @@ typedef struct {
 } Ast_Parameter_List;
 
 typedef enum {
-    AST_BLOCK_FLAG_EXPR = (1u << 0u),
+    AST_BLOCK_FLAG_EXPR            = (1u << 0u),
+    AST_BLOCK_FLAG_MACRO_EXPANSION = (1u << 1u),
 } Ast_Block_Flags;
 
 typedef struct {
@@ -204,4 +206,10 @@ typedef struct {
 
 #define AST_AS(value, Type) ((Type*)(value))
 
+
+typedef struct {
+    bool expand_first_block;
+} LL_Ast_Clone_Params;
+
 const char* ast_get_node_kind(Ast_Base* node);
+Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone_Params params);
