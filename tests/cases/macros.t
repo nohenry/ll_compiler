@@ -7,7 +7,7 @@ void macro foobar() {
 }
 
 void macro create_hoisted_var() {
-    int b = 45; // this variable is created in caller's scope
+    int $b = 45; // this variable is created in caller's scope
 }
 
 void macro member(int a) {

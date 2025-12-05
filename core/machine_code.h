@@ -360,6 +360,8 @@ enum {
     OPCODE_XOR,
 
 
+    OPCODE_LDMXCSR,
+    OPCODE_STMXCSR,
 
     OPCODE_ADDPS,
     OPCODE_ADDPD,
@@ -1741,6 +1743,12 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x15u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
 
+    [OPCODE_LDMXCSR] = {
+        .rm32		= { .opcode = BUILD_OPCODE(none, none, 2B, 0xAEu), .operands = MAKE_OPERANDS(mod_m(2)), },
+    },
+    [OPCODE_STMXCSR] = {
+        .rm32		= { .opcode = BUILD_OPCODE(none, none, 2B, 0xAEu), .operands = MAKE_OPERANDS(mod_m(3)), },
+    },
 
     X86_64_OPCODE_MAKE_VECTOR_ARITHMETIC(ADD, 0x58u),
     X86_64_OPCODE_MAKE_VECTOR_ARITHMETIC(MUL, 0x59u),

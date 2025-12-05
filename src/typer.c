@@ -606,6 +606,15 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         default: break;
         }
         break;
+    case LL_TYPE_FLOAT: {
+        switch (dst_type->kind) {
+        case LL_TYPE_INT:
+        case LL_TYPE_UINT:
+        case LL_TYPE_FLOAT:
+            return true;
+        default: break;
+        };
+    }
 
     default: break;
     }
@@ -948,6 +957,62 @@ TRY_MEMBER_FUNCTION_CALL:
                 return NULL;
             }
         }
+        case LL_TOKEN_KIND_ASSIGN_PERCENT:
+        case LL_TOKEN_KIND_ASSIGN_DIVIDE:
+        case LL_TOKEN_KIND_ASSIGN_TIMES:
+        case LL_TOKEN_KIND_ASSIGN_MINUS:
+        case LL_TOKEN_KIND_ASSIGN_PLUS: {
+            LL_Type* lhs_type = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
+            LL_Type* rhs_type = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
+
+            if (lhs_type->kind == LL_TYPE_ANYINT && rhs_type->kind == LL_TYPE_ANYINT && expected_type) {
+                lhs_type = ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
+                rhs_type = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
+            } else if (lhs_type->kind == LL_TYPE_ANYINT || lhs_type->kind == LL_TYPE_ANYFLOAT) {
+                lhs_type = ll_typer_type_expression(cc, typer, &opr->left, rhs_type, NULL);
+            } else if (rhs_type->kind == LL_TYPE_ANYINT || rhs_type->kind == LL_TYPE_ANYFLOAT) {
+                rhs_type = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
+            }
+
+            result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
+                eprint("error: Unable to assign expression with type '", opr->op.kind);
+                ll_print_type_raw(rhs_type, &stderr_writer);
+                eprint("' to type '");
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint("'. Please explicitly cast with cast(");
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint(")\n");
+                break;
+            }
+
+            // @oc_todo: look at casting lhs
+            ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
+            (*expr)->type = result;
+            return result;
+        } break;
+        case '=': {
+            LL_Type* lhs_type = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
+            LL_Type* rhs_type = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
+
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, lhs_type)) {
+                eprint("error: Unable to assign expression with type '", opr->op.kind);
+                ll_print_type_raw(rhs_type, &stderr_writer);
+                eprint("' to type '");
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint("'. Please explicitly cast with cast(");
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint(")\n");
+                break;
+            }
+
+            // @oc_todo: look at casting lhs
+            ll_typer_add_implicit_cast(cc, typer, &opr->right, lhs_type);
+            result = lhs_type;
+            (*expr)->type = result;
+            return result;
+        } break;
         default: break;
 #pragma GCC diagnostic pop
         }
@@ -1010,28 +1075,6 @@ TRY_MEMBER_FUNCTION_CALL:
             }
 
             ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
-            ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
-            break;
-        case LL_TOKEN_KIND_ASSIGN_PERCENT:
-        case LL_TOKEN_KIND_ASSIGN_DIVIDE:
-        case LL_TOKEN_KIND_ASSIGN_TIMES:
-        case LL_TOKEN_KIND_ASSIGN_MINUS:
-        case LL_TOKEN_KIND_ASSIGN_PLUS:
-        case '=':
-            result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
-
-            if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                eprint("error: Unable to assign expression with type '", opr->op.kind);
-                ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("' to type '");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint("'. Please explicitly cast with cast(");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(")\n");
-                break;
-            }
-
-            // @oc_todo: look at casting lhs
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
             break;
 
@@ -1166,6 +1209,17 @@ TRY_MEMBER_FUNCTION_CALL:
         case '-': {
             expr_type = ll_typer_type_expression(cc, typer, &AST_AS((*expr), Ast_Operation)->right, expected_type, NULL);
 
+            switch (expr_type->kind) {
+            case LL_TYPE_FLOAT:
+            case LL_TYPE_INT:
+                break;
+            default:
+                eprint("error: Negation only works for signed ints and floats. Got type '");
+                ll_print_type_raw(expr_type, &stderr_writer);
+                eprint("'\n");
+                break;
+            }
+
             if (expected_type) {
                 result = expected_type;
             } else {
@@ -1217,7 +1271,7 @@ TRY_MEMBER_FUNCTION_CALL:
         if (!ll_typer_can_cast(cc, typer, src_type, specified_type)) {
             eprint("\x1b[31;1mTODO:\x1b[0m unable to cast expression of type '");
             ll_print_type_raw(src_type, &stderr_writer);
-            eprint("' to type '\n");
+            eprint("' to type '");
             ll_print_type_raw(specified_type, &stderr_writer);
             eprint("'\n");
         }

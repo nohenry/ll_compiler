@@ -629,13 +629,43 @@ static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, L
     return b->stack_used;
 }
 
-static void x86_64_get_cast_info(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* dst_type, LL_Type* src_type, uint32_t* opcode, X86_64_Variant_Kind* kind, bool mem_right) {
+typedef struct {
+    uint32_t opcode, kind;
+    uint32_t cast_opcode, cast_kind;
+    bool needs_cast, explicit_cast_instruction;
+} Move_Info;
+
+static Move_Info x86_64_get_move_info(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* dst_type, LL_Type* src_type, bool mem_right) {
+    Move_Info result = { 0 };
     X86_64_Get_Variant_Params get_variant = { .mem_right = mem_right };
 
     dst_type = get_base_type(dst_type);
     src_type = get_base_type(src_type);
 
+    if (mem_right) {
+        result.kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+    } else {
+        result.kind = x86_64_get_variant_raw(cc, b, bir, dst_type, get_variant);
+    }
+    switch (src_type->kind) {
+    case LL_TYPE_FLOAT:
+        if      (src_type->width <= 32) result.opcode = OPCODE_MOVSS;
+        else if (src_type->width <= 64) result.opcode = OPCODE_MOVSD;
+        else oc_unreachable("invalid type");
+        break;
+    case LL_TYPE_UINT:
+    case LL_TYPE_INT:
+    case LL_TYPE_BOOL:
+    case LL_TYPE_POINTER:
+    case LL_TYPE_STRING:
+    case LL_TYPE_STRUCT:
+        result.opcode = OPCODE_MOV;
+        break;
+    default: oc_todo("add get move type"); break;
+    }
+
     if (dst_type != src_type) {
+        result.needs_cast = true;
         switch (src_type->kind) {
         case LL_TYPE_UINT:
             switch (dst_type->kind) {
@@ -645,30 +675,58 @@ static void x86_64_get_cast_info(Compiler_Context* cc, X86_64_Backend* b, LL_Bac
                 // fallthrough
             case LL_TYPE_UINT:
                 if (src_type->width < dst_type->width || dst_type->kind == LL_TYPE_INT) {
-                    *opcode = OPCODE_MOVZX;
+                    result.opcode = OPCODE_MOVZX;
                     if (src_type->width <= 8) {
                         if (dst_type->width <= 16) {
-                            *kind = X86_64_VARIANT_KIND_r16_rm8;
+                            result.kind = X86_64_VARIANT_KIND_r16_rm8;
                             break;
                         } else if (dst_type->width <= 32) {
-                            *kind = X86_64_VARIANT_KIND_r32_rm8;
+                            result.kind = X86_64_VARIANT_KIND_r32_rm8;
                             break;
                         } else if (dst_type->width <= 64) {
-                            *kind = X86_64_VARIANT_KIND_r64_rm8;
+                            result.kind = X86_64_VARIANT_KIND_r64_rm8;
                             break;
                         }
                     } else if (src_type->width <= 16) {
                         if (dst_type->width <= 32) {
-                            *kind = X86_64_VARIANT_KIND_r32_rm16;
+                            result.kind = X86_64_VARIANT_KIND_r32_rm16;
                             break;
                         } else if (dst_type->width <= 64) {
-                            *kind = X86_64_VARIANT_KIND_r64_rm16;
+                            result.kind = X86_64_VARIANT_KIND_r64_rm16;
                             break;
                         }
                     }
                 }
-                *opcode = OPCODE_MOV;
-                *kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                result.opcode = OPCODE_MOV;
+                result.kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                break;
+            case LL_TYPE_FLOAT:
+                if (dst_type->width <= 32) {
+                    result.opcode = OPCODE_CVTSI2SS;
+                } else if (dst_type->width <= 64) {
+                    result.opcode = OPCODE_CVTSI2SD;
+                } else oc_todo("add widths");
+
+                // for 8 bit and 16 bit, need to sign extend to 32 bits since cvtsi2s only accepts 32 bit and 64 bit
+                if (src_type->width <= 8) {
+                    result.explicit_cast_instruction = true;
+
+                    result.cast_opcode = result.opcode;
+                    result.cast_kind = X86_64_VARIANT_KIND_r128_rm32;
+                    result.opcode = OPCODE_MOVZX;
+                    result.kind = X86_64_VARIANT_KIND_r32_rm8;
+                } else if (src_type->width <= 16) {
+                    result.explicit_cast_instruction = true;
+
+                    result.cast_opcode = result.opcode;
+                    result.cast_kind = X86_64_VARIANT_KIND_r128_rm32;
+                    result.opcode = OPCODE_MOVZX;
+                    result.kind = X86_64_VARIANT_KIND_r32_rm16;
+                } else if (src_type->width <= 32) {
+                    result.kind = X86_64_VARIANT_KIND_r128_rm32;
+                } else if (src_type->width <= 64) {
+                    result.kind = X86_64_VARIANT_KIND_r128_rm64;
+                } else oc_todo("flksdjf");
                 break;
             default: oc_todo(""); break;
             }
@@ -680,36 +738,64 @@ static void x86_64_get_cast_info(Compiler_Context* cc, X86_64_Backend* b, LL_Bac
             case LL_TYPE_INT:
                 if (src_type->width < dst_type->width) {
                     if (src_type->width <= 8) {
-                        *opcode = OPCODE_MOVSX;
+                        result.opcode = OPCODE_MOVSX;
                         if (dst_type->width <= 16) {
-                            *kind = X86_64_VARIANT_KIND_r16_rm8;
+                            result.kind = X86_64_VARIANT_KIND_r16_rm8;
                             break;
                         } else if (dst_type->width <= 32) {
-                            *kind = X86_64_VARIANT_KIND_r32_rm8;
+                            result.kind = X86_64_VARIANT_KIND_r32_rm8;
                             break;
                         } else if (dst_type->width <= 64) {
-                            *kind = X86_64_VARIANT_KIND_r64_rm8;
+                            result.kind = X86_64_VARIANT_KIND_r64_rm8;
                             break;
                         }
                     } else if (src_type->width <= 16) {
-                        *opcode = OPCODE_MOVSX;
+                        result.opcode = OPCODE_MOVSX;
                         if (dst_type->width <= 32) {
-                            *kind = X86_64_VARIANT_KIND_r32_rm16;
+                            result.kind = X86_64_VARIANT_KIND_r32_rm16;
                             break;
                         } else if (dst_type->width <= 64) {
-                            *kind = X86_64_VARIANT_KIND_r64_rm16;
+                            result.kind = X86_64_VARIANT_KIND_r64_rm16;
                             break;
                         }
                     } else if (src_type->width <= 32) {
-                        *opcode = OPCODE_MOVSXD;
+                        result.opcode = OPCODE_MOVSXD;
                         if (dst_type->width <= 64) {
-                            *kind = X86_64_VARIANT_KIND_r64_rm32;
+                            result.kind = X86_64_VARIANT_KIND_r64_rm32;
                             break;
                         }
                     }
                 }
-                *opcode = OPCODE_MOV;
-                *kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                result.opcode = OPCODE_MOV;
+                result.kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                break;
+            case LL_TYPE_FLOAT:
+                if (dst_type->width <= 32) {
+                    result.opcode = OPCODE_CVTSI2SS;
+                } else if (dst_type->width <= 64) {
+                    result.opcode = OPCODE_CVTSI2SD;
+                } else oc_todo("add widths");
+
+                // for 8 bit and 16 bit, need to sign extend to 32 bits since cvtsi2s only accepts 32 bit and 64 bit
+                if (src_type->width <= 8) {
+                    result.explicit_cast_instruction = true;
+
+                    result.cast_opcode = result.opcode;
+                    result.cast_kind = X86_64_VARIANT_KIND_r128_rm32;
+                    result.opcode = OPCODE_MOVSX;
+                    result.kind = X86_64_VARIANT_KIND_r32_rm8;
+                } else if (src_type->width <= 16) {
+                    result.explicit_cast_instruction = true;
+
+                    result.cast_opcode = result.opcode;
+                    result.cast_kind = X86_64_VARIANT_KIND_r128_rm32;
+                    result.opcode = OPCODE_MOVSX;
+                    result.kind = X86_64_VARIANT_KIND_r32_rm16;
+                } else if (src_type->width <= 32) {
+                    result.kind = X86_64_VARIANT_KIND_r128_rm32;
+                } else if (src_type->width <= 64) {
+                    result.kind = X86_64_VARIANT_KIND_r128_rm64;
+                } else oc_todo("flksdjf");
                 break;
             default: oc_todo(""); break;
             }
@@ -718,12 +804,42 @@ static void x86_64_get_cast_info(Compiler_Context* cc, X86_64_Backend* b, LL_Bac
         case LL_TYPE_POINTER:
             switch (dst_type->kind) {
             case LL_TYPE_POINTER:
-                *opcode = OPCODE_MOV;
-                *kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                result.opcode = OPCODE_MOV;
+                result.kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                break;
+            default: ll_print_type(dst_type); oc_todo(""); break;
+            }
+            break;
+        case LL_TYPE_FLOAT:
+            switch (dst_type->kind) {
+            case LL_TYPE_INT:
+                if (src_type->width == 32 && dst_type->width <= 32) {
+                    result.opcode = OPCODE_CVTSS2SI;
+                    result.kind = X86_64_VARIANT_KIND_r32_rm128;
+                } else if (src_type->width == 32 && dst_type->width <= 64) {
+                    result.opcode = OPCODE_CVTSS2SI;
+                    result.kind = X86_64_VARIANT_KIND_r64_rm128;
+                } else if (src_type->width == 64 && dst_type->width <= 32) {
+                    result.opcode = OPCODE_CVTSD2SI;
+                    result.kind = X86_64_VARIANT_KIND_r32_rm128;
+                } else if (src_type->width == 64 && dst_type->width <= 64) {
+                    result.opcode = OPCODE_CVTSD2SI;
+                    result.kind = X86_64_VARIANT_KIND_r64_rm128;
+                } else oc_unreachable("unsupported");
+                break;
+            case LL_TYPE_FLOAT:
+                if (src_type->width == 32 && dst_type->width == 64) {
+                    result.opcode = OPCODE_CVTSS2SD;
+                    result.kind = X86_64_VARIANT_KIND_r128_rm128;
+                } else if (src_type->width == 64 && dst_type->width == 32) {
+                    result.opcode = OPCODE_CVTSD2SS;
+                    result.kind = X86_64_VARIANT_KIND_r128_rm128;
+                } else oc_unreachable("unsupported");
                 break;
             default: oc_todo(""); break;
             }
             break;
+
         default:
             ll_print_type(src_type);
             ll_print_type(dst_type);
@@ -731,14 +847,15 @@ static void x86_64_get_cast_info(Compiler_Context* cc, X86_64_Backend* b, LL_Bac
             break;
         }
     }
+
+    return result;
 }
 
 static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand dst, LL_Ir_Operand src, bool cast) {
     X86_64_Instruction_Parameters params = { 0 };
     X86_64_Operand_Register reg = x86_64_backend_active_registers[b->active_register_top];
+    Move_Info move_info;
 
-    uint32_t opcode = OPCODE_MOV;
-    X86_64_Variant_Kind kind;
     LL_Type* src_type;
     LL_Type* dst_type = ir_get_operand_type(b->fn, dst);
 
@@ -769,12 +886,6 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
             b->registers.items[OPD_VALUE(dst)] = b->registers.items[OPD_VALUE(src)];
         } break;
         case LL_TYPE_FLOAT:
-            if (element_type->width <= 32)
-                opcode = OPCODE_MOVSS;
-            else if (element_type->width <= 64)
-                opcode = OPCODE_MOVSD;
-            else oc_todo("implement other sizes");
-            // fallthrough
         case LL_TYPE_POINTER:
         case LL_TYPE_STRING:
         case LL_TYPE_ANYBOOL:
@@ -784,18 +895,19 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
         case LL_TYPE_INT: {
     HANDLE_LOAD_PTR_INTEGRAL_TYPE:
 
-            if (element_type == dst_type) {
-                kind = x86_64_get_variant(element_type, .mem_right = true);
-            } else {
-                x86_64_get_cast_info(cc, b, bir, dst_type, element_type, &opcode, &kind, true);
-            }
+            move_info = x86_64_get_move_info(cc, b, bir, dst_type, element_type, true);
 
             X86_64_Operand_Register loaded_addr = x86_64_load_operand(cc, b, bir, src);
             b->active_register_top -= 1;
 
             params.reg0 = reg;
             params.reg1 = loaded_addr | X86_64_REG_BASE;
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, kind, params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
+            if (move_info.explicit_cast_instruction) {
+                params.reg0 = reg;
+                params.reg1 = reg;
+                OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
+            }
 
             uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
             b->registers.items[OPD_VALUE(dst)] = offset;
@@ -807,18 +919,7 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
         return;
     }
 
-    x86_64_get_cast_info(cc, b, bir, dst_type, src_type, &opcode, &kind, true);
-
-    switch (dst_type->kind) {
-    case LL_TYPE_FLOAT:
-        if (dst_type->width <= 32)
-            opcode = OPCODE_MOVSS;
-        else if (dst_type->width <= 64)
-            opcode = OPCODE_MOVSD;
-        else oc_todo("implement other sizes");
-        break;
-    default: break;
-    }
+    move_info = x86_64_get_move_info(cc, b, bir, dst_type, src_type, true);
 
     switch (OPD_TYPE(src)) {
         case LL_IR_OPERAND_REGISTER_BIT:
@@ -829,7 +930,12 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
                 params.reg0 = reg;
                 params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
                 params.displacement = -b->registers.items[OPD_VALUE(src)];
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, kind, params);
+                OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
+                if (move_info.explicit_cast_instruction) {
+                    params.reg0 = reg;
+                    params.reg1 = reg;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
+                }
 
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
                 b->registers.items[OPD_VALUE(dst)] = offset;
@@ -853,12 +959,6 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
                 b->registers.items[OPD_VALUE(dst)] = offset;
             } break;
             case LL_TYPE_FLOAT:
-                if (dst_type->width <= 32)
-                    opcode = OPCODE_MOVSS;
-                else if (dst_type->width <= 64)
-                    opcode = OPCODE_MOVSD;
-                else oc_todo("implement other sizes");
-                // fallthrough
             case LL_TYPE_POINTER:
             case LL_TYPE_STRING:
             case LL_TYPE_ANYBOOL:
@@ -873,7 +973,12 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
                     params.reg0 = reg;
                     params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
                     params.displacement = -b->locals.items[OPD_VALUE(src)];
-                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, kind, params);
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
+                    if (move_info.explicit_cast_instruction) {
+                        params.reg0 = reg;
+                        params.reg1 = reg;
+                        OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
+                    }
 
                     uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
                     b->registers.items[OPD_VALUE(dst)] = offset;
@@ -889,7 +994,12 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
                 params.reg0 = reg;
                 params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
                 params.displacement = -b->parameters.items[OPD_VALUE(src)];
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, kind, params);
+                OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
+                if (move_info.explicit_cast_instruction) {
+                    params.reg0 = reg;
+                    params.reg1 = reg;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
+                }
 
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
                 b->registers.items[OPD_VALUE(dst)] = offset;
@@ -898,7 +1008,7 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
         case LL_IR_OPERAND_IMMEDIATE_BIT: {
             X86_64_Operand_Register reg = x86_64_backend_active_registers[b->active_register_top];
             params.immediate = OPD_VALUE(src);
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant(dst_type, .immediate = true), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, x86_64_get_variant(dst_type, .immediate = true), params);
 
             uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
             b->registers.items[OPD_VALUE(dst)] = offset;
@@ -907,7 +1017,7 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
             X86_64_Operand_Register reg = x86_64_backend_active_registers[b->active_register_top];
             uint32_t lit_index = OPD_VALUE(src);
             params.immediate = (int64_t)b->fn->literals.items[lit_index].as_u64;
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant(dst_type, .large_immediate = true), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, x86_64_get_variant(dst_type, .large_immediate = true), params);
 
             uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
             b->registers.items[OPD_VALUE(dst)] = offset;
@@ -919,10 +1029,8 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
 static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand dst, LL_Ir_Operand src) {
     X86_64_Instruction_Parameters params = { 0 };
     X86_64_Instruction_Parameters src_params = { 0 };
-    // X86_64_Operand_Register reg = x86_64_backend_active_registers[b->active_register_top];
+    Move_Info move_info;
 
-    uint32_t opcode = OPCODE_MOV;
-    X86_64_Variant_Kind kind;
     LL_Type* src_type;
     LL_Type* dst_type = ir_get_operand_type(b->fn, dst);
 
@@ -952,14 +1060,7 @@ static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backe
         }
 
     } break; // LL_TYPE_STRUCT
-    case LL_TYPE_FLOAT: {
-        if (dst_type->width <= 32)
-            opcode = OPCODE_MOVSS;
-        else if (dst_type->width <= 64)
-            opcode = OPCODE_MOVSD;
-        else oc_todo("implement other sizes");
-        goto HANDLE_INTEGRAL_TYPE;
-    } break;
+    case LL_TYPE_FLOAT:
     case LL_TYPE_POINTER:
     case LL_TYPE_STRING:
     case LL_TYPE_ANYBOOL:
@@ -970,7 +1071,6 @@ static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backe
 HANDLE_INTEGRAL_TYPE:
         switch (OPD_TYPE(dst)) {
         case LL_IR_OPERAND_LOCAL_BIT: {
-            x86_64_get_cast_info(cc, b, bir, dst_type, src_type, &opcode, &kind, false);
             params.reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
             params.displacement = -b->locals.items[OPD_VALUE(dst)];
 
@@ -982,7 +1082,7 @@ HANDLE_INTEGRAL_TYPE:
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm32_i32, params);
                 } else {
                     params.immediate = OPD_VALUE(src);
-                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant(dst_type, .immediate = true), params);
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant(dst_type, .immediate = true), params);
                 }
                 break;
             case LL_IR_OPERAND_IMMEDIATE64_BIT: {
@@ -1007,17 +1107,16 @@ HANDLE_INTEGRAL_TYPE:
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, params);
                 }
             } break;
-            case LL_IR_OPERAND_REGISTER_BIT:
+            case LL_IR_OPERAND_REGISTER_BIT: {
+                move_info = x86_64_get_move_info(cc, b, bir, dst_type, src_type, false);
+                oc_assert(dst_type == src_type && "handle explicit cast from move info");
+
                 X86_64_Operand_Register reg = x86_64_load_operand(cc, b, bir, src);
                 b->active_register_top -= 1;
 
                 params.reg1 = reg;
-                if (src_type != dst_type) {
-                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, kind, params);
-                } else {
-                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, dst_type, (X86_64_Get_Variant_Params) { 0 }), params);
-                }
-                break;
+                OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
+            } break;
             default: oc_todo("handle other operands"); break;
             }
 
@@ -1026,13 +1125,24 @@ HANDLE_INTEGRAL_TYPE:
             assert(dst_type->kind == LL_TYPE_POINTER);
             dst_type = ((LL_Type_Pointer*)dst_type)->element_type;
 
+            switch (OPD_TYPE(src)) {
+            case LL_IR_OPERAND_IMMEDIATE_BIT:
+            case LL_IR_OPERAND_IMMEDIATE64_BIT:
+                src_type = dst_type;
+                break;
+            default: break;
+            }
+
+            move_info = x86_64_get_move_info(cc, b, bir, dst_type, src_type, false);
+            oc_assert(dst_type == src_type && "handle explicit cast from move info");
+
             X86_64_Operand_Register dst_reg = x86_64_load_operand(cc, b, bir, dst);
             X86_64_Operand_Register src_reg = x86_64_load_operand_with_type(cc, b, bir, src, dst_type);
             b->active_register_top -= 2;
 
             params.reg0 = dst_reg | X86_64_REG_BASE;
             params.reg1 = src_reg;
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, dst_type, (X86_64_Get_Variant_Params) { 0 }), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
 
             break;
         default: oc_todo("handle other operands"); break;
@@ -1415,7 +1525,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, params.reg0);
                 b->registers.items[OPD_VALUE(operands[0])] = offset;
             } break;
-            default: oc_todo("handle other type"); break;
+            default: ll_print_type(type); oc_todo("handle other type"); break;
             }
         } break;
 
@@ -1715,6 +1825,17 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         size_t stack_size_offset = b->section_text.count - 4;
         fn->generated_offset = (int64_t)function_offset;
 
+        int64_t mxcsr_offset = -1;
+        if (string_eql(b->fn->ident->str, lit("main"))) {
+            b->stack_used += 4;
+            mxcsr_offset = b->stack_used;
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_STMXCSR, rm32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE, .displacement = -(int64_t)b->stack_used }));
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_OR, rm32_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE, .displacement = -(int64_t)b->stack_used, .immediate = 0x6000 }));
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LDMXCSR, rm32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE, .displacement = -(int64_t)b->stack_used }));
+            b->stack_used += 4;
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_STMXCSR, rm32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE, .displacement = -(int64_t)b->stack_used }));
+        }
+
         // move registers to stack, if already on stack just use that offset
         X86_64_Call_Convention callconv = x86_64_call_convention_systemv(b);
         LL_Type_Function* fn_type = (LL_Type_Function*)fn->ident->base.type;
@@ -1765,6 +1886,10 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
             }
         }
         if (!cc->quiet) print("\n\n");
+
+        if (mxcsr_offset != -1) {
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LDMXCSR, rm32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE, .displacement = -mxcsr_offset }));
+        }
 
         // generate epilogue
         // oc_assert(oc_align_forward(b->stack_used_for_args, 16) == b->stack_used_for_args);
@@ -1824,12 +1949,12 @@ void x86_64_run(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
 }
 
 bool x86_64_write_to_file(Compiler_Context* cc, X86_64_Backend* b, char* filepath) {
-	if (!cc->quiet) {
-		print("text: \n");
-		oc_hex_dump(b->section_text.items, b->section_text.count, 1, -1);
-		print("data: \n");
-		oc_hex_dump(b->section_data.items, b->section_data.count, 1, -1);
-	}
+    if (!cc->quiet) {
+        print("text: \n");
+        oc_hex_dump(b->section_text.items, b->section_text.count, 1, -1);
+        print("data: \n");
+        oc_hex_dump(b->section_data.items, b->section_data.count, 1, -1);
+    }
 
 
     FILE* fptr;
