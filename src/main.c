@@ -38,8 +38,8 @@ int main(int argc, char** argv) {
 
     Compiler_Context cc = ll_compiler_context_create();
 	cc.quiet = quiet;
-    LL_Parser parser = parser_create_from_file(&cc, filename);
 
+    LL_Parser parser = parser_create_from_file(&cc, filename);
     Ast_Base* root = parser_parse_file(&cc, &parser);
     LL_Typer typer = ll_typer_create(&cc);
     LL_Eval_Context eval_context = {};
@@ -52,6 +52,7 @@ int main(int argc, char** argv) {
     cc.eval_context = &eval_context;
     cc.bir = backend_ir.backend;
     cc.target = &backend_elf;
+    cc.lexer = &parser.lexer;
 
     ll_typer_run(&cc, &typer, root);
     if (!cc.quiet) print_node(root, 0, &stdout_writer);

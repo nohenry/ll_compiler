@@ -131,6 +131,7 @@ X86_64_Operand_Register x86_64_call_convention_next_reg(X86_64_Backend* b, X86_6
 }
 
 uint32_t x86_64_call_convention_next_mem(X86_64_Backend* b, X86_64_Call_Convention* cc, LL_Type* type) {
+    (void)type;
     uint32_t stack_offset = cc->stack_offset;
     cc->stack_offset += 8;
     if (cc->stack_offset > b->stack_used_for_args) {
@@ -1028,7 +1029,6 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
 
 static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand dst, LL_Ir_Operand src) {
     X86_64_Instruction_Parameters params = { 0 };
-    X86_64_Instruction_Parameters src_params = { 0 };
     Move_Info move_info;
 
     LL_Type* src_type;

@@ -55,6 +55,7 @@ typedef struct {
     struct ll_type* type;
     LL_Eval_Value const_value;
     uint8_t has_const;
+    LL_Token_Info token_info;
 } Ast_Base;
 
 #define AST_IDENT_SYMBOL_INVALID ((int32_t)-1)
@@ -101,6 +102,7 @@ typedef struct {
     uint32_t count;
     uint32_t capacity;
     Ast_Base** items;
+    LL_Token_Info c_open, c_close;
 } Ast_Block;
 
 typedef struct {
@@ -125,6 +127,7 @@ typedef struct {
     Ast_List arguments;
 	Ast_List ordered_arguments;
     bool has_this_arg;
+    LL_Token_Info p_close;
 } Ast_Invoke;
 
 typedef struct {
@@ -139,6 +142,7 @@ typedef struct {
     uint32_t count;
     uint32_t capacity;
     Ast_Base** items;
+    LL_Token_Info c_close;
 } Ast_Initializer;
 
 typedef struct {
@@ -165,6 +169,7 @@ typedef struct {
     Ast_Base* cond;
     Ast_Base* body;
     Ast_Base* else_clause;
+    LL_Token_Info else_kw;
 } Ast_If;
 
 typedef struct {
@@ -185,18 +190,21 @@ typedef struct {
     Ast_Base* body optional;
     LL_Storage_Class storage_class;
     uint32_t ir_index;
+    LL_Token_Info p_open, p_close;
 } Ast_Function_Declaration;
 
 typedef struct {
     Ast_Base base;
     Ast_Ident* ident;
     Ast_List body;
+    LL_Token_Info c_open, c_close;
 } Ast_Struct;
 
 typedef struct {
     Ast_Base base;
     Ast_Base* cast_type;
     Ast_Base* expr;
+    LL_Token_Info p_open, p_close;
 } Ast_Cast;
 
 typedef struct {

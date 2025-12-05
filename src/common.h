@@ -29,6 +29,7 @@ typedef struct {
     struct ll_eval_context* eval_context;
     struct ll_backend_ir* bir;
     struct ll_backend* target;
+    struct ll_lexer* lexer;
 	bool quiet;
 } Compiler_Context;
 

@@ -460,7 +460,7 @@ void ir_calculate_struct_offsets(LL_Type* type) {
     struct_type->has_offsets = true;
 }
 
-static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, uint32_t* offset, bool lvalue) {
+static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, uint32_t* offset) {
     LL_Ir_Operand result;
     static uint32_t _current_offset;
 
@@ -489,7 +489,7 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         if (offset == NULL) {
             offset = &_current_offset;
         }
-        result = ir_generate_member_access(cc, b, opr->left, offset, false);
+        result = ir_generate_member_access(cc, b, opr->left, offset);
 
         Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
         LL_Scope* field_scope = right_ident->resolved_scope;
@@ -640,7 +640,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
             case AST_KIND_VARIABLE_DECLARATION: {
                 static uint32_t offset_value = 0;
                 offset_value = 0;
-                result = ir_generate_member_access(cc, b, expr, &offset_value, lvalue);
+                result = ir_generate_member_access(cc, b, expr, &offset_value);
 
                 LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
                 result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);

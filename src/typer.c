@@ -76,6 +76,134 @@ LL_Typer ll_typer_create(Compiler_Context* cc) {
     return result;
 }
 
+typedef struct {
+    LL_Type *expected, *actual;
+    LL_Token_Info main_token;
+    LL_Token_Info highlight_start, highlight_end;
+} LL_Error;
+
+#define ll_typer_report_error(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_info(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_info_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+
+void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_Info line_info, LL_Token_Info start_info, LL_Token_Info end_info, bool print_dot_dot_dot, bool print_underline) {
+    (void)typer;
+    Oc_String_Builder sb;
+    oc_sb_init(&sb, &cc->arena);
+    wprint(&sb.writer, " {} | ", line_info.line);
+    size_t line_offset = sb.count;
+    eprint("{}", oc_sb_to_string(&sb));
+
+    if (start_info.kind || end_info.kind) {
+        string start     = string_slice(cc->lexer->source, line_info.start_pos  , start_info.position);
+        string highlight = string_slice(cc->lexer->source, start_info.position  , end_info.position);
+        string end       = string_slice(cc->lexer->source, end_info.position, line_info.end_pos);
+
+        eprint("\x1b[32m{}\x1b[31m{}\x1b[32m{}\x1b[0m\n", start, highlight, end);
+    }
+
+    if (print_underline && start_info.kind && end_info.kind) {
+        for (size_t i = 0; i < line_offset - 2; ++i) {
+            stderr_writer.write(&stderr_writer, " ", 1);
+        }
+        eprint("| ");
+        if (print_dot_dot_dot && start_info.position > line_info.start_pos + 3) {
+            eprint("...");
+            for (size_t i = 0; i < start_info.position - line_info.start_pos - 3; ++i) {
+                stderr_writer.write(&stderr_writer, " ", 1);
+            }
+        } else {
+            for (size_t i = 0; i < start_info.position - line_info.start_pos; ++i) {
+                stderr_writer.write(&stderr_writer, " ", 1);
+            }
+        }
+        stderr_writer.write(&stderr_writer, "\x1b[31m", sizeof( "\x1b[31m") - 1);
+        for (size_t i = start_info.position; i < end_info.position; ++i) {
+            stderr_writer.write(&stderr_writer, "^", 1);
+        }
+    }
+    eprint("\n\x1b[0m");
+}
+
+void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...) {
+    LL_Line_Info line_info, end_line_info;
+    if (error.highlight_start.kind || error.highlight_end.kind) {
+        oc_assert(error.highlight_start.kind);
+        oc_assert(error.highlight_end.kind);
+        line_info = lexer_get_line_info(cc->lexer, error.highlight_start);
+        end_line_info = lexer_get_line_info(cc->lexer, error.highlight_end);
+    } else if (error.main_token.kind) {
+        line_info = lexer_get_line_info(cc->lexer, error.main_token);
+        end_line_info = line_info;
+    }
+
+    if (error.main_token.kind) {
+        eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
+    } else {
+        eprint("{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename);
+    }
+
+    va_list list;
+    va_start(list, fmt);
+    _oc_vprintw(&stderr_writer, fmt, list);
+    va_end(list);
+    eprint("\x1b[0m\n");
+
+    if (error.highlight_start.kind || error.highlight_end.kind) {
+        if (line_info.line == end_line_info.line) {
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, true);
+        } else {
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, line_info.end_pos }, true, true);
+            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, true);
+        }
+    } else if (error.main_token.kind) {
+        int64_t token_length = lexer_get_token_length(cc, cc->lexer, error.main_token);
+        ll_typer_print_error_line(cc, typer, line_info, error.main_token, (LL_Token_Info){ 1, error.main_token.position + token_length}, false, true);
+    }
+}
+
+void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...) {
+    LL_Line_Info line_info, end_line_info;
+    if (error.highlight_start.kind || error.highlight_end.kind) {
+        oc_assert(error.highlight_start.kind);
+        oc_assert(error.highlight_end.kind);
+        line_info = lexer_get_line_info(cc->lexer, error.highlight_start);
+        end_line_info = lexer_get_line_info(cc->lexer, error.highlight_end);
+    } else if (error.main_token.kind) {
+        line_info = lexer_get_line_info(cc->lexer, error.main_token);
+        end_line_info = line_info;
+    }
+
+    // if (error.main_token.kind) {
+    //     eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
+    // } else {
+    //     eprint("{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename);
+    // }
+    eprint("\x1b[1m");
+
+    va_list list;
+    va_start(list, fmt);
+    _oc_vprintw(&stderr_writer, fmt, list);
+    va_end(list);
+    eprint("\x1b[0m\n");
+
+    if (error.highlight_start.kind || error.highlight_end.kind) {
+        if (line_info.line == end_line_info.line) {
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, false);
+        } else {
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, line_info.end_pos }, true, false);
+            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, false);
+        }
+    } else if (error.main_token.kind) {
+        eprint(" {} | {}\n", line_info.line, line_info.line);
+    }
+}
+
+void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer) {
+    (void)cc;
+    (void)typer;
+    oc_exit(-1);
+}
+
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Ast_Base* node) {
     ll_typer_type_statement(cc, typer, &node);
 }
@@ -396,11 +524,15 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, var_decl->initializer, declared_type)) {
                 oc_assert(init_type != NULL);
                 oc_assert(declared_type != NULL);
-                eprint("\x1b[31;1merror\x1b[0;1m: variable initializer does not match declared type of variable! Expected ");
+                ll_typer_report_error(((LL_Error){ .main_token = var_decl->base.token_info }), "Can't assign value to variable");
+
+                eprint("\x1b[1m    variable is declared with type ");
                 ll_print_type_raw(declared_type, &stderr_writer);
-                eprint(" but got ");
+                eprint(", but tried to initialize it with type ");
                 ll_print_type_raw(init_type, &stderr_writer);
                 eprint("\x1b[0m\n");
+
+                ll_typer_report_error_done(cc, typer);
             }
         }
 
@@ -432,40 +564,49 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         if (fn_decl->parameters.count) {
             types = alloca(sizeof(*types) * fn_decl->parameters.count);
             for (i = 0; i < fn_decl->parameters.count; ++i) {
+                Ast_Parameter* parameter = &fn_decl->parameters.items[i];
+
                 if (did_variadic) {
-                    eprint("\x1b[31;1merror\x1b[0;1m: No parameters can be after variadic parameter\n");
+                    ll_typer_report_error(((LL_Error){ .highlight_start = parameter->type->token_info, .highlight_end = parameter->ident->base.token_info }), "No parameters can be after variadic parameter");
+                    ll_typer_report_error_done(cc, typer);
                     break;
                 }
-                if (fn_decl->parameters.items[i].flags & LL_PARAMETER_FLAG_VARIADIC) {
-                    if (fn_decl->parameters.items[i].type) {
-                        eprint("\x1b[31;1merror\x1b[0;1m: Typed variadic parameter not supported yet\n");
+                if (parameter->flags & LL_PARAMETER_FLAG_VARIADIC) {
+                    if (parameter->type) {
+                        ll_typer_report_error(((LL_Error){ .main_token = parameter->base.token_info }), "Typed variadic parameter not supported yet");
+                        ll_typer_report_error_done(cc, typer);
                     }
                     did_variadic = true;
                 } else {
-                    types[i] = ll_typer_get_type_from_typename(cc, typer, fn_decl->parameters.items[i].type);
+                    types[i] = ll_typer_get_type_from_typename(cc, typer, parameter->type);
                 }
 
-                if (fn_decl->parameters.items[i].initializer) {
-                    LL_Type* init_type = ll_typer_type_expression(cc, typer, &fn_decl->parameters.items[i].initializer, types[i], NULL);
+                if (parameter->initializer) {
+                    LL_Type* init_type = ll_typer_type_expression(cc, typer, &parameter->initializer, types[i], NULL);
 
                     if (!ll_typer_implicit_cast_tofrom(cc, typer, init_type, types[i])) {
-                        eprint("\x1b[31;1merror\x1b[0;1m: provided default parameter type does not match declared type of parameter! Expected ");
+                        ll_typer_report_error(((LL_Error){ .main_token = parameter->base.token_info }), "Provided default parameter type does not match declared type of parameter");
+
+                        eprint("\x1b[1m    parameter is declared with type ");
                         ll_print_type_raw(types[i], &stderr_writer);
-                        eprint(" but got ");
+                        eprint(", but tried to assign default value with type ");
                         ll_print_type_raw(init_type, &stderr_writer);
-                        eprint("\n");
+                        eprint("\x1b[0m\n");
+
+                        ll_typer_report_error_done(cc, typer);
                     }
 
                     did_default = true;
                 } else if (did_default) {
-                    eprint("\x1b[31;1merror\x1b[0;1m: default arguments can only come after positional arguments\n");
+                    ll_typer_report_error(((LL_Error){ .highlight_start = parameter->type->token_info, .highlight_end = parameter->ident->base.token_info }), "Positional arguments can only be before default arguments");
+                    ll_typer_report_error_done(cc, typer);
                 }
 
-                fn_decl->parameters.items[i].ident->base.type = types[i];
-                fn_decl->parameters.items[i].ir_index = i;
+                parameter->ident->base.type = types[i];
+                parameter->ir_index = i;
                     
-                LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, &fn_decl->parameters.items[i]);
-                param_scope->ident = fn_decl->parameters.items[i].ident;
+                LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, parameter);
+                param_scope->ident = parameter->ident;
 
                 ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope, false);
             }
@@ -488,7 +629,9 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
         if (fn_decl->body) {
             if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
-                eprint("\x1b[31;1merror\x1b[0;1m: Extern function shouldn't have a body\x1b[0m\n");
+                Ast_Block* blk = AST_AS(fn_decl->body, Ast_Block);
+                ll_typer_report_error(((LL_Error) { .main_token = blk->c_open, .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Extern function shouldn't have a body");
+                ll_typer_report_error_done(cc, typer);
             }
             if ((fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) == 0) {
                 ll_typer_type_statement(cc, typer, &fn_decl->body);
@@ -784,7 +927,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         }
         LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS((*expr), Ast_Ident)->str);
         if (!scope) {
-            eprint("\x1b[31;1merror\x1b[0;1m: symbol '{}' not found!\n", AST_AS((*expr), Ast_Ident)->str);
+            ll_typer_report_error(((LL_Error){ .main_token = AST_AS((*expr), Ast_Ident)->base.token_info }), "Symbol '{}' not found", AST_AS((*expr), Ast_Ident)->str);
+            ll_typer_report_error_done(cc, typer);
             return NULL;
         }
         AST_AS((*expr), Ast_Ident)->resolved_scope = scope;
@@ -800,7 +944,6 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         } else {
             result = scope->ident->base.type;
         }
-        // result = scope->ident->base.type;
         break;
     }
     case AST_KIND_LITERAL_INT:
@@ -832,11 +975,11 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 result = expected_type;
                 break;
             default:
-                result = typer->ty_anyint;
+                result = typer->ty_anyfloat;
                 break;
             }
         } else {
-            result = typer->ty_anyint;
+            result = typer->ty_anyfloat;
         }
         break;
     case AST_KIND_LITERAL_STRING:
@@ -894,7 +1037,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             ll_typer_type_expression(cc, typer, &opr->left, NULL, &result);
 
             if (opr->right->kind != AST_KIND_IDENT) {
-                eprint("\x1b[31;1merror\x1b[0;1m: member should be ident\x1b[0m\n");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Member should be identifier");
+                ll_typer_report_error_done(cc, typer);
             }
             Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
 
@@ -953,7 +1097,8 @@ TRY_MEMBER_FUNCTION_CALL:
                     }
                 }
 
-                eprint("\x1b[31;1merror\x1b[0;1m: member or function {} not found\x1b[0m\n", right_ident->str);
+                ll_typer_report_error(((LL_Error){ .main_token = right_ident->base.token_info }), "Member or function '{}' not found", right_ident->str);
+                ll_typer_report_error_done(cc, typer);
                 return NULL;
             }
         }
@@ -977,13 +1122,17 @@ TRY_MEMBER_FUNCTION_CALL:
             result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                eprint("error: Unable to assign expression with type '", opr->op.kind);
-                ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("' to type '");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't assign value to left hand side");
+
+                eprint("\x1b[1m    left hand side has the type ");
+                ll_print_type_raw(result, &stderr_writer);
+                eprint(", but tried to assign value with type ");
+                ll_print_type_raw(opr->right->type, &stderr_writer);
+                eprint(" to it. You can explicitly cast the value with `cast(");
                 ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint("'. Please explicitly cast with cast(");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(")\n");
+                eprint(")\x1b[0m\n");
+
+                ll_typer_report_error_done(cc, typer);
                 break;
             }
 
@@ -997,13 +1146,17 @@ TRY_MEMBER_FUNCTION_CALL:
             LL_Type* rhs_type = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, lhs_type)) {
-                eprint("error: Unable to assign expression with type '", opr->op.kind);
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't assign value to left hand side");
+
+                eprint("\x1b[1m    left hand side has the type ");
+                ll_print_type_raw(lhs_type, &stderr_writer);
+                eprint(", but tried to assign value with type ");
                 ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("' to type '");
+                eprint(" to it. You can explicitly cast the value with `cast(");
                 ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint("'. Please explicitly cast with cast(");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(")\n");
+                eprint(")\x1b[0m\n");
+
+                ll_typer_report_error_done(cc, typer);
                 break;
             }
 
@@ -1041,35 +1194,49 @@ TRY_MEMBER_FUNCTION_CALL:
                 result = expected_type;
 
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
-                    eprint("error: Invalid operation '{}' of expressions with type '", opr->op.kind);
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
+
+                    eprint("\x1b[1m    left hand side has the type ");
                     ll_print_type_raw(lhs_type, &stderr_writer);
-                    eprint("' and type '");
+                    eprint(", and right hand side has the type ");
                     ll_print_type_raw(rhs_type, &stderr_writer);
-                    eprint("', expecting type '");
+                    eprint("\n");
+
+                    eprint("    expecting type ");
                     ll_print_type_raw(result, &stderr_writer);
-                    eprint("'\n");
+                    eprint("\x1b[0m\n");
+                    ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                    eprint("error: Invalid operation '{}' of expressions with type '", opr->op.kind);
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
+
+                    eprint("\x1b[1m    left hand side has the type ");
                     ll_print_type_raw(lhs_type, &stderr_writer);
-                    eprint("' and type '");
+                    eprint(", and right hand side has the type ");
                     ll_print_type_raw(rhs_type, &stderr_writer);
-                    eprint("', expecting type '");
+                    eprint("\n");
+
+                    eprint("    expecting type ");
                     ll_print_type_raw(result, &stderr_writer);
-                    eprint("'\n");
+                    eprint("\x1b[0m\n");
+                    ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
             } else {
                 result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
                 if (result == NULL) {
-                    eprint("error: Invalid operation '{}' of expressions with type '", opr->op.kind);
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
+
+                    eprint("\x1b[1m    left hand side has the type ");
                     ll_print_type_raw(lhs_type, &stderr_writer);
-                    eprint("' and type '");
+                    eprint(", and right hand side has the type ");
                     ll_print_type_raw(rhs_type, &stderr_writer);
-                    eprint("'\n");
+                    eprint("\x1b[0m\n");
+
+                    ll_typer_report_error_done(cc, typer);
                     break;
                 }
             }
@@ -1087,29 +1254,43 @@ TRY_MEMBER_FUNCTION_CALL:
             result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
 
             if (result == NULL) {
-                eprint("error: Invalid comparison '{}' of expressions with type '", opr->op.kind);
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
+
+                eprint("\x1b[1m    left hand side has the type ");
                 ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint("' and type '");
+                eprint(", and right hand side has the type ");
                 ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("'\n");
+                eprint("\x1b[0m\n");
+
+                ll_typer_report_error_done(cc, typer);
+
                 break;
             }
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
-                eprint("error: Invalid comparison '{}' of expressions with type '", opr->op.kind);
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
+
+                eprint("\x1b[1m    left hand side has the type ");
                 ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint("' and type '");
+                eprint(", and right hand side has the type ");
                 ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("'\n");
+                eprint("\x1b[0m\n");
+
+                ll_typer_report_error_done(cc, typer);
+
                 break;
             }
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                eprint("error: Invalid operation '{}' of expressions with type '", opr->op.kind);
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
+
+                eprint("\x1b[1m    left hand side has the type ");
                 ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint("' and type '");
+                eprint(", and right hand side has the type ");
                 ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("'\n");
+                eprint("\x1b[0m\n");
+
+                ll_typer_report_error_done(cc, typer);
                 break;
             }
 
@@ -1123,6 +1304,7 @@ TRY_MEMBER_FUNCTION_CALL:
             eprint("Error: Invalid binary operation '");
             lexer_print_token_raw_to_writer(&opr->op, &stderr_writer);
             eprint("'\n");
+            exit(-1);
             break;
         }
 
@@ -1214,9 +1396,13 @@ TRY_MEMBER_FUNCTION_CALL:
             case LL_TYPE_INT:
                 break;
             default:
-                eprint("error: Negation only works for signed ints and floats. Got type '");
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Negation only works for signed ints and floats");
+                ll_typer_report_error(((LL_Error){ .main_token = AST_AS((*expr), Ast_Operation)->right->token_info }), "");
+                eprint("\x1b[1m    has type");
                 ll_print_type_raw(expr_type, &stderr_writer);
-                eprint("'\n");
+                eprint("\x1b[0m\n");
+                ll_typer_report_error_done(cc, typer);
+
                 break;
             }
 
@@ -1239,7 +1425,14 @@ TRY_MEMBER_FUNCTION_CALL:
 
             switch (expr_type->kind) {
             case LL_TYPE_POINTER: result = ((LL_Type_Pointer*)expr_type)->element_type; break;
-            default: break;
+            default:
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Dereference only works with a pointer");
+                ll_typer_report_error(((LL_Error){ .main_token = AST_AS((*expr), Ast_Operation)->right->token_info }), "");
+                eprint("\x1b[1m    has type");
+                ll_print_type_raw(expr_type, &stderr_writer);
+                eprint("\x1b[0m\n");
+                ll_typer_report_error_done(cc, typer);
+                break;
             }
         } break;
         case '&': {
@@ -1269,11 +1462,15 @@ TRY_MEMBER_FUNCTION_CALL:
         LL_Type* src_type = ll_typer_type_expression(cc, typer, &cast->expr, specified_type, NULL);
         
         if (!ll_typer_can_cast(cc, typer, src_type, specified_type)) {
-            eprint("\x1b[31;1mTODO:\x1b[0m unable to cast expression of type '");
+            ll_typer_report_error(((LL_Error){ .highlight_start = (*expr)->token_info, .highlight_end = cast->p_close }), "Incompatible cast types");
+
+            eprint("\x1b[1m    unable to cast value with type ");
             ll_print_type_raw(src_type, &stderr_writer);
-            eprint("' to type '");
+            eprint(" to type ");
             ll_print_type_raw(specified_type, &stderr_writer);
-            eprint("'\n");
+            eprint("\x1b[0m\n");
+
+            ll_typer_report_error_done(cc, typer);
         }
 
         result = specified_type;
@@ -1287,7 +1484,11 @@ TRY_MEMBER_FUNCTION_CALL:
 
         LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, &inv->expr, NULL, &resolve);
         if (fn_type->base.kind != LL_TYPE_FUNCTION) {
-            eprint("\x1b[31;1mTODO:\x1b[0m expression is not callable\n");
+            ll_typer_report_error(((LL_Error){ .main_token = inv->expr->token_info }), "Unable to call this like a function");
+            eprint("\x1b[1m    type ");
+            ll_print_type_raw(&fn_type->base, &stderr_writer);
+            eprint(" is not a callable function\x1b[0m\n");
+            ll_typer_report_error_done(cc, typer);
             return NULL;
         }
 
@@ -1331,26 +1532,31 @@ TRY_MEMBER_FUNCTION_CALL:
             Ast_Base** current_arg = &inv->arguments.items[pi];
             
             if ((*current_arg)->kind == AST_KIND_KEY_VALUE) {
+                Ast_Key_Value* kv = AST_AS((*current_arg), Ast_Key_Value);
                 if (!fn_decl || !fn_scope) {
-                    eprint("\x1b[31;1merror\x1b[0;1m: keyed arguments are only allowed when calling a function directly\n");
+                    ll_typer_report_error(((LL_Error){ .highlight_start = kv->key->token_info, .highlight_end = kv->value->token_info }), "Keyed arguments are only allowed when calling a functino directly.");
+                    eprint("\x1b[1m    this is probably due to calling a function pointer, but this is invalid\x1b[0m\n");
+                    ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
                 // can't have keyed arguments after varaible
                 if (fn_type->is_variadic && di >= fn_type->parameter_count - 1) {
-                    eprint("\x1b[31;1merror\x1b[0;1m: keyed arguments are only allowed before variadic arguments\n");
+                    ll_typer_report_error(((LL_Error){ .highlight_start = kv->key->token_info, .highlight_end = kv->value->token_info }), "Keyed arguments are only allowed before variadic arguments\n");
+                    ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
-                Ast_Key_Value* kv = AST_AS((*current_arg), Ast_Key_Value);
                 if (kv->key->kind != AST_KIND_IDENT) {
-                    eprint("\x1b[31;1merror\x1b[0;1m: expected argument key to be an identifier\n");
+                    ll_typer_report_error(((LL_Error){ .main_token = kv->key->token_info }), "Argument key needs to be an identifier");
+                    ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
                 LL_Scope* parameter_scope = ll_scope_get(fn_scope, AST_AS(kv->key, Ast_Ident)->str);
                 if (parameter_scope->kind != LL_SCOPE_KIND_PARAMETER) {
-                    eprint("\x1b[31;1merror\x1b[0;1m: parameter not found\n");
+                    ll_typer_report_error(((LL_Error){ .main_token = kv->key->token_info }), "Parameter '{}' does not exist for the function", AST_AS(kv->key, Ast_Ident)->str);
+                    ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
@@ -1378,11 +1584,17 @@ TRY_MEMBER_FUNCTION_CALL:
             }
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, *value, declared_type)) {
-                eprint("\x1b[31;1merror\x1b[0;1m: provided argument type does not match declared type of function! Expected ");
+                ll_typer_report_error(((LL_Error){ .main_token = (*value)->token_info }), "Can't pass value to function parameter");
+
+                eprint("\x1b[1m    the parameter expects type ");
                 ll_print_type_raw(declared_type, &stderr_writer);
-                eprint(" but got ");
+                eprint(", but tried passing value with type ");
                 ll_print_type_raw(provided_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                eprint(" to it. You can try explicitly casting the value with `cast(");
+                ll_print_type_raw(declared_type, &stderr_writer);
+                eprint(")\x1b[0m\n");
+
+                ll_typer_report_error_done(cc, typer);
             }
 
             ll_typer_add_implicit_cast(cc, typer, value, declared_type);
@@ -1416,14 +1628,31 @@ TRY_MEMBER_FUNCTION_CALL:
         size_t expected_arg_count = fn_type->is_variadic ? (fn_type->parameter_count - 1) : fn_type->parameter_count;
 
         if (!fn_type->is_variadic && pi < inv->arguments.count) {
-            eprint("\x1b[31;1merror\x1b[0;1m: expected only {} arguments but got {}u\x1b[0m\n", expected_arg_count, inv->arguments.count);
+            ll_typer_report_error(((LL_Error){ .highlight_start = inv->base.token_info, .highlight_end = inv->p_close }), "Expected only {} arguments but got {}", expected_arg_count, inv->arguments.count);
+            if (fn_decl) {
+                ll_typer_report_error_info(((LL_Error){ .highlight_start = fn_decl->p_open, .highlight_end = fn_decl->p_close }), "Function defined here");
+            } else {
+                eprint("\x1b[1m    function signature: ");
+                ll_print_type_raw(&fn_type->base, &stderr_writer);
+                eprint("\x1b[0m\n");
+            }
+            ll_typer_report_error_done(cc, typer);
         }
         if (missing_count) {
             if (expected_arg_count == missing_count) {
-                eprint("\x1b[31;1merror\x1b[0;1m: expected {} arguments but got none\x1b[0m\n", expected_arg_count);
+                ll_typer_report_error(((LL_Error){ .highlight_start = inv->base.token_info, .highlight_end = inv->p_close }), "Expected {} arguments but only got none", expected_arg_count);
             } else {
-                eprint("\x1b[31;1merror\x1b[0;1m: expected {} arguments but only got {}\x1b[0m\n", expected_arg_count, expected_arg_count - missing_count);
+                ll_typer_report_error(((LL_Error){ .highlight_start = inv->base.token_info, .highlight_end = inv->p_close }), "Expected {} arguments but only got {}", expected_arg_count, inv->arguments.count);
             }
+
+            if (fn_decl) {
+                ll_typer_report_error_info(((LL_Error){ .highlight_start = fn_decl->p_open, .highlight_end = fn_decl->p_close }), "Function defined here");
+            } else {
+                eprint("\x1b[1m    function signature: ");
+                ll_print_type_raw(&fn_type->base, &stderr_writer);
+                eprint("\x1b[0m\n");
+            }
+            ll_typer_report_error_done(cc, typer);
         }
 
         inv->ordered_arguments.count = ordered_arg_count;
@@ -1455,9 +1684,11 @@ TRY_MEMBER_FUNCTION_CALL:
             result = typer->ty_uint8;
             break;
         default:
-            eprint("\x1b[31;1merror\x1b[0;1m: index expression requires an array or pointer type on the left, but found type ");
+            ll_typer_report_error(((LL_Error){ .main_token = cf->left->token_info }), "Index expression requires an array or pointer type on the left");
+            eprint("\x1b[1 found type ");
             ll_print_type_raw(result, &stderr_writer);
-            eprint("\n");
+            eprint("\x1b[0m\n");
+            ll_typer_report_error_done(cc, typer);
             break;
         }
 
@@ -1476,11 +1707,12 @@ TRY_MEMBER_FUNCTION_CALL:
             case LL_SCOPE_KIND_FUNCTION:
                 cf->referenced_scope = current_scope;
                 goto AST_RETURN_EXIT_SCOPE;
-                oc_todo("add error: return outside a funtion");
+                oc_todo("");
             case LL_SCOPE_KIND_STRUCT:
             case LL_SCOPE_KIND_PACKAGE:
-                oc_todo("add error: return outside a funtion");
-                goto AST_BREAK_EXIT_SCOPE;
+                ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried returning out of a function");
+                ll_typer_report_error_done(cc, typer);
+                goto AST_RETURN_EXIT_SCOPE;
             case LL_SCOPE_KIND_FIELD:
             case LL_SCOPE_KIND_LOCAL:
             case LL_SCOPE_KIND_BLOCK_VALUE:
@@ -1515,11 +1747,13 @@ AST_RETURN_EXIT_SCOPE:
                 cf->referenced_scope = current_scope;
                 goto AST_BREAK_EXIT_SCOPE;
             case LL_SCOPE_KIND_FUNCTION:
-                oc_todo("add error: break without a block");
+                ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried breaking without a block to break out of");
+                ll_typer_report_error_done(cc, typer);
                 goto AST_BREAK_EXIT_SCOPE;
             case LL_SCOPE_KIND_STRUCT:
             case LL_SCOPE_KIND_PACKAGE:
-                oc_todo("add error: break outside a funtion");
+                ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried breaking without a block to break out of");
+                ll_typer_report_error_done(cc, typer);
                 goto AST_BREAK_EXIT_SCOPE;
             case LL_SCOPE_KIND_FIELD:
                 break;
@@ -1550,7 +1784,11 @@ AST_BREAK_EXIT_SCOPE:
         case LL_TYPE_INT:
             break;
         default:
-            eprint("\x1b[31;1merror:\x1b[0m if statement condition should be boolean, integer or pointer\n");
+            ll_typer_report_error(((LL_Error){ .main_token = iff->cond->token_info }), "If statement condition should be boolean, integer or pointer");
+            eprint("\x1b[1 found type ");
+            ll_print_type_raw(result, &stderr_writer);
+            eprint("\x1b[0m\n");
+            ll_typer_report_error_done(cc, typer);
             break;
         }
 
@@ -1582,7 +1820,11 @@ AST_BREAK_EXIT_SCOPE:
             case LL_TYPE_UINT:
             case LL_TYPE_INT: break;
             default:
-                eprint("\x1b[31;1merror:\x1b[0m if statement condition should be boolean, integer or pointer\n");
+                ll_typer_report_error(((LL_Error){ .main_token = loop->cond->token_info }), "Loop condition should be boolean, integer or pointer");
+                eprint("\x1b[1 found type ");
+                ll_print_type_raw(result, &stderr_writer);
+                eprint("\x1b[0m\n");
+                ll_typer_report_error_done(cc, typer);
                 break;
             }
         }
@@ -1643,7 +1885,8 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 
         LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS(typename, Ast_Ident)->str);
         if (!scope) {
-            eprint("\x1b[31;1merror\x1b[0;1m: type symbol '{}' not found!\n", AST_AS(typename, Ast_Ident)->str);
+            ll_typer_report_error(((LL_Error){ .main_token = AST_AS(typename, Ast_Ident)->base.token_info }), "Type '{}' not found", AST_AS(typename, Ast_Ident)->str);
+            ll_typer_report_error_done(cc, typer);
         }
         AST_AS(typename, Ast_Ident)->resolved_scope = scope;
 
@@ -1676,12 +1919,12 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     case LL_TYPE_VOID:     wprint(w, "void"); break;
     case LL_TYPE_INT:      wprint(w, "int{}", type->width); break;
     case LL_TYPE_UINT:     wprint(w, "uint{}", type->width); break;
-    case LL_TYPE_ANYINT:   wprint(w, "anyint"); break;
+    case LL_TYPE_ANYINT:   wprint(w, "int"); break;
     case LL_TYPE_FLOAT:    wprint(w, "float{}", type->width); break;
-    case LL_TYPE_ANYFLOAT: wprint(w, "anyfloat"); break;
+    case LL_TYPE_ANYFLOAT: wprint(w, "float"); break;
     case LL_TYPE_STRING:   wprint(w, "string"); break;
     case LL_TYPE_BOOL:     wprint(w, "bool{}", type->width); break;
-    case LL_TYPE_ANYBOOL:  wprint(w, "anybool"); break;
+    case LL_TYPE_ANYBOOL:  wprint(w, "bool"); break;
     case LL_TYPE_POINTER: {
         LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
         ll_print_type_raw(ptr_type->element_type, w);

@@ -325,26 +325,6 @@ static inline uword oc_align_forward(uword value, uword alignment_in_bytes) {
     return (value + alignment_in_bytes - 1) & ~(alignment_in_bytes - 1);
 }
 
-// start is clamped to zero if negative
-// end < 0 means to use the end of s
-static inline string string_slice(string s, sword start, sword end) {
-    if (start < 0) start = 0;
-    if (end < 0) end = s.len;
-
-    s.ptr += start;
-    s.len = end - start;
-    return s;
-}
-
-// start is clamped to zero if negative
-static inline string string_slice_count(string s, sword start, sword count) {
-    if (start < 0) start = 0;
-
-    s.ptr += start;
-    s.len = count;
-    return s;
-}
-
 /* --------    libc forwards  -------- */
 void *memset(void *s, int c, size_t n);
 void *memcpy(void *dest, const void *src, size_t n);
@@ -395,6 +375,30 @@ void _oc_printw(void *writer, const char* fmt, ...);
 void _oc_vprintw(void *writer, const char* fmt, va_list args);
 _Noreturn void oc_exit(int status);
 void oc_hex_dump(void* data, int count, int indent, int mark_mod);
+
+// start is clamped to zero if negative
+// end < 0 means to use the end of s
+static inline string string_slice(string s, sword start, sword end) {
+    oc_assert(start >= 0);
+    oc_assert(end >= start);
+    // if (start < 0) start = 0;
+    // if (end < 0) end = s.len;
+
+    s.ptr += start;
+    s.len = end - start;
+    return s;
+}
+
+// start is clamped to zero if negative
+static inline string string_slice_count(string s, sword start, sword count) {
+    if (start < 0) start = 0;
+
+    s.ptr += start;
+    s.len = count;
+    return s;
+}
+
+
 
 extern Oc_Writer stdout_writer;
 extern Oc_Writer stderr_writer;

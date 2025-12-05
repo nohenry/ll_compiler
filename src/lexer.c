@@ -67,6 +67,8 @@ DONE_LINE_COMMENT:
     }
 DONE_PHANTOM:
 
+    out->position = lexer->pos;
+
     if (lexer->pos < lexer->source.len) switch (lexer->source.ptr[lexer->pos]) {
         case '#': 
             out->kind = LL_TOKEN_KIND_BUILTIN;
@@ -399,4 +401,51 @@ void lexer_print_token(LL_Token* token) {
     print("Token: ");
     lexer_print_token_raw(token);
     print("\n");
+}
+
+LL_Line_Info lexer_get_line_info(LL_Lexer* lexer, LL_Token_Info token_info) {
+    LL_Line_Info result = { 0 };
+    oc_assert(token_info.position < lexer->source.len);
+
+    size_t start_cursor = token_info.position;
+    while (start_cursor > 0 && lexer->source.ptr[start_cursor - 1] != '\n' && lexer->source.ptr[start_cursor - 1] != '\r') {
+        start_cursor--;
+    }
+
+    size_t end_cursor = token_info.position;
+    while (end_cursor < lexer->source.len && lexer->source.ptr[end_cursor] != '\n' && lexer->source.ptr[end_cursor] != '\r') {
+        end_cursor++;
+    }
+
+    size_t line_count = 0;
+    size_t line_cursor = 0;
+    while (line_cursor <= token_info.position) {
+        switch (lexer->source.ptr[line_cursor]) {
+        case '\n': line_count++; break;
+        default: break;
+        }
+        line_cursor++;
+    }
+
+    result.line = line_count + 1;
+    result.column = token_info.position - start_cursor + 1;
+    result.line_str.ptr = lexer->source.ptr + start_cursor;
+    result.line_str.len = end_cursor - start_cursor;
+    result.start_pos = start_cursor;
+    result.end_pos = end_cursor;
+    return result;
+}
+
+int64_t lexer_get_token_length(Compiler_Context *cc, LL_Lexer* lexer, LL_Token_Info token) {
+    size_t old_pos = lexer->pos;
+    lexer->pos = token.position;
+
+    lexer->has_peeked_token = false;
+    LL_Token otoken;
+    lexer_next_token(cc, lexer, &otoken);
+
+    int64_t size = (int64_t)lexer->pos - (int64_t)token.position;
+    lexer->pos = old_pos;
+
+    return size;
 }
