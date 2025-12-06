@@ -1558,7 +1558,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
                 OC_X86_64_WRITE_INSTRUCTION(b, b->registers.items[OPD_VALUE(operands[0])], rel32, params);
                 bir->blocks.items[operands[2]].ref1 = 0;
                 bir->blocks.items[operands[1]].ref1 = bir->blocks.items[operands[2]].prev;
-            } else oc_assert(false);
+            } oc_unreachable("figure this out");
             block->fixup_offset = (int64_t)b->section_text.count - 4u;
             break;
 

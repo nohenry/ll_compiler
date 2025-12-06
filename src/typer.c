@@ -84,6 +84,7 @@ typedef struct {
 
 #define ll_typer_report_error(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 #define ll_typer_report_error_info(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_info_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_note(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_note_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 
 void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_Info line_info, LL_Token_Info start_info, LL_Token_Info end_info, bool print_dot_dot_dot, bool print_underline) {
     (void)typer;
@@ -140,6 +141,43 @@ void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error e
         eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
     } else {
         eprint("{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename);
+    }
+
+    va_list list;
+    va_start(list, fmt);
+    _oc_vprintw(&stderr_writer, fmt, list);
+    va_end(list);
+    eprint("\x1b[0m\n");
+
+    if (error.highlight_start.kind || error.highlight_end.kind) {
+        if (line_info.line == end_line_info.line) {
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, true);
+        } else {
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, line_info.end_pos }, true, true);
+            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, true);
+        }
+    } else if (error.main_token.kind) {
+        int64_t token_length = lexer_get_token_length(cc, cc->lexer, error.main_token);
+        ll_typer_print_error_line(cc, typer, line_info, error.main_token, (LL_Token_Info){ 1, error.main_token.position + token_length}, false, true);
+    }
+}
+
+void ll_typer_report_error_note_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...) {
+    LL_Line_Info line_info, end_line_info;
+    if (error.highlight_start.kind || error.highlight_end.kind) {
+        oc_assert(error.highlight_start.kind);
+        oc_assert(error.highlight_end.kind);
+        line_info = lexer_get_line_info(cc->lexer, error.highlight_start);
+        end_line_info = lexer_get_line_info(cc->lexer, error.highlight_end);
+    } else if (error.main_token.kind) {
+        line_info = lexer_get_line_info(cc->lexer, error.main_token);
+        end_line_info = line_info;
+    }
+
+    if (error.main_token.kind) {
+        eprint("{}:{}:{}: \x1b[34;1mnote\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
+    } else {
+        eprint("{}: \x1b[34;1mnote\x1b[0m: \x1b[1m", cc->lexer->filename);
     }
 
     va_list list;
@@ -894,6 +932,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         LL_Type* last_block_type = typer->block_type;
         typer->block_type = expected_type;
         Ast_Block* blk = AST_AS((*expr), Ast_Block);
+        blk->base.type = expected_type;
 
         LL_Scope* block_scope = NULL; 
         if (typer->current_scope->kind != LL_SCOPE_KIND_LOOP) {
@@ -923,7 +962,12 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
     }
     case AST_KIND_IDENT: {
         if (AST_AS((*expr), Ast_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || AST_AS((*expr), Ast_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
-            return expected_type ? expected_type : typer->ty_anybool;
+            if (expected_type->kind == LL_TYPE_BOOL) {
+                result = expected_type;
+                break;
+            }
+            result = typer->ty_anybool;
+            break;
         }
         LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS((*expr), Ast_Ident)->str);
         if (!scope) {
@@ -1735,17 +1779,28 @@ AST_RETURN_EXIT_SCOPE:
         LL_Scope* current_scope = typer->current_scope;
         cf->referenced_scope = NULL;
 
+        LL_Type* break_type = NULL;
+
         while (current_scope) {
             switch (current_scope->kind) {
             case LL_SCOPE_KIND_LOOP:
-                cf->referenced_scope = current_scope;
-                goto AST_BREAK_EXIT_SCOPE;
+                if (cf->target == AST_CONTROL_FLOW_TARGET_ANY || cf->target == AST_CONTROL_FLOW_TARGET_FOR) {
+                    cf->referenced_scope = current_scope;
+                    break_type = current_scope->decl->type;
+                    goto AST_BREAK_EXIT_SCOPE;
+                } else break;
             case LL_SCOPE_KIND_BLOCK:
-                cf->referenced_scope = current_scope;
-                goto AST_BREAK_EXIT_SCOPE;
+                if (cf->target == AST_CONTROL_FLOW_TARGET_ANY) {
+                    cf->referenced_scope = current_scope;
+                    break_type = current_scope->decl->type;
+                    goto AST_BREAK_EXIT_SCOPE;
+                } else break;
             case LL_SCOPE_KIND_BLOCK_VALUE:
-                cf->referenced_scope = current_scope;
-                goto AST_BREAK_EXIT_SCOPE;
+                if (cf->target == AST_CONTROL_FLOW_TARGET_ANY || cf->target == AST_CONTROL_FLOW_TARGET_DO) {
+                    cf->referenced_scope = current_scope;
+                    break_type = current_scope->decl->type;
+                    goto AST_BREAK_EXIT_SCOPE;
+                } else break;
             case LL_SCOPE_KIND_FUNCTION:
                 ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried breaking without a block to break out of");
                 ll_typer_report_error_done(cc, typer);
@@ -1768,7 +1823,76 @@ AST_RETURN_EXIT_SCOPE:
         }
 
 AST_BREAK_EXIT_SCOPE:
-        if (cf->expr) ll_typer_type_expression(cc, typer, &cf->expr, typer->block_type, NULL);
+        if (cf->expr) {
+            if (cf->referenced_scope->kind == LL_SCOPE_KIND_BLOCK) {
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value, but scope to break from didn't expect a value");
+                Ast_Block* blk = AST_AS(cf->referenced_scope->decl, Ast_Block);
+                ll_typer_report_error_note(((LL_Error){ .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Breaking from this block");
+                ll_typer_report_error_done(cc, typer);
+            }
+            if (break_type == NULL) {
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value, but scope to break from didn't expect a value");
+                switch (cf->referenced_scope->kind) {
+                case LL_SCOPE_KIND_BLOCK_VALUE:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this block");
+                    break;
+                case LL_SCOPE_KIND_LOOP:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this loop");
+                    break;
+                default:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this sceop");
+                    break;
+                }
+                ll_typer_report_error_done(cc, typer);
+            }
+
+            LL_Type* value_type = ll_typer_type_expression(cc, typer, &cf->expr, break_type, NULL);
+
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, cf->expr, break_type)) {
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value that is incompatible with the expected type");
+
+                eprint("\x1b[1m    expecting type ");
+                ll_print_type_raw(break_type, &stderr_writer);
+                eprint(", but tried to break with value of type ");
+                ll_print_type_raw(value_type, &stderr_writer);
+                eprint("\x1b[0m\n");
+
+                switch (cf->referenced_scope->kind) {
+                case LL_SCOPE_KIND_BLOCK_VALUE:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this block");
+                    break;
+                case LL_SCOPE_KIND_LOOP:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this loop");
+                    break;
+                default:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this sceop");
+                    break;
+                }
+
+                ll_typer_report_error_done(cc, typer);
+            }
+
+            ll_typer_add_implicit_cast(cc, typer, &cf->expr, break_type);
+        } else {
+            if (break_type != NULL) {
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking without a value, but scope to break from expects a value");
+                switch (cf->referenced_scope->kind) {
+                case LL_SCOPE_KIND_BLOCK_VALUE:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this block");
+                    break;
+                case LL_SCOPE_KIND_LOOP:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this loop");
+                    break;
+                default:
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this sceop");
+                    break;
+                }
+                eprint("\x1b[1m    expecting type ");
+                ll_print_type_raw(break_type, &stderr_writer);
+                eprint("\x1b[0m\n");
+                ll_typer_report_error_done(cc, typer);
+            }
+        }
 
         result = NULL;
     } break;
@@ -1808,6 +1932,8 @@ AST_BREAK_EXIT_SCOPE:
         LL_Scope* loop_scope = create_scope(LL_SCOPE_KIND_LOOP, *expr);
         ll_typer_scope_put(cc, typer, loop_scope, false);
         typer->current_scope = loop_scope;
+        loop->base.type = expected_type;
+        loop->scope = loop_scope;
         if (loop->init) ll_typer_type_statement(cc, typer, &loop->init);
 
         if (loop->cond) {
@@ -1836,7 +1962,7 @@ AST_BREAK_EXIT_SCOPE:
 
         typer->current_scope = loop_scope->parent;
 
-        result = NULL;
+        result = expected_type;
     } break;
     default:
         eprint("\x1b[31;1mTODO:\x1b[0m type expression {}\n", (*expr)->kind);

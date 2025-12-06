@@ -29,8 +29,9 @@ typedef struct scope_map {
     Ast_Ident* ident;
     Ast_Base* decl;
     LL_Scope_Map_Entry* children[LL_DEFAULT_MAP_ENTRY_COUNT];
-    uint32_t label_value;
+    uint32_t break_block_ref;
     size_t next_anon;
+    uint32_t break_value;
 } LL_Scope;
 
 typedef struct {

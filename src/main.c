@@ -54,6 +54,7 @@ int main(int argc, char** argv) {
     cc.target = &backend_elf;
     cc.lexer = &parser.lexer;
 
+    // if (!cc.quiet) print_node(root, 0, &stdout_writer);
     ll_typer_run(&cc, &typer, root);
     if (!cc.quiet) print_node(root, 0, &stdout_writer);
 

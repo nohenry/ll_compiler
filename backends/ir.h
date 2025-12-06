@@ -168,7 +168,6 @@ typedef struct ll_backend_ir {
     LL_Ir_Block_List blocks;
 
     LL_Ir_Block_Ref free_block;
-    LL_Ir_Operand block_value;
 
     LL_Backend_Ir_Flags flags;
     LL_Ir_Operand copy_operand;

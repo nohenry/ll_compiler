@@ -583,7 +583,7 @@ void* oc_arena_dup(Oc_Arena* arena, void* data, uword size) {
 
 string oc_sprintf(Oc_Arena* arena, const char* fmt, ...) {
     Oc_String_Builder b;
-    b.arena = arena;
+    oc_sb_init(&b, arena);
 
     va_list args;
     va_start(args, fmt);

@@ -28,6 +28,29 @@ void main() {
 
     int sum = 0;
     for int i = 0; i < 40; i += 1   sum += i;
-    
     write_int(sum);
+
+    int j = for int i = 0; i < 4; i += 1 if i == 2 break i;
+    write_int(j);
+
+    int a = do {
+        break 10;
+    };
+    write_int(a);
+
+    int b = do {
+        break do 30;
+    };
+    write_int(b);
+
+    int c = for int i = 0; i < 40; i += 1 {
+        int asd1 = do {
+            break do 34;
+        };
+        write_int(asd1);
+        int asd = do {
+            break for 37;
+        };
+    };
+    write_int(c);
 }

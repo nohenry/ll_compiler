@@ -272,8 +272,14 @@ LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool app
 
     block.next = 0;
     if (append) {
-        block.prev = FUNCTION()->exit;
-        b->blocks.items[FUNCTION()->exit].next = result;
+        if (b->current_block) {
+            block.prev = b->current_block;
+            block.next = b->blocks.items[b->current_block].next;
+            b->blocks.items[b->current_block].next = result;
+        } else {
+            block.prev = FUNCTION()->exit;
+            b->blocks.items[FUNCTION()->exit].next = result;
+        }
         FUNCTION()->exit = result;
     } else {
         block.prev = 0;
@@ -416,7 +422,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
             ir_generate_statement(cc, b, fn_decl->body);
 
             if (!b->blocks.items[b->current_block].did_branch) {
-                b->current_block = FUNCTION()->exit;
+                // b->current_block = FUNCTION()->exit;
                 IR_APPEND_OP(LL_IR_OPCODE_RET);
             }
 
@@ -537,7 +543,9 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 
     switch (expr->kind) {
     case AST_KIND_BLOCK: {
-        LL_Ir_Operand last_block_value = b->block_value;
+        Ast_Block* blk = AST_AS(expr, Ast_Block);
+
+        LL_Ir_Block_Ref break_block = ir_create_block(cc, b, true);
 
         Ast_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Ast_Ident));
         block_ident->base.type = expr->type;
@@ -547,14 +555,16 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
         };
         uint32_t index = FUNCTION()->locals.count;
         oc_array_append(&cc->arena, &FUNCTION()->locals, var);
-        b->block_value = LL_IR_OPERAND_LOCAL_BIT | index;
+        blk->scope->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
+        blk->scope->break_block_ref = break_block;
 
         for (i = 0; i < AST_AS(expr, Ast_Block)->count; ++i) {
             ir_generate_expression(cc, b, AST_AS(expr, Ast_Block)->items[i], false);
         }
 
-        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, b->block_value);
-        b->block_value = last_block_value;
+        b->current_block = break_block;
+
+        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, blk->scope->break_value);
         break;
     }
     case AST_KIND_LITERAL_INT:
@@ -960,20 +970,29 @@ DO_BIN_OP_ASSIGN_OP:
         if (cf->expr) {
             result = ir_generate_expression(cc, b, cf->expr, false);
 
-            IR_APPEND_OP(LL_IR_OPCODE_STORE, b->block_value, result);
-            /* if (result == LL_IR_OPERAND_REGISTER_BIT) { */
-            /* 	b->block_value = result; */
-            /* } else { */
-            /* 	/1* b->block_value = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, cf->expr->type, result); *1/ */
-            /* 	b->block_value = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, cf->expr->type, result); */
-            /* } */
+            IR_APPEND_OP(LL_IR_OPCODE_STORE, cf->referenced_scope->break_value, result);
         }
+
+        IR_APPEND_OP(LL_IR_OPCODE_BRANCH, cf->referenced_scope->break_block_ref);
+        b->blocks.items[cf->referenced_scope->break_block_ref].ref1 = b->current_block;
+
+        LL_Ir_Block_Ref next_block = ir_create_block(cc, b, false);
+        b->blocks.items[next_block].prev = b->current_block;
+        b->blocks.items[next_block].next = b->blocks.items[b->current_block].next;
+        b->blocks.items[b->current_block].next = next_block;
+
+        b->current_block = next_block;
+
         return 0;
     }
     case AST_KIND_IF: {
         Ast_If* iff = AST_AS(expr, Ast_If);
+        LL_Ir_Block_Ref cond_block = b->current_block;
+
         LL_Ir_Block_Ref body_block = ir_create_block(cc, b, true);
+        b->current_block = body_block;
         LL_Ir_Block_Ref else_block = ir_create_block(cc, b, true);
+        b->current_block = else_block;
         LL_Ir_Block_Ref end_block = iff->else_clause ? ir_create_block(cc, b, true) : else_block;
 
         b->blocks.items[body_block].ref1 = b->current_block;
@@ -983,6 +1002,7 @@ DO_BIN_OP_ASSIGN_OP:
             b->blocks.items[end_block].ref2 = else_block;
         }
 
+        b->current_block = cond_block;
         result = ir_generate_expression(cc, b, iff->cond, false);
         if ((result & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_IMMEDIATE_BIT) {
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, cc->typer->ty_bool, result);
@@ -1010,15 +1030,36 @@ DO_BIN_OP_ASSIGN_OP:
     }
     case AST_KIND_FOR: {
         Ast_Loop* loop = AST_AS(expr, Ast_Loop);
+
+        if (loop->init) ir_generate_statement(cc, b, loop->init);
+
         LL_Ir_Block_Ref cond_block = ir_create_block(cc, b, true);
+        b->current_block = cond_block;
         LL_Ir_Block_Ref body_block = ir_create_block(cc, b, true);
+        b->current_block = body_block;
+        LL_Ir_Block_Ref break_block = ir_create_block(cc, b, true);
+        b->current_block = break_block;
         LL_Ir_Block_Ref end_block = ir_create_block(cc, b, true);
         b->blocks.items[end_block].ref1 = cond_block;
+
+
+        if (loop->base.type) {
+            Ast_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Ast_Ident));
+            block_ident->base.type = expr->type;
+            block_ident->str = oc_sprintf(&cc->arena, "block_result\n");
+            LL_Ir_Local var = {
+                .ident = block_ident,
+            };
+            uint32_t index = FUNCTION()->locals.count;
+            oc_array_append(&cc->arena, &FUNCTION()->locals, var);
+            loop->scope->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
+            loop->scope->break_block_ref = break_block;
+        }
+
+
         /* cond_block->ref1 = body_block; */
 
         /* LL_Ir_Block* end_block = ir_create_block(cc, b, true); */
-
-        if (loop->init) ir_generate_statement(cc, b, loop->init);
 
         if (loop->cond) {
             b->current_block = cond_block;
@@ -1056,7 +1097,11 @@ DO_BIN_OP_ASSIGN_OP:
         /* 	ll_typer_type_statement(cc, typer, loop->body); */
         /* } */
 
-        return 0;
+        if (loop->base.type) {
+            return IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, loop->base.type, loop->scope->break_value);
+        } else {
+            return 0;
+        }
     }
     case AST_KIND_STRUCT: break;
     default:

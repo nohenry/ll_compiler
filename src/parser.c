@@ -404,7 +404,7 @@ Ast_Base* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
 
     PEEK(&token);
     while (token.kind != '}') {
-        expr1 = parser_parse_primary(cc, parser);
+        expr1 = parser_parse_primary(cc, parser, false);
         PEEK(&token);
         if (token.kind == '=') {
             CONSUME();
@@ -468,10 +468,10 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
         switch (token.kind) {
         case LL_TOKEN_KIND_IDENT:
             if (token.str.ptr == LL_KEYWORD_IF.ptr) {
-                left = parser_parse_primary(cc, parser);
+                left = parser_parse_primary(cc, parser, from_statement);
                 return left;
             } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
-                left = parser_parse_primary(cc, parser);
+                left = parser_parse_primary(cc, parser, from_statement);
                 return left;
             } else if (token.str.ptr == LL_KEYWORD_STRUCT.ptr) {
                 left = parser_parse_struct(cc, parser);
@@ -479,7 +479,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
             }
             // fallthrough
         default:
-            left = parser_parse_primary(cc, parser);
+            left = parser_parse_primary(cc, parser, from_statement);
             break;
         }
     }
@@ -491,7 +491,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
         if (bin_precedence != 0 && bin_precedence >= last_precedence) {
             CONSUME();
             LL_Token op_tok = token;
-            right = parser_parse_primary(cc, parser);
+            right = parser_parse_primary(cc, parser, false);
             while (PEEK(&token)) {
                 int next_bin_precedence = get_binary_precedence(token, false);
                 if (next_bin_precedence != 0 && next_bin_precedence > bin_precedence) {
@@ -572,7 +572,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
     return left;
 }
 
-Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
+Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_statement) {
     LL_Token token;
     Ast_Base *result, *right, *body, *update;
     PEEK(&token);
@@ -624,12 +624,11 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
         break;
 
     case LL_TOKEN_KIND_IDENT:
-        CONSUME();
         if (token.str.ptr == LL_KEYWORD_IF.ptr) {
             LL_Token_Info if_kw = TOKEN_INFO(token);
+            CONSUME();
 
             // parse if statement
-            CONSUME();
             result = parser_parse_expression(cc, parser, NULL, 0, false);
             PEEK(&token);
             if (token.kind == '{' || (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr)) {
@@ -639,7 +638,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
                 PEEK(&token);
                 if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_ELSE.ptr) {
                 } else {
-                    EXPECT(';', &token);
+                    if (from_statement) EXPECT(';', &token);
                 }
             }
 
@@ -653,7 +652,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
                     right = (Ast_Base*)parser_parse_block(cc, parser);
                 } else {
                     right = parser_parse_expression(cc, parser, NULL, 0, false);
-                    EXPECT(';', &token);
+                    if (from_statement) EXPECT(';', &token);
                 }
             } else {
                 right = NULL;
@@ -691,7 +690,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
                     body = (Ast_Base*)parser_parse_block(cc, parser);
                 } else {
                     body = parser_parse_expression(cc, parser, NULL, 0, false);
-                    EXPECT(';', &token);
+                    if (from_statement) EXPECT(';', &token);
                 }
             }
 
@@ -714,12 +713,14 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
             break;
         } else if (token.str.ptr == LL_KEYWORD_DO.ptr) {
             result = (Ast_Base*)parser_parse_block(cc, parser);
+            break;
         } else if (token.str.ptr == LL_KEYWORD_CONST.ptr) {
             LL_Token_Info kw = TOKEN_INFO(token);
             CONSUME();
             result = parser_parse_expression(cc, parser, NULL, 0, false);
             result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
             result->token_info = kw;
+            break;
         } else if (token.str.ptr == LL_KEYWORD_RETURN.ptr) {
             CONSUME();
             LL_Token_Info kw = TOKEN_INFO(token);
@@ -733,11 +734,32 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
         } else if (token.str.ptr == LL_KEYWORD_BREAK.ptr) {
             CONSUME();
             LL_Token_Info kw = TOKEN_INFO(token);
+            result = NULL;
+            Ast_Control_Flow_Target target = AST_CONTROL_FLOW_TARGET_ANY;
+
             PEEK(&token);
-            if (token.kind != ';')
-                result = parser_parse_expression(cc, parser, NULL, 0, false);
-            else result = NULL;
-            result = CREATE_NODE(AST_KIND_BREAK, ((Ast_Control_Flow){ .expr = result }));
+            if (token.kind != ';') {
+                if (token.kind == LL_TOKEN_KIND_IDENT) {
+                    if (token.str.ptr == LL_KEYWORD_DO.ptr) {
+                        CONSUME();
+                        target = AST_CONTROL_FLOW_TARGET_DO;
+                    } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
+                        CONSUME();
+                        target = AST_CONTROL_FLOW_TARGET_FOR;
+                    // } else if (token.str.ptr == LL_KEYWORD_IF.ptr) {
+                    //     CONSUME();
+                    //     target = AST_CONTROL_FLOW_TARGET_IF;
+                    // } else if (token.str.ptr == LL_KEYWORD_WHILE.ptr) {
+                    //     CONSUME();
+                    //     target = AST_CONTROL_FLOW_TARGET_WHILE;
+                    }
+                }
+                PEEK(&token);
+                if (token.kind != ';') {
+                    result = parser_parse_expression(cc, parser, NULL, 0, false);
+                }
+            };
+            result = CREATE_NODE(AST_KIND_BREAK, ((Ast_Control_Flow){ .expr = result, .target = target }));
             result->token_info = kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_CONTINUE.ptr) {
@@ -751,6 +773,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser) {
             result->token_info = kw;
             break;
         }
+        CONSUME();
         result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
         result->token_info = TOKEN_INFO(token);
         break;

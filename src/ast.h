@@ -150,9 +150,19 @@ typedef struct {
     Ast_Base* expr;
 } Ast_Marker;
 
+enum {
+    AST_CONTROL_FLOW_TARGET_ANY,
+    AST_CONTROL_FLOW_TARGET_DO,
+    AST_CONTROL_FLOW_TARGET_IF,
+    AST_CONTROL_FLOW_TARGET_FOR,
+    AST_CONTROL_FLOW_TARGET_WHILE,
+};
+typedef uint32 Ast_Control_Flow_Target;
+
 typedef struct {
     Ast_Base base;
     Ast_Base* expr;
+    Ast_Control_Flow_Target target;
     struct scope_map* referenced_scope;
 } Ast_Control_Flow;
 
@@ -162,6 +172,7 @@ typedef struct {
     Ast_Base* cond;
     Ast_Base* update;
     Ast_Base* body;
+    struct scope_map* scope;
 } Ast_Loop;
 
 typedef struct {

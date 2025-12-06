@@ -27,7 +27,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.tlang",
-                    "match": "\\b(if|while|for|return|else)\\b"
+                    "match": "\\b(if|while|for|return|else|do|break|continue)\\b"
                 },
                 {
                     "name": "storage.modifier.tlang",
