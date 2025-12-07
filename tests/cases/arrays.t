@@ -23,5 +23,14 @@ void main() {
     write_int(*bb);
     write_int(b[3]);
 
-    // uint32[5] aaa = [1, 2, 3, 4, 5];
+    int[:] slice = a;
+    write_int(slice[0]);
+
+    int[:] copy_slice = slice;
+    write_int(copy_slice[0]);
+    copy_slice[1] = 67;
+    write_int(copy_slice[1]);
+
+    int[:] new_slice = slice[1:3];
+    write_int(new_slice[0]);
 }

@@ -292,6 +292,9 @@ LL_Backend_Layout x86_64_get_layout(LL_Type* ty) {
         sub_layout = x86_64_get_layout(((LL_Type_Array*)ty)->element_type);
         return (LL_Backend_Layout) { .size = max(sub_layout.size, sub_layout.alignment) * ty->width, .alignment = sub_layout.alignment };
     } break;
+    case LL_TYPE_SLICE: {
+        return (LL_Backend_Layout) { .size = 16, .alignment = 8 };
+    } break;
     case LL_TYPE_STRUCT: {
         LL_Type_Struct* struct_type = (LL_Type_Struct*)ty;
         ir_calculate_struct_offsets(ty);
@@ -344,14 +347,22 @@ static X86_64_Variant_Kind x86_64_get_variant_raw(Compiler_Context* cc, X86_64_B
         if (params.immediate) return X86_64_VARIANT_KIND_rm64_i32;
         else if (params.mem_right) return X86_64_VARIANT_KIND_r64_rm64;
         else return X86_64_VARIANT_KIND_rm64_r64;
-    case LL_TYPE_STRUCT:
-        if (type->width <= 64u) {
+    case LL_TYPE_ARRAY:
+    case LL_TYPE_SLICE:
+        // slice is like struct, but it's always > 64bits
+        return X86_64_VARIANT_KIND_r64_rm64;
+    case LL_TYPE_STRUCT: {
+        LL_Backend_Layout layout = x86_64_get_layout(type);
+        size_t size = max(layout.size, layout.alignment);
+        if (size <= 64u) {
             if (params.immediate) return X86_64_VARIANT_KIND_rm64_i32;
             else if (params.mem_right) return X86_64_VARIANT_KIND_r64_rm64;
             else if (params.single) return X86_64_VARIANT_KIND_rm64;
             else return X86_64_VARIANT_KIND_rm64_r64;
+        } else {
+            return X86_64_VARIANT_KIND_r64_rm64;
         }
-        break;
+    } break;
     case LL_TYPE_BOOL:
     case LL_TYPE_UINT:
     case LL_TYPE_INT:
@@ -444,6 +455,7 @@ static X86_64_Operand_Register x86_64_load_operand_with_type(Compiler_Context* c
     case LL_TYPE_POINTER:
     case LL_TYPE_STRING:
     case LL_TYPE_STRUCT:
+    case LL_TYPE_SLICE:
         OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
         break;
     default: oc_todo("add types");
@@ -568,7 +580,7 @@ static void x86_64_generate_memcpy(Compiler_Context* cc, X86_64_Backend* b, LL_B
 
 static uword x86_64_make_struct_copy(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, LL_Ir_Operand reg, bool allocate_only) {
     X86_64_Instruction_Parameters params = { 0 };
-    oc_assert(type->kind == LL_TYPE_STRUCT);
+    oc_assert(type->kind == LL_TYPE_STRUCT || type->kind == LL_TYPE_SLICE);
 
     LL_Backend_Layout l = x86_64_get_layout(type);
     uword stride = max(l.size, l.alignment);
@@ -621,8 +633,12 @@ static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, L
     case LL_TYPE_INT:
     case LL_TYPE_POINTER:
     case LL_TYPE_STRING:
-    case LL_TYPE_STRUCT:
         OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+        break;
+    case LL_TYPE_ARRAY:
+    case LL_TYPE_SLICE:
+    case LL_TYPE_STRUCT:
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, params);
         break;
     default: ll_print_type(type); oc_todo("add types");
     }
@@ -659,6 +675,8 @@ static Move_Info x86_64_get_move_info(Compiler_Context* cc, X86_64_Backend* b, L
     case LL_TYPE_BOOL:
     case LL_TYPE_POINTER:
     case LL_TYPE_STRING:
+    case LL_TYPE_ARRAY:
+    case LL_TYPE_SLICE:
     case LL_TYPE_STRUCT:
         result.opcode = OPCODE_MOV;
         break;
@@ -840,7 +858,14 @@ static Move_Info x86_64_get_move_info(Compiler_Context* cc, X86_64_Backend* b, L
             default: oc_todo(""); break;
             }
             break;
-
+        case LL_TYPE_ARRAY:
+            switch (dst_type->kind) {
+            case LL_TYPE_SLICE:
+                break;
+            default:
+                break;
+            }
+            break;
         default:
             ll_print_type(src_type);
             ll_print_type(dst_type);
@@ -944,11 +969,56 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
             break;
         case LL_IR_OPERAND_LOCAL_BIT:
             switch (src_type->kind) {
+            case LL_TYPE_ARRAY:
+                assert(OPD_TYPE(dst) == LL_IR_OPERAND_REGISTER_BIT);
+                switch (dst_type->kind) {
+                case LL_TYPE_SLICE: {
+                    
+                    X86_64_Operand_Register tmp_reg = x86_64_backend_active_registers[b->active_register_top];
+
+                    params.reg0 = tmp_reg;
+                    params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                    params.displacement = -b->locals.items[OPD_VALUE(src)];
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+
+                    uword offset = x86_64_make_struct_copy(cc, b, bir, dst_type, -1, true);
+
+                    // set ptr
+                    params.reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                    params.reg1 = tmp_reg;
+                    params.displacement = -offset;
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, params);
+
+                    // set len
+                    params.reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                    params.displacement = -offset + 8;
+                    params.immediate = (int64_t)src_type->width;
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_i32, params);
+
+                    // take pointer to temporary
+                    params.reg0 = tmp_reg;
+                    params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                    params.displacement = -offset;
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+
+                    offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, tmp_reg);
+                    b->registers.items[OPD_VALUE(dst)] = offset;
+                } break;
+                default: goto HANDLE_LOAD_STRUCT;
+                }
+                break;
+            case LL_TYPE_SLICE:
+                assert(OPD_TYPE(dst) == LL_IR_OPERAND_REGISTER_BIT);
+                goto HANDLE_LOAD_STRUCT;
+                break;
             case LL_TYPE_STRUCT: {
+HANDLE_LOAD_STRUCT:
+                assert(dst_type == src_type);
                 LL_Backend_Layout struct_layout = x86_64_get_layout(src_type);
                 size_t actual_size = max(struct_layout.size, struct_layout.alignment);
 
                 if (actual_size <= 8) goto HANDLE_LOAD_LOCAL_INTEGRAL;
+                assert(OPD_TYPE(dst) == LL_IR_OPERAND_REGISTER_BIT);
 
                 X86_64_Instruction_Parameters params = { 0 };
                 params.reg0 = reg;
@@ -1045,8 +1115,39 @@ static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backe
     }
 
     switch (dst_type->kind) {
+    case LL_TYPE_SLICE: {
+        switch (src_type->kind) {
+        case LL_TYPE_ARRAY: {
+            X86_64_Operand_Register tmp_reg = x86_64_backend_active_registers[b->active_register_top];
+
+            params.reg0 = tmp_reg;
+            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+            params.displacement = -b->locals.items[OPD_VALUE(src)];
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+
+            switch (OPD_TYPE(dst)) {
+            case LL_IR_OPERAND_LOCAL_BIT: {
+                params.reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                params.reg1 = tmp_reg;
+                params.displacement = -b->locals.items[OPD_VALUE(dst)];
+                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, params);
+            } break;
+            default: oc_todo("handle other operands"); break;
+            }
+        } break;
+        case LL_TYPE_SLICE: {
+            goto HANDLE_STRUCT_MEMCPY;
+            // LL_Backend_Layout struct_layout = x86_64_get_layout(dst_type);
+            // size_t actual_size = max(struct_layout.size, struct_layout.alignment);
+
+            // x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, dst_type, (LL_Ir_Operand)actual_size | LL_IR_OPERAND_IMMEDIATE_BIT, NULL);
+        } break;
+        default: ll_print_type(src_type); oc_todo("unkown type"); break;
+        }
+    } break;
     case LL_TYPE_STRUCT: {
         assert(dst_type == src_type);
+HANDLE_STRUCT_MEMCPY:
         LL_Backend_Layout struct_layout = x86_64_get_layout(dst_type);
         size_t actual_size = max(struct_layout.size, struct_layout.alignment);
 

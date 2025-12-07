@@ -375,6 +375,24 @@ LL_Type* ll_typer_get_array_type(Compiler_Context* cc, LL_Typer* typer, LL_Type*
     return res;
 }
 
+LL_Type* ll_typer_get_slice_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type) {
+    LL_Type_Slice slice_type = { 0 };
+    slice_type.base.kind = LL_TYPE_SLICE;
+    slice_type.element_type = element_type;
+
+    LL_Type* res;
+    LL_Type** t = MAP_GET(typer->interned_types, (LL_Type*)&slice_type, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
+
+    if (t) {
+        res = *t;
+    } else {
+        res = oc_arena_dup(&cc->arena, &slice_type, sizeof(slice_type));
+        MAP_PUT(typer->interned_types, res, res, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
+    }
+
+    return res;
+}
+
 LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* return_type, LL_Type** parameter_types, size_t parameter_count, bool is_variadic) {
     LL_Type_Function fn_type = { 0 };
     fn_type.base.kind = LL_TYPE_FUNCTION;
@@ -780,6 +798,13 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         default: break;
         };
         break;
+    case LL_TYPE_ARRAY:
+        switch (dst_type->kind) {
+        case LL_TYPE_SLICE:
+            return ((LL_Type_Slice*)dst_type)->element_type == ((LL_Type_Array*)src_type)->element_type;
+        default: break;
+        }
+        break;
     case LL_TYPE_POINTER:
         switch (dst_type->kind) {
         case LL_TYPE_POINTER:
@@ -827,6 +852,13 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
         case LL_TYPE_UINT:
             if (dst_type->width >= src_type->width) return true;
             break;
+        default: break;
+        }
+        break;
+    case LL_TYPE_ARRAY:
+        switch (dst_type->kind) {
+        case LL_TYPE_SLICE:
+            return ((LL_Type_Slice*)dst_type)->element_type == ((LL_Type_Array*)src_type)->element_type;
         default: break;
         }
         break;
@@ -1713,9 +1745,9 @@ TRY_MEMBER_FUNCTION_CALL:
         result = fn_type->return_type;
     } break;
     case AST_KIND_INDEX: {
-        Ast_Operation* cf = AST_AS((*expr), Ast_Operation);
-        result = ll_typer_type_expression(cc, typer, &cf->left, NULL, NULL);
-        ll_typer_type_expression(cc, typer, &cf->right, typer->ty_int32, NULL);
+        Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
+        result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
+        ll_typer_type_expression(cc, typer, &cf->start, typer->ty_int32, NULL);
 
         switch (result->kind) {
         case LL_TYPE_ARRAY:
@@ -1724,12 +1756,34 @@ TRY_MEMBER_FUNCTION_CALL:
         case LL_TYPE_POINTER:
             result = ((LL_Type_Pointer*)result)->element_type;
             break;
+        case LL_TYPE_SLICE:
+            result = ((LL_Type_Slice*)result)->element_type;
+            break;
         case LL_TYPE_STRING:
             result = typer->ty_uint8;
             break;
         default:
-            ll_typer_report_error(((LL_Error){ .main_token = cf->left->token_info }), "Index expression requires an array or pointer type on the left");
-            eprint("\x1b[1 found type ");
+            ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Index expression requires an array or pointer type on the left");
+            eprint("\x1b[1m found type ");
+            ll_print_type_raw(result, &stderr_writer);
+            eprint("\x1b[0m\n");
+            ll_typer_report_error_done(cc, typer);
+            break;
+        }
+
+    } break;
+    case AST_KIND_SLICE: {
+        Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
+        result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
+        ll_typer_type_expression(cc, typer, &cf->start, typer->ty_uint64, NULL);
+        ll_typer_type_expression(cc, typer, &cf->stop, typer->ty_uint64, NULL);
+
+        switch (result->kind) {
+        case LL_TYPE_SLICE:
+            break;
+        default:
+            ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Slice expression requires an array, pointer, or slice type on the left");
+            eprint("\x1b[1m found type ");
             ll_print_type_raw(result, &stderr_writer);
             eprint("\x1b[0m\n");
             ll_typer_report_error_done(cc, typer);
@@ -2025,10 +2079,18 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         break;
     }
     case AST_KIND_INDEX: {
-        LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Operation)->left);
-        ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Operation)->right, NULL, NULL);
-        LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Operation)->right);
+        oc_assert(AST_AS(typename, Ast_Slice)->stop == NULL);
+        LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Slice)->ptr);
+        ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Slice)->start, NULL, NULL);
+        LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Slice)->start);
         result = ll_typer_get_array_type(cc, typer, element_type, value.uval);
+        break;
+    }
+    case AST_KIND_SLICE: {
+        LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Slice)->ptr);
+        // ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Slice)->start, NULL, NULL);
+        // LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Slice)->right);
+        result = ll_typer_get_slice_type(cc, typer, element_type);
         break;
     }
 
@@ -2061,6 +2123,12 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
         LL_Type_Array* array_type = (LL_Type_Array*)type;
         ll_print_type_raw(array_type->element_type, w);
         wprint(w, "[{}]", array_type->base.width);
+        break;
+    }
+    case LL_TYPE_SLICE: {
+        LL_Type_Array* array_type = (LL_Type_Array*)type;
+        ll_print_type_raw(array_type->element_type, w);
+        wprint(w, "[:]");
         break;
     }
     case LL_TYPE_FUNCTION: {

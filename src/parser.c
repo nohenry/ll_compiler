@@ -547,19 +547,44 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                     break;
                 }
                 case '[': {
+                    Ast_Base *start = NULL, *stop = NULL;
                     LL_Token_Info ti = TOKEN_INFO(token);
                     CONSUME();
+                    Ast_Kind kind = AST_KIND_INDEX;
+
                     PEEK(&token);
-
-                    if (token.kind == ']') {
+                    switch (token.kind) {
+                    case ']':
+                        break;
+                    case ':':
                         CONSUME();
-                        right = NULL;
-                    } else {
-                        right = parser_parse_expression(cc, parser, NULL, 0, false);
-                        EXPECT(']', &token);
-                    }
+                        kind = AST_KIND_SLICE;
 
-                    left = CREATE_NODE(AST_KIND_INDEX, ((Ast_Operation){ .left = left, .right = right, .op = token }));
+                        PEEK(&token);
+                        if (token.kind != ']') {
+                            stop = parser_parse_expression(cc, parser, NULL, 0, false);
+                        }
+
+                        break;
+                    default:
+                        start = parser_parse_expression(cc, parser, NULL, 0, false);
+
+                        PEEK(&token);
+                        if (token.kind == ':') {
+                            CONSUME();
+                            kind = AST_KIND_SLICE;
+
+                            PEEK(&token);
+                            if (token.kind != ']') {
+                                stop = parser_parse_expression(cc, parser, NULL, 0, false);
+                            }
+                        }
+
+                        break;
+                    }
+                    EXPECT(']', &token);
+
+                    left = CREATE_NODE(kind, ((Ast_Slice){ .ptr = left, .start = start, .stop = stop }));
                     left->token_info = ti;
                     break;
                 }
@@ -816,6 +841,7 @@ const char* ast_get_node_kind(Ast_Base* node) {
         case AST_KIND_IF: return "If";
         case AST_KIND_FOR: return "For";
         case AST_KIND_INDEX: return "Index";
+        case AST_KIND_SLICE: return "Slice";
         case AST_KIND_CAST: return "Cast";
         case AST_KIND_STRUCT: return "Struct";
         case AST_KIND_TYPE_POINTER: return "Pointer";
@@ -846,6 +872,7 @@ void print_node_value(Ast_Base* node, Oc_Writer* w) {
         case AST_KIND_IF: break;
         case AST_KIND_FOR: break;
         case AST_KIND_INDEX: break;
+        case AST_KIND_SLICE: break;
         case AST_KIND_CAST:
             if (node->type)
                 ll_print_type_raw(node->type, &stdout_writer);
@@ -1119,10 +1146,11 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
         break;
 
     case AST_KIND_INDEX:
-        result = CREATE_NODE(node->kind, ((Ast_Operation){
-            .left = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->left, params),
-            .op = AST_AS(node, Ast_Operation)->op,
-            .right = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->right, params),
+    case AST_KIND_SLICE:
+        result = CREATE_NODE(node->kind, ((Ast_Slice){
+            .ptr = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->ptr, params),
+            .start = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->start, params),
+            .stop = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->stop, params),
         }));
         break;
 

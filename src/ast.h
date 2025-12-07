@@ -33,6 +33,7 @@ typedef enum {
 
     AST_KIND_STRUCT,
     AST_KIND_INDEX,
+    AST_KIND_SLICE,
     AST_KIND_CAST,
     AST_KIND_TYPE_POINTER,
 } Ast_Kind;
@@ -120,6 +121,13 @@ typedef struct {
     Ast_Base* right;
     LL_Token op;
 } Ast_Operation;
+
+typedef struct {
+    Ast_Base base;
+    Ast_Base* ptr;
+    Ast_Base* start;
+    Ast_Base* stop;
+} Ast_Slice;
 
 typedef struct {
     Ast_Base base;

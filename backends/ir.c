@@ -114,7 +114,13 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     case LL_IR_OPCODE_MEMCOPY:     wprint(w, INDENT "memcpy " OPERAND_FMT ", " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_LOAD:        wprint(w, INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_LEA:         wprint(w, INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
-    case LL_IR_OPCODE_LEA_INDEX:   wprint(w, INDENT OPERAND_FMT " = lea " OPERAND_FMT " + " OPERAND_FMT " * " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2]), OPERAND_FMT_VALUE(operands[3])); break;
+    case LL_IR_OPCODE_LEA_INDEX:
+        if (LL_IR_OPERAND_IMMEDIATE_SIGN & OPD_VALUE(operands[3])) {
+            uint32_t value = OPD_VALUE(~OPD_VALUE(operands[3]) + 1);
+            wprint(w, INDENT OPERAND_FMT " = lea " OPERAND_FMT " - " OPERAND_FMT " * " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2]), OPERAND_FMT_VALUE(value)); break;
+        } else {
+            wprint(w, INDENT OPERAND_FMT " = lea " OPERAND_FMT " + " OPERAND_FMT " * " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2]), OPERAND_FMT_VALUE(operands[3])); break;
+        }
     case LL_IR_OPCODE_CAST:        wprint(w, INDENT OPERAND_FMT " = cast " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
 
     case LL_IR_OPCODE_ADD:         wprint(w, INDENT OPERAND_FMT " = add " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
@@ -901,15 +907,29 @@ DO_BIN_OP_ASSIGN_OP:
         break;
     }
     case AST_KIND_INDEX: {
-        Ast_Operation* op = AST_AS(expr, Ast_Operation);
+        Ast_Slice* op = AST_AS(expr, Ast_Slice);
 
         LL_Ir_Operand lvalue_op;
-        if (op->left->type->kind == LL_TYPE_POINTER || op->left->type->kind == LL_TYPE_STRING) {
-            lvalue_op = ir_generate_expression(cc, b, op->left, false);
-        } else {
-            lvalue_op = ir_generate_expression(cc, b, op->left, true);
+        switch (op->ptr->type->kind) {
+        case LL_TYPE_POINTER:
+        case LL_TYPE_STRING:
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, false);
+            break;
+        case LL_TYPE_SLICE:
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+
+            LL_Type* ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ((LL_Type_Slice*)op->ptr->type)->element_type);
+            LL_Type* ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
+
+            lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_ptr_element_type, lvalue_op, 0, 8);
+            lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ptr_element_type, lvalue_op);
+            break;
+        default:
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+            break;
         }
-        LL_Ir_Operand rvalue_op = ir_generate_expression(cc, b, op->right, false);
+
+        LL_Ir_Operand rvalue_op = ir_generate_expression(cc, b, op->start, false);
         LL_Backend_Layout layout = cc->target->get_layout(expr->type);
 
         LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, expr->type);
@@ -918,9 +938,54 @@ DO_BIN_OP_ASSIGN_OP:
         if (!lvalue && expr->type->kind != LL_TYPE_ARRAY) {
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, result);
         }
+    } break;
+    case AST_KIND_SLICE: {
+        Ast_Slice* op = AST_AS(expr, Ast_Slice);
 
-        break;
-    }
+        LL_Ir_Operand start_op = ir_generate_expression(cc, b, op->start, false);
+        LL_Ir_Operand stop_op = ir_generate_expression(cc, b, op->stop, false);
+        LL_Ir_Operand lvalue_op, ptr_op;
+        switch (op->ptr->type->kind) {
+        case LL_TYPE_SLICE:
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+            lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, op->ptr->type, lvalue_op);
+            LL_Backend_Layout layout = cc->target->get_layout(((LL_Type_Slice*)op->ptr->type)->element_type);
+
+            LL_Type* ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ((LL_Type_Slice*)op->ptr->type)->element_type);
+            LL_Type* ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
+            LL_Type* size_type = cc->typer->ty_uint64;
+            LL_Type* ptr_size_type = ll_typer_get_ptr_type(cc, cc->typer, size_type);
+
+            ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_ptr_element_type, lvalue_op, 0, 8);
+            LL_Ir_Operand new_ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ptr_element_type, ptr_op);
+            LL_Ir_Operand inc_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_element_type, new_ptr_op, start_op, max(layout.size, layout.alignment));
+            IR_APPEND_OP(LL_IR_OPCODE_STORE, ptr_op, inc_op);
+
+            ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_size_type, lvalue_op, 1, 8);
+            inc_op = IR_APPEND_OP_DST(LL_IR_OPCODE_SUB, size_type, stop_op, start_op);
+            // inc_op = IR_APPEND_OP_DST(LL_IR_OPCODE_SUB, size_type, ptr_op, start_op);
+
+            // ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ptr_element_type, ptr_op);
+            // inc_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, size_type, ptr_op, inc_op, -1);
+            IR_APPEND_OP(LL_IR_OPCODE_STORE, ptr_op, inc_op);
+            result = lvalue_op;
+            break;
+        default:
+            oc_todo("add error");
+            // lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+            break;
+        }
+
+        LL_Backend_Layout layout = cc->target->get_layout(expr->type);
+
+        // LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, expr->type);
+        // result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_type, lvalue_op, start_op, max(layout.size, layout.alignment));
+
+        // if (!lvalue && expr->type->kind != LL_TYPE_ARRAY) {
+        //     result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, result);
+        // }
+    } break;
+
     case AST_KIND_IDENT: {
         Ast_Ident* ident = AST_AS(expr, Ast_Ident);
 

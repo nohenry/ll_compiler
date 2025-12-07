@@ -30,7 +30,9 @@ void main() {
     for int i = 0; i < 40; i += 1   sum += i;
     write_int(sum);
 
-    int j = for int i = 0; i < 4; i += 1 if i == 2 break i;
+    int j = for int i = 0; i < 4; i += 1
+                if i == 2
+                    break i;
     write_int(j);
 
     int a = do {
