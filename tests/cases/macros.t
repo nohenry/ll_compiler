@@ -14,6 +14,19 @@ void macro member(%T a, int b) {
     T $res = a + b;
 }
 
+void macro stmt(void ins_arg) {
+    for int i = 0; i < 5; i += 1 {
+        ins_arg;
+    }
+}
+
+void macro foreach(int[:] array, void code) {
+    for uint64 i = 0; i < array.length; i += 1 {
+        int element = array[i];
+        code;
+    }
+}
+
 void main() {
     int add_amount = 2;
     int a;
@@ -32,4 +45,14 @@ void main() {
 
     number.member(7);
     write_int(res);
+
+    stmt(do {
+        write_int(i);
+    });
+
+    int[5] a = [1, 2, 4, 8, 16];
+
+    foreach(a, do {
+        write_int(element);
+    });
 }

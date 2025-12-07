@@ -27,11 +27,24 @@ void macro append(%D dyn, %T value) {
     ptr[dyn.count - 1] = value;
 }
 
+
+void macro foreach(%D dyn, %T tm, void code) {
+    T* ptr = dyn.data;
+    for uint i = 0; i < dyn.count; i += 1 {
+        T element = ptr[i];
+        code;
+    }
+}
+
 void main() {
     Dynamic_Array d = create();
-    d.append(cast(uint64)5);
-    d.append(cast(uint64)10);
-    d.append(cast(uint64)17);
+    d.append(cast(int64)5);
+    d.append(cast(int64)10);
+    d.append(cast(int64)17);
+
+    d.foreach(cast(int64)0, do {
+        write_int(element);
+    });
 
     int64* ptr = d.data;
     write_int(ptr[0]);

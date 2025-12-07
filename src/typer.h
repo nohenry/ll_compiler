@@ -65,6 +65,7 @@ typedef enum {
     LL_TYPE_ARRAY,
     LL_TYPE_SLICE,
     LL_TYPE_STRUCT,
+    LL_TYPE_CODE_REF,
     LL_TYPE_NAMED,
 } LL_Type_Kind;
 
@@ -154,7 +155,7 @@ typedef struct ll_typer {
             *ty_anyfloat,
             *ty_void,
             *ty_string,
-            *ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool;
+            *ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool, *ty_code_ref;
     
     LL_Type_Function* current_fn;
     LL_Type* block_type;

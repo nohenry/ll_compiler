@@ -524,9 +524,12 @@ static void x86_64_generate_mov_to_register(Compiler_Context* cc, X86_64_Backend
             break;
         case LL_IR_OPERAND_DATA_BIT:
             params.immediate = 0;
-            OC_X86_64_WRITE_INSTRUCTION(b, opcode, r64_i64, params);
-            oc_todo("handle relocation");
-            // oc_array_append(&cc->tmp_arena, &b->relocations, ((Elf64_Rela) { .r_offset = b->current_section->count - 8, .r_info = ELF64_R_INFO(3, R_X86_64_64), .r_addend = bir->data_items.items[OPD_VALUE(src)].binary_offset }));
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_i64, params);
+
+            oc_array_append(&cc->tmp_arena, &b->internal_relocations, ((X86_64_Internal_Relocation) {
+                .data_item = OPD_VALUE(src),
+                .text_rel_byte_offset = b->section_text.count - 8 /* sizeof displacement */
+            }));
             break;
         default: oc_todo("handle other operands"); break;
         }
@@ -1291,6 +1294,14 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
         } break;
         case LL_IR_OPCODE_LOAD: {
             x86_64_generate_load_cast(cc, b, bir, operands[0], operands[1], false);
+        } break;
+
+        case LL_IR_OPCODE_MEMCOPY: {
+            if (OPD_TYPE(operands[3]) == LL_IR_OPERAND_IMMEDIATE_BIT) {
+                x86_64_generate_memcpy(cc, b, bir, operands[0], operands[1], operands[2], cc->typer->ty_int32);
+            } else {
+                x86_64_generate_memcpy(cc, b, bir, operands[0], operands[1], operands[2], ir_get_operand_type(b->fn, operands[3]));
+            }
         } break;
 
         case LL_IR_OPCODE_LEA: {

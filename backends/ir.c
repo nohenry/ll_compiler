@@ -504,6 +504,16 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         result = ir_generate_member_access(cc, b, opr->left, offset);
 
         Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
+
+        if (opr->left->type->kind == LL_TYPE_SLICE) {
+            if (string_eql(right_ident->str, lit("data"))) {
+                break;
+            } else if (string_eql(right_ident->str, lit("length"))) {
+                *offset += 8;
+                break;
+            }
+        }
+
         LL_Scope* field_scope = right_ident->resolved_scope;
         oc_assert(field_scope->kind == LL_SCOPE_KIND_FIELD);
 
@@ -536,6 +546,19 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         }
 
     } break;
+    case AST_KIND_CAST: {
+        Ast_Cast* cast = AST_AS(expr, Ast_Cast);
+        b->last_op_was_load = false;
+        result = ir_generate_member_access(cc, b, cast->expr, offset);
+        if (b->last_op_was_load) {
+            // merge cast into load
+            oc_assert(OPD_TYPE(result) == LL_IR_OPERAND_REGISTER_BIT);
+            FUNCTION()->registers.items[OPD_VALUE(result)].type = cast->base.type;
+        } else {
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, cast->base.type, result);
+        }
+        break;
+    }
     default: oc_todo("implement this"); break;
     }
 
@@ -647,22 +670,29 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 		case '.': {
             Ast_Operation* opr = AST_AS(expr, Ast_Operation);
             Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
+            static uint32_t offset_value = 0;
 
-            Ast_Base* decl = right_ident->resolved_scope->decl;
-            if (!decl) return 0;
+            Ast_Base* decl = right_ident->resolved_scope ? right_ident->resolved_scope->decl : NULL;
+            if (decl) {
+                switch (decl->kind) {
+                case AST_KIND_FUNCTION_DECLARATION: result = LL_IR_OPERAND_FUNCTION_BIT | AST_AS(decl, Ast_Function_Declaration)->ir_index; break;
+                case AST_KIND_VARIABLE_DECLARATION: {
+                    offset_value = 0;
+                    result = ir_generate_member_access(cc, b, expr, &offset_value);
 
-            switch (decl->kind) {
-            case AST_KIND_FUNCTION_DECLARATION: result = LL_IR_OPERAND_FUNCTION_BIT | AST_AS(decl, Ast_Function_Declaration)->ir_index; break;
-            case AST_KIND_VARIABLE_DECLARATION: {
-                static uint32_t offset_value = 0;
+                    LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
+                    result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
+                } break;
+                default: oc_assert(false);
+                }
+            } else {
                 offset_value = 0;
                 result = ir_generate_member_access(cc, b, expr, &offset_value);
 
                 LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
                 result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
-            } break;
-            default: oc_assert(false);
             }
+
 
             if (!lvalue) {
                 result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, right_ident->base.type, result);

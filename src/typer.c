@@ -84,6 +84,7 @@ LL_Typer ll_typer_create(Compiler_Context* cc) {
     result.ty_anybool = create_type(((LL_Type){ .kind = LL_TYPE_ANYBOOL }));
 
     result.ty_string = create_type(((LL_Type){ .kind = LL_TYPE_STRING }));
+    result.ty_code_ref = create_type(((LL_Type){ .kind = LL_TYPE_CODE_REF }));
 
     return result;
 }
@@ -1044,6 +1045,11 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             LL_Scope_Macro_Parameter* macro_param = (LL_Scope_Macro_Parameter*)scope;
             *expr = ast_clone_node_deep(cc, macro_param->value, (LL_Ast_Clone_Params) { .convert_all_idents_to_expansion = true });
             result = ll_typer_type_expression(cc, typer, expr, expected_type, resolve_result);
+            if (macro_param->decl->type && macro_param->decl->type->kind != LL_TYPE_VOID) {
+                // e.g if we pass a type int[5] into int[:], we need to handle that implicit cast every time we substitute
+                ll_typer_add_implicit_cast(cc, typer, expr, macro_param->decl->type);
+            }
+            result = (*expr)->type;
             return result;
         }
         AST_AS((*expr), Ast_Ident)->resolved_scope = scope;
@@ -1169,6 +1175,15 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                     base_scope = ((LL_Type_Named*)base_type)->scope;
                     base_type = ((LL_Type_Named*)base_type)->actual_type;
                 }
+
+                if (base_type->kind == LL_TYPE_SLICE || base_type->kind == LL_TYPE_ARRAY) {
+                    if (string_eql(right_ident->str, lit("length"))) {
+                        right_ident->base.type = typer->ty_uint64;
+                        (*expr)->type = right_ident->base.type;
+                        return right_ident->base.type;
+                    }
+                }
+
                 if (!base_scope) {
                     goto TRY_MEMBER_FUNCTION_CALL;
                 }
@@ -1631,6 +1646,7 @@ TRY_MEMBER_FUNCTION_CALL:
             fn_decl = (Ast_Function_Declaration*)resolve.scope->decl;
             fn_scope = resolve.scope;
         }
+        bool fn_is_macro = fn_decl && (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO);
         // if (!fn_decl && inv->expr->kind == AST_KIND_IDENT) {
         //     Ast_Ident* ident = AST_AS(inv->expr, Ast_Ident);
         //     if (ident->resolved_scope->kind == LL_SCOPE_KIND_FUNCTION) {
@@ -1661,7 +1677,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
         uword arg_count = inv->arguments.count;
         for (pi = 0 /* , di = 0 */; pi < arg_count; ++pi, ++di) {
-            LL_Type *declared_type, *provided_type;
+            LL_Type *declared_type = NULL, *provided_type = NULL;
             Ast_Base** value;
             Ast_Base** current_arg = &inv->arguments.items[pi];
             
@@ -1696,7 +1712,13 @@ TRY_MEMBER_FUNCTION_CALL:
 
                 di = AST_AS(parameter_scope->decl, Ast_Parameter)->ir_index;
                 declared_type = fn_type->parameters[di];
-                provided_type = ll_typer_type_expression(cc, typer, &kv->value, declared_type, NULL);
+                
+                // code ref and void are only typed checked when the parameter is expanded in macro body
+                if (declared_type && declared_type->kind != LL_TYPE_CODE_REF && declared_type->kind != LL_TYPE_VOID) {
+                    provided_type = ll_typer_type_expression(cc, typer, &kv->value, declared_type, NULL);
+                } else if (!fn_is_macro) {
+                    provided_type = ll_typer_type_expression(cc, typer, &kv->value, declared_type, NULL);
+                }
                 if (!declared_type) {
                     declared_type = provided_type;
                 }
@@ -1716,28 +1738,35 @@ TRY_MEMBER_FUNCTION_CALL:
                 }
 
                 declared_type = fn_type->parameters[di];
-                provided_type = ll_typer_type_expression(cc, typer, current_arg, declared_type, NULL);
+                // code ref and void are only typed checked when the parameter is expanded in macro body
+                if (declared_type && declared_type->kind != LL_TYPE_CODE_REF && declared_type->kind != LL_TYPE_VOID) {
+                    provided_type = ll_typer_type_expression(cc, typer, current_arg, declared_type, NULL);
+                } else if (!fn_is_macro) {
+                    provided_type = ll_typer_type_expression(cc, typer, current_arg, declared_type, NULL);
+                }
                 if (!declared_type) {
                     declared_type = provided_type;
                 }
                 value = current_arg;
             }
 
-            if (!ll_typer_can_implicitly_cast_expression(cc, typer, *value, declared_type)) {
-                ll_typer_report_error(((LL_Error){ .main_token = (*value)->token_info }), "Can't pass value to function parameter");
+            if (provided_type && declared_type) {
+                if (!ll_typer_can_implicitly_cast_expression(cc, typer, *value, declared_type)) {
+                    ll_typer_report_error(((LL_Error){ .main_token = (*value)->token_info }), "Can't pass value to function parameter");
 
-                eprint("\x1b[1m    the parameter expects type ");
-                ll_print_type_raw(declared_type, &stderr_writer);
-                eprint(", but tried passing value with type ");
-                ll_print_type_raw(provided_type, &stderr_writer);
-                eprint(" to it. You can try explicitly casting the value with `cast(");
-                ll_print_type_raw(declared_type, &stderr_writer);
-                eprint(")\x1b[0m\n");
+                    eprint("\x1b[1m    the parameter expects type ");
+                    ll_print_type_raw(declared_type, &stderr_writer);
+                    eprint(", but tried passing value with type ");
+                    ll_print_type_raw(provided_type, &stderr_writer);
+                    eprint(" to it. You can try explicitly casting the value with `cast(");
+                    ll_print_type_raw(declared_type, &stderr_writer);
+                    eprint(")\x1b[0m\n");
 
-                ll_typer_report_error_done(cc, typer);
+                    ll_typer_report_error_done(cc, typer);
+                }
+
+                ll_typer_add_implicit_cast(cc, typer, value, declared_type);
             }
-
-            ll_typer_add_implicit_cast(cc, typer, value, declared_type);
             ordered_arg_count++;
             ordered_args[di] = *value;
             if (!ordered_args[di]->type) {
@@ -1798,39 +1827,52 @@ TRY_MEMBER_FUNCTION_CALL:
         inv->ordered_arguments.count = ordered_arg_count;
         inv->ordered_arguments.items = ordered_args;
 
-        if (fn_decl && (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO)) {
-            if (fn_decl->body) {
-                Ast_Base* new_body = ast_clone_node_deep(cc, fn_decl->body, (LL_Ast_Clone_Params) { .expand_first_block = true });
-                oc_assert(new_body->kind == AST_KIND_BLOCK);
+        if (fn_is_macro && fn_decl->body) {
+            /*
+                transform a macro call into something like this:
 
-                LL_Scope* old_scope = typer->current_scope;
-                LL_Scope* param_scope = create_scope(LL_SCOPE_KIND_BLOCK, NULL);
-                ll_typer_scope_put(cc, typer, param_scope, false);
-
-                typer->current_scope = param_scope;
-                for (int arg_i = 0; arg_i < ordered_arg_count; arg_i++) {
-                    if (fn_decl->parameters.items[arg_i].type->kind == AST_KIND_GENERIC) {
-                        Ast_Base* cloned_generic = ast_clone_node_deep(cc, fn_decl->parameters.items[arg_i].type, (LL_Ast_Clone_Params) { 0 });
-                        cloned_generic->type = ordered_args[arg_i]->type;
-
-                        LL_Scope_Simple* scope = create_scope_simple(LL_SCOPE_KIND_STRUCT, cloned_generic);
-                        scope->ident = AST_AS(cloned_generic, Ast_Generic)->ident;
-
-                        ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
+                { // block scope (holds all parameters and generic typedefs)
+                    T = int;
+                    T param1 = ...;
+                    string param2 = ...;
+                    { // macro expansion scope (macro local variables don't search past this scope +1 parent (for parameter scope), unless they are expanded variables ($foo))
+                        ... macro body
                     }
+                }
+            */
+            Ast_Base* new_body = ast_clone_node_deep(cc, fn_decl->body, (LL_Ast_Clone_Params) { .expand_first_block = true });
+            oc_assert(new_body->kind == AST_KIND_BLOCK);
 
-                    LL_Scope_Macro_Parameter* scope = create_scope_macro_parameter(&fn_decl->parameters.items[arg_i]);
-                    scope->ident = fn_decl->parameters.items[arg_i].ident;
-                    scope->value = ordered_args[arg_i];
+            LL_Scope* old_scope = typer->current_scope;
+            LL_Scope* param_scope = create_scope(LL_SCOPE_KIND_BLOCK, NULL);
+            ll_typer_scope_put(cc, typer, param_scope, false);
+
+            typer->current_scope = param_scope;
+            for (int arg_i = 0; arg_i < ordered_arg_count; arg_i++) {
+                if (fn_decl->parameters.items[arg_i].type->kind == AST_KIND_GENERIC) {
+                    // get type of argument, and insert typedef for the generic ident to this type (using SCOPE_KIND_STRUCT for now)
+                    Ast_Base* cloned_generic = ast_clone_node_deep(cc, fn_decl->parameters.items[arg_i].type, (LL_Ast_Clone_Params) { 0 });
+                    cloned_generic->type = ll_typer_type_expression(cc, typer, &ordered_args[arg_i], NULL, NULL);
+
+                    LL_Scope_Simple* scope = create_scope_simple(LL_SCOPE_KIND_STRUCT, cloned_generic);
+                    scope->ident = AST_AS(cloned_generic, Ast_Generic)->ident;
 
                     ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
                 }
 
-                (void)ll_typer_type_expression(cc, typer, &new_body, expected_type, resolve_result);
-                *expr = new_body;
+                fn_decl->parameters.items[arg_i].base.type = ll_typer_get_type_from_typename(cc, typer, fn_decl->parameters.items[arg_i].type);
 
-                typer->current_scope = old_scope;
+                LL_Scope_Macro_Parameter* scope = create_scope_macro_parameter(&fn_decl->parameters.items[arg_i]);
+                scope->ident = fn_decl->parameters.items[arg_i].ident;
+                scope->value = ordered_args[arg_i];
+
+                ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
             }
+
+            (void)ll_typer_type_expression(cc, typer, &new_body, expected_type, resolve_result);
+            *expr = new_body;
+
+            typer->current_scope = old_scope;
         }
 
         result = fn_type->return_type;
@@ -2154,6 +2196,8 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
             result = typer->ty_string;
         } else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_VOID.ptr) {
             result = typer->ty_void;
+        } else if (string_eql(AST_AS(typename, Ast_Ident)->str, lit("code_ref"))) {
+            result = typer->ty_code_ref;
         }
         if (result) break;
 
@@ -2255,6 +2299,9 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
         // wprint(w, "named {} (", ((LL_Type_Named*)type)->scope->ident->str);
         // ll_print_type_raw(((LL_Type_Named*)type)->actual_type, w);
         // wprint(w, ")");
+        break;
+    case LL_TYPE_CODE_REF:
+        wprint(w, "code_ref");
         break;
     default: oc_assert(false); break;
     }
