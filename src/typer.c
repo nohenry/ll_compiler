@@ -762,25 +762,37 @@ static LL_Eval_Value const_value_cast(LL_Eval_Value from, LL_Type* from_type, LL
     if (from_type == to_type) return from;
 
     switch (from_type->kind) {
+    case LL_TYPE_ANYINT:
     case LL_TYPE_INT:
         switch (to_type->kind) {
+        case LL_TYPE_INT:
+            result.ival = from.ival;
+            break;
         case LL_TYPE_UINT:
             result.uval = from.ival;
             break;
         case LL_TYPE_FLOAT:
             result.fval = from.ival;
-        default: oc_todo("implement const cast"); break;
+            break;
+        default: ll_print_type(to_type); oc_todo("implement const cast"); break;
         }
+        break;
     case LL_TYPE_UINT:
         switch (to_type->kind) {
+        case LL_TYPE_UINT:
+            result.uval = from.uval;
+            break;
+        case LL_TYPE_ANYINT:
         case LL_TYPE_INT:
             result.ival = from.uval;
             break;
         case LL_TYPE_FLOAT:
             result.fval = from.ival;
+            break;
         default: oc_todo("implement const cast"); break;
         }
-    default: oc_todo("implement const cast"); break;
+        break;
+    default: ll_print_type(from_type); oc_todo("implement const cast"); break;
     }
 
     return result;
@@ -1826,7 +1838,9 @@ TRY_MEMBER_FUNCTION_CALL:
     case AST_KIND_INDEX: {
         Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
         result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
-        ll_typer_type_expression(cc, typer, &cf->start, typer->ty_int32, NULL);
+        ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
+
+        ll_typer_add_implicit_cast(cc, typer, &cf->start, typer->ty_int64);
 
         switch (result->kind) {
         case LL_TYPE_ARRAY:

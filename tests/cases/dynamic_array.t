@@ -24,13 +24,17 @@ void macro append(%D dyn, %T value) {
         dyn.data = realloc(dyn.data, dyn.capacity * dyn.stride);
     }
     T* ptr = dyn.data;
-    ptr[dyn.count] = value;
+    ptr[dyn.count - 1] = value;
 }
 
 void main() {
     Dynamic_Array d = create();
     d.append(cast(uint64)5);
+    d.append(cast(uint64)10);
+    d.append(cast(uint64)17);
 
     int64* ptr = d.data;
     write_int(ptr[0]);
+    write_int(ptr[1]);
+    write_int(ptr[2]);
 }

@@ -753,6 +753,7 @@ DO_BIN_OP_ASSIGN_OP:
         break;
     case AST_KIND_CAST: {
         Ast_Cast* cast = AST_AS(expr, Ast_Cast);
+        b->last_op_was_load = false;
         result = ir_generate_expression(cc, b, cast->expr, false);
         if (b->last_op_was_load) {
             // merge cast into load
