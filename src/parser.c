@@ -516,7 +516,9 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                 if (next_bin_precedence != 0 && next_bin_precedence > bin_precedence) {
                     right = parser_parse_expression(cc, parser, right, bin_precedence + 1, false);
                 } else if (next_post_precedence != 0 && next_post_precedence > bin_precedence) {
-                    right = parser_parse_expression(cc, parser, right, next_post_precedence, false);
+                    Ast_Base* new_right = parser_parse_expression(cc, parser, right, next_post_precedence, false);
+                    if (new_right == right) break;
+                    right = new_right;
                 } else break;
             }
 
@@ -559,7 +561,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                     break;
                 }
                 case '*': {
-                    if (!from_statement) break;
+                    if (!from_statement) return left;
                     CONSUME();
                     
                     left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
