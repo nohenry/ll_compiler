@@ -35,6 +35,7 @@ typedef enum {
     AST_KIND_INDEX,
     AST_KIND_SLICE,
     AST_KIND_CAST,
+    AST_KIND_GENERIC,
     AST_KIND_TYPE_POINTER,
 } Ast_Kind;
 
@@ -61,11 +62,17 @@ typedef struct {
 
 #define AST_IDENT_SYMBOL_INVALID ((int32_t)-1)
 
+typedef uint32_t Ast_Ident_Flags;
+enum {
+    AST_IDENT_FLAG_EXPAND = (1u << 0u),
+};
+
 typedef struct {
     Ast_Base base;
     string str;
     struct scope_map* resolved_scope;
     int32_t symbol_index;
+    Ast_Ident_Flags flags;
 } Ast_Ident;
 
 typedef struct {
@@ -228,6 +235,11 @@ typedef struct {
 
 typedef struct {
     Ast_Base base;
+    Ast_Ident* ident;
+} Ast_Generic;
+
+typedef struct {
+    Ast_Base base;
     Ast_Base* element;
 } Ast_Type_Pointer;
 
@@ -236,6 +248,7 @@ typedef struct {
 
 typedef struct {
     bool expand_first_block;
+    bool convert_all_idents_to_expansion;
 } LL_Ast_Clone_Params;
 
 const char* ast_get_node_kind(Ast_Base* node);

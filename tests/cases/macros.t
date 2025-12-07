@@ -10,8 +10,8 @@ void macro create_hoisted_var() {
     int $b = 45; // this variable is created in caller's scope
 }
 
-void macro member(int a) {
-    int $res = 69;
+void macro member(%T a, int b) {
+    T $res = a + b;
 }
 
 void main() {
@@ -26,6 +26,10 @@ void main() {
     create_hoisted_var();
     write_int(b);
 
-    123.member();
+    int number = 123;
+    member(number, 4);
+    write_int(res);
+
+    number.member(7);
     write_int(res);
 }

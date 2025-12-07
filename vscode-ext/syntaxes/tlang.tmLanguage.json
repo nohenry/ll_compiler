@@ -61,7 +61,16 @@
                     "name": "entity.name.type.tlang"
                 },
                 "3": {
-                    "name": "variable.tlang"
+                    "patterns": [ 
+                        {
+                            "match": "\\bmacro\\b",
+                            "name": "keyword.tlang"
+                        },
+                        {
+                            "name": "variable.tlang",
+                            "match": "[a-zA-Z_][a-zA-Z0-9_]*"
+                        }
+                    ]
                 },
                 "2": {
                     "name": "entity.name.function.tlang"
@@ -143,6 +152,10 @@
                 {
                     "name": "entity.name.type.tlang",
                     "match": "(?<=struct\\s*)[a-zA-Z_][a-zA-Z0-9_]*"
+                },
+                {
+                    "name": "entity.name.type.tlang",
+                    "match": "[A-Z_][a-zA-Z0-9_]*"
                 },
                 {
                     "name": "entity.name.function.tlang",

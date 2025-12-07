@@ -997,6 +997,10 @@ DO_BIN_OP_ASSIGN_OP:
             oc_assert(!lvalue);
             result = LL_IR_OPERAND_IMMEDIATE_BIT | 0u;
             break;
+        } else if (AST_AS(expr, Ast_Ident)->str.ptr == LL_KEYWORD_NULL.ptr) {
+            oc_assert(!lvalue);
+            result = LL_IR_OPERAND_IMMEDIATE_BIT | 0u;
+            break;
         }
 
         Ast_Base* decl = ident->resolved_scope->decl;

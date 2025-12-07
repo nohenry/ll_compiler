@@ -301,6 +301,7 @@ DONE_NUMBER:
         case ';':
         case ',':
         case '&':
+        case '%':
             out->kind = (LL_Token_Kind)lexer->source.ptr[lexer->pos++];
             return true;
 

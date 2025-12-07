@@ -258,6 +258,10 @@ void* native_malloc(uword u) {
     return malloc(u);
 }
 
+void* native_realloc(void* ptr, uword u) {
+    return realloc(ptr, u);
+}
+
 void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     b->arena = &cc->arena;
     b->w.append_u8 = x86_64_append_op_segment_u8;
@@ -277,6 +281,7 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     ll_native_fn_put(cc, b, lit("write_float64"), native_write_float64);
     ll_native_fn_put(cc, b, lit("write_many"), native_write_many);
     ll_native_fn_put(cc, b, lit("malloc"), native_malloc);
+    ll_native_fn_put(cc, b, lit("realloc"), native_realloc);
 }
 
 
@@ -1366,7 +1371,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 case LL_IR_OPERAND_REGISTER_BIT: {
                     params.use_sib = 1 | X86_64_SIB_INDEX | X86_64_SIB_SCALE;
                     params.index = b->registers.items[OPD_VALUE(operands[2])];
-                    oc_todo("i don't think this is right");
+                    // oc_todo("i don't think this is right");
 
                     switch (OPD_VALUE(operands[3])) {
                     case 1: params.scale = 0; break;

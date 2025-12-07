@@ -14,6 +14,7 @@ typedef enum {
     LL_SCOPE_KIND_LOCAL,
 	LL_SCOPE_KIND_FIELD,
     LL_SCOPE_KIND_PARAMETER,
+    LL_SCOPE_KIND_MACRO_PARAMETER,
     LL_SCOPE_KIND_FUNCTION,
     LL_SCOPE_KIND_LOOP,
     LL_SCOPE_KIND_BLOCK,
@@ -40,6 +41,14 @@ typedef struct {
     Ast_Ident* ident;
     Ast_Base* decl;
 } LL_Scope_Simple;
+
+typedef struct {
+    LL_Scope_Kind kind;
+    struct scope_map* parent;
+    Ast_Ident* ident;
+    Ast_Base* decl;
+    Ast_Base* value;
+} LL_Scope_Macro_Parameter;
 
 typedef enum {
     LL_TYPE_VOID,
@@ -176,9 +185,10 @@ bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typ
 
 void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist);
 LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
-LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, string symbol_name);
+LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Ast_Ident* ident);
 
 void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
 
 
+void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type);
 LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type);

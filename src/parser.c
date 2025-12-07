@@ -68,6 +68,17 @@ static Ast_Base* create_node(Compiler_Context* cc, Ast_Base* node, size_t size) 
     return oc_arena_dup(&cc->arena, node, size);
 }
 
+static Ast_Ident* create_ident(Compiler_Context* cc, string sym) {
+    Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = sym, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
+    if (ident->str.ptr[0] == '$') {
+        ident->str.ptr++;
+        ident->str.len--;
+        ident->str = ll_intern_string(cc, ident->str);
+        ident->flags |= AST_IDENT_FLAG_EXPAND;
+    }
+    return ident;
+}
+
 static void unexpected_token(Compiler_Context* cc, LL_Parser* parser, char* file, int line) {
     LL_Token tok;
     PEEK(&tok);
@@ -197,12 +208,19 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         CONSUME();
         type = NULL;
         flags |= LL_PARAMETER_FLAG_VARIADIC;	
+    } else if (token.kind == '%') {
+        CONSUME();
+        if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
+        Ast_Ident* ident = create_ident(cc, token.str);
+        ident->base.token_info = TOKEN_INFO(token);
+
+        type = CREATE_NODE(AST_KIND_GENERIC, ((Ast_Generic) { .ident = ident }));
     } else {
         type = parser_parse_expression(cc, parser, NULL, 0, true);
     }
 
     if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
-    Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
+    Ast_Ident* ident = create_ident(cc, token.str);
     ident->base.token_info = TOKEN_INFO(token);
 
     PEEK(&token);
@@ -237,7 +255,7 @@ Ast_Base* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
     PEEK(&token);
     if (token.kind == LL_TOKEN_KIND_IDENT) {
         CONSUME();
-        ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
+        ident = create_ident(cc, token.str);
         ident->base.token_info = TOKEN_INFO(token);
     }
 
@@ -267,7 +285,7 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
         storage_class |= LL_STORAGE_CLASS_MACRO;
         EXPECT(LL_TOKEN_KIND_IDENT, &token);
     }
-    Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
+    Ast_Ident* ident = create_ident(cc, token.str);
     ident->base.token_info = TOKEN_INFO(token);
 
     bool fn = false;
@@ -494,8 +512,11 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
             right = parser_parse_primary(cc, parser, false);
             while (PEEK(&token)) {
                 int next_bin_precedence = get_binary_precedence(token, false);
+                int next_post_precedence = get_postfix_precedence(token);
                 if (next_bin_precedence != 0 && next_bin_precedence > bin_precedence) {
                     right = parser_parse_expression(cc, parser, right, bin_precedence + 1, false);
+                } else if (next_post_precedence != 0 && next_post_precedence > bin_precedence) {
+                    right = parser_parse_expression(cc, parser, right, next_post_precedence, false);
                 } else break;
             }
 
@@ -799,7 +820,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
             break;
         }
         CONSUME();
-        result = CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = token.str, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
+        result = (Ast_Base*)create_ident(cc, token.str);
         result->token_info = TOKEN_INFO(token);
         break;
 
@@ -844,6 +865,7 @@ const char* ast_get_node_kind(Ast_Base* node) {
         case AST_KIND_SLICE: return "Slice";
         case AST_KIND_CAST: return "Cast";
         case AST_KIND_STRUCT: return "Struct";
+        case AST_KIND_GENERIC: return "Generic";
         case AST_KIND_TYPE_POINTER: return "Pointer";
         default: oc_unreachable("");
     }
@@ -873,6 +895,7 @@ void print_node_value(Ast_Base* node, Oc_Writer* w) {
         case AST_KIND_FOR: break;
         case AST_KIND_INDEX: break;
         case AST_KIND_SLICE: break;
+        case AST_KIND_GENERIC: break;
         case AST_KIND_CAST:
             if (node->type)
                 ll_print_type_raw(node->type, &stdout_writer);
@@ -1008,6 +1031,10 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
             for (i = 0; i < AST_AS(node, Ast_Struct)->body.count; ++i) {
                 print_node(AST_AS(node, Ast_Struct)->body.items[i], indent + 1, w);
             }
+            break;
+
+        case AST_KIND_GENERIC:
+            print_node((Ast_Base*)AST_AS(node, Ast_Generic)->ident, indent + 1, w);
             break;
 
         case AST_KIND_TYPE_POINTER:
@@ -1172,6 +1199,12 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
         }));
     } break;
 
+    case AST_KIND_GENERIC:
+        result = CREATE_NODE(node->kind, ((Ast_Generic){
+            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Generic)->ident, params),
+        }));
+        break;
+
     case AST_KIND_TYPE_POINTER:
         result = CREATE_NODE(node->kind, ((Ast_Type_Pointer){
             .element = ast_clone_node_deep(cc, AST_AS(node, Ast_Type_Pointer)->element, params),
@@ -1214,6 +1247,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
     case AST_KIND_IDENT: {
         result = CREATE_NODE(node->kind, ((Ast_Ident){
             .str = AST_AS(node, Ast_Ident)->str,
+            .flags = AST_AS(node, Ast_Ident)->flags | (params.convert_all_idents_to_expansion ? AST_IDENT_FLAG_EXPAND : 0),
         }));
     } break;
     // default: oc_unreachable(""); break;

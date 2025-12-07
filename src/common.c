@@ -107,6 +107,7 @@ string LL_KEYWORD_BOOL32;
 string LL_KEYWORD_BOOL64;
 string LL_KEYWORD_TRUE;
 string LL_KEYWORD_FALSE;
+string LL_KEYWORD_NULL;
 
 string LL_KEYWORD_UINT;
 string LL_KEYWORD_UINT8;
@@ -150,6 +151,7 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_BOOL64 = ll_intern_string(&result, lit("bool64"));
     LL_KEYWORD_TRUE = ll_intern_string(&result, lit("true"));
     LL_KEYWORD_FALSE = ll_intern_string(&result, lit("false"));
+    LL_KEYWORD_NULL = ll_intern_string(&result, lit("null"));
 
     LL_KEYWORD_UINT = ll_intern_string(&result, lit("uint"));
     LL_KEYWORD_UINT8 = ll_intern_string(&result, lit("uint8"));

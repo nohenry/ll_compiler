@@ -56,6 +56,7 @@ extern string LL_KEYWORD_BOOL32;
 extern string LL_KEYWORD_BOOL64;
 extern string LL_KEYWORD_TRUE;
 extern string LL_KEYWORD_FALSE;
+extern string LL_KEYWORD_NULL;
 
 extern string LL_KEYWORD_UINT8;
 extern string LL_KEYWORD_UINT16;
