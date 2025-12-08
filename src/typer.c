@@ -1985,6 +1985,8 @@ TRY_MEMBER_FUNCTION_CALL:
         switch (result->kind) {
         case LL_TYPE_SLICE:
             break;
+        case LL_TYPE_STRING:
+            break;
         default:
             ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Slice expression requires an array, pointer, or slice type on the left");
             ll_typer_report_error_no_src(" found type ");

@@ -977,17 +977,27 @@ DO_BIN_OP_ASSIGN_OP:
         LL_Ir_Operand start_op = op->start ? ir_generate_expression(cc, b, op->start, false) : 0;
         LL_Ir_Operand stop_op = op->stop ? ir_generate_expression(cc, b, op->stop, false) : 0;
         LL_Ir_Operand lvalue_op, ptr_op, inc_op;
+        LL_Type* size_type = cc->typer->ty_uint64;
+        LL_Type* ptr_size_type = ll_typer_get_ptr_type(cc, cc->typer, size_type);
+
+        LL_Type* ptr_element_type;
+        LL_Type* ptr_ptr_element_type;
+        LL_Backend_Layout layout;
+
         switch (op->ptr->type->kind) {
         case LL_TYPE_STRING:
+            layout = cc->target->get_layout(cc->typer->ty_char);
+            ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, cc->typer->ty_char);
+            ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
+            goto HANDLE_SLICE_OP;
         case LL_TYPE_SLICE:
+            layout = cc->target->get_layout(((LL_Type_Slice*)op->ptr->type)->element_type);
+            ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ((LL_Type_Slice*)op->ptr->type)->element_type);
+            ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
+
+HANDLE_SLICE_OP:
             lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
             lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, op->ptr->type, lvalue_op);
-            LL_Backend_Layout layout = cc->target->get_layout(((LL_Type_Slice*)op->ptr->type)->element_type);
-
-            LL_Type* ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ((LL_Type_Slice*)op->ptr->type)->element_type);
-            LL_Type* ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
-            LL_Type* size_type = cc->typer->ty_uint64;
-            LL_Type* ptr_size_type = ll_typer_get_ptr_type(cc, cc->typer, size_type);
 
             if (op->start) {
                 ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_ptr_element_type, lvalue_op, 0, 8);
@@ -1015,7 +1025,7 @@ DO_BIN_OP_ASSIGN_OP:
             break;
         }
 
-        LL_Backend_Layout layout = cc->target->get_layout(expr->type);
+        // LL_Backend_Layout layout = cc->target->get_layout(expr->type);
 
         // LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, expr->type);
         // result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_type, lvalue_op, start_op, max(layout.size, layout.alignment));
