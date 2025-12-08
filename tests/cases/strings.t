@@ -1,4 +1,9 @@
 native void write_int(int64 v);
+native void write_string(string s);
+
+void print_string(string* s) {
+    write_string(*s);
+}
 
 void main() {
     string a = "fosbar";
@@ -13,4 +18,7 @@ void main() {
     cslice = cslice[1:3];
     write_int(v = cast(int64)cslice.length);
     write_int(v = cast(int64)cslice[0]);
+
+    print_string(&a);
+    write_string(a);
 }

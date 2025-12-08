@@ -249,6 +249,18 @@ void native_write_float64(double u) {
     print("{}\n", round(u * 10.0) / 10.0);
 }
 
+struct native_string {
+    char* data;
+    uword length;
+};
+
+void native_write_string(struct native_string str) {
+    string s = {
+        .ptr = str.data,
+        .len = str.length,
+    };
+    print("{}\n", s);
+}
 
 void native_write_many(int a, int b, int c, int d, int e, int f, int g) {
     print("{} {} {} {} {} {} {}\n", a, b, c, d, e, f, g);
@@ -279,6 +291,7 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     ll_native_fn_put(cc, b, lit("write_int"), native_write);
     ll_native_fn_put(cc, b, lit("write_float32"), native_write_float32);
     ll_native_fn_put(cc, b, lit("write_float64"), native_write_float64);
+    ll_native_fn_put(cc, b, lit("write_string"), native_write_string);
     ll_native_fn_put(cc, b, lit("write_many"), native_write_many);
     ll_native_fn_put(cc, b, lit("malloc"), native_malloc);
     ll_native_fn_put(cc, b, lit("realloc"), native_realloc);
@@ -923,6 +936,7 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
         }
 
         switch (element_type->kind)  {
+        case LL_TYPE_STRING:
         case LL_TYPE_STRUCT: {
             LL_Backend_Layout struct_layout = x86_64_get_layout(element_type);
             size_t actual_size = max(struct_layout.size, struct_layout.alignment);
@@ -933,7 +947,6 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
         } break;
         case LL_TYPE_FLOAT:
         case LL_TYPE_POINTER:
-        case LL_TYPE_STRING:
         case LL_TYPE_ANYBOOL:
         case LL_TYPE_BOOL:
         case LL_TYPE_CHAR:
