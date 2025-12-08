@@ -51,6 +51,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
     case LL_IR_OPCODE_STORE: return 3;
     case LL_IR_OPCODE_MEMCOPY: return 4;
     case LL_IR_OPCODE_LOAD: return 3;
+    case LL_IR_OPCODE_CLONE: return 3;
     case LL_IR_OPCODE_CAST: return 3;
 
     case LL_IR_OPCODE_SUB:
@@ -113,6 +114,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     case LL_IR_OPCODE_STORE:       wprint(w, INDENT "store " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_MEMCOPY:     wprint(w, INDENT "memcpy " OPERAND_FMT ", " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_LOAD:        wprint(w, INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+    case LL_IR_OPCODE_CLONE:       wprint(w, INDENT OPERAND_FMT " = clone " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_LEA:         wprint(w, INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_LEA_INDEX:
         if (LL_IR_OPERAND_IMMEDIATE_SIGN & OPD_VALUE(operands[3])) {
@@ -166,6 +168,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
             case LL_IR_OPCODE_STORE:
             case LL_IR_OPCODE_MEMCOPY:
             case LL_IR_OPCODE_LOAD:
+            case LL_IR_OPCODE_CLONE:
             case LL_IR_OPCODE_LEA:
             case LL_IR_OPCODE_LEA_INDEX:
             case LL_IR_OPCODE_CAST:
@@ -997,7 +1000,7 @@ DO_BIN_OP_ASSIGN_OP:
 
 HANDLE_SLICE_OP:
             lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
-            lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, op->ptr->type, lvalue_op);
+            lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_CLONE, op->ptr->type, lvalue_op);
 
             if (op->start) {
                 ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_ptr_element_type, lvalue_op, 0, 8);

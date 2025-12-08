@@ -910,6 +910,90 @@ static Move_Info x86_64_get_move_info(Compiler_Context* cc, X86_64_Backend* b, L
     return result;
 }
 
+static void x86_64_generate_clone_cast(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand dst, LL_Ir_Operand src) {
+    X86_64_Instruction_Parameters params = { 0 };
+    X86_64_Operand_Register reg = x86_64_backend_active_registers[b->active_register_top];
+    Move_Info move_info;
+
+    LL_Type* src_type;
+    LL_Type* dst_type = ir_get_operand_type(bir, b->fn, dst);
+
+    switch (OPD_TYPE(src)) {
+    case LL_IR_OPERAND_IMMEDIATE_BIT:
+    case LL_IR_OPERAND_IMMEDIATE64_BIT:
+        src_type = dst_type;
+        break;
+    default:
+        src_type = ir_get_operand_type(bir, b->fn, src);
+        break;
+    }
+
+    oc_assert(OPD_TYPE(dst) == LL_IR_OPERAND_REGISTER_BIT);
+    oc_assert(src_type == dst_type);
+
+    LL_Backend_Layout struct_layout = x86_64_get_layout(src_type);
+    size_t actual_size = max(struct_layout.size, struct_layout.alignment);
+
+    switch (OPD_TYPE(src)) {
+    case LL_IR_OPERAND_LOCAL_BIT: {
+        switch (src_type->kind) {
+        case LL_TYPE_ARRAY:
+        case LL_TYPE_STRING:
+        case LL_TYPE_SLICE:
+            goto HANDLE_CLONE_STRUCT;
+        case LL_TYPE_STRUCT: {
+            if (actual_size <= 8) goto HANDLE_CLONE_LOCAL_INTEGRAL;
+
+HANDLE_CLONE_STRUCT: (void)0;
+            uword dst_offset = x86_64_make_struct_copy(cc, b, bir, src_type, 0, true);
+
+            { // memcpy
+                params.reg0 = X86_64_OPERAND_REGISTER_rdi;
+                params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                params.displacement = -(long long int)dst_offset;
+                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+
+                params.reg0 = X86_64_OPERAND_REGISTER_rsi;
+                params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                params.displacement = -b->locals.items[OPD_VALUE(src)];
+                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+
+                x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, src_type, LL_IR_OPERAND_IMMEDIATE_BIT | actual_size, cc->typer->ty_uint64);
+            }
+
+            params.reg0 = reg;
+            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+            params.displacement = -(long long int)dst_offset;
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+            
+            uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+            b->registers.items[OPD_VALUE(dst)] = offset;
+        } break;
+        case LL_TYPE_FLOAT:
+        case LL_TYPE_POINTER:
+        case LL_TYPE_ANYBOOL:
+        case LL_TYPE_BOOL:
+        case LL_TYPE_CHAR:
+        case LL_TYPE_ANYINT:
+        case LL_TYPE_UINT:
+        case LL_TYPE_INT: {
+    HANDLE_CLONE_LOCAL_INTEGRAL:
+            params.reg0 = reg;
+            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+            params.displacement = -b->locals.items[OPD_VALUE(src)];
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
+            // TODO: should we handle move_info.explicit_cast_instruction (casting)
+
+            uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+            b->registers.items[OPD_VALUE(dst)] = offset;
+        } break;
+        default: oc_todo("handle type"); break;
+        }
+    } break;
+    default: oc_todo("unimeplented operand"); break;
+    }
+}
+
 static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand dst, LL_Ir_Operand src, bool cast) {
     X86_64_Instruction_Parameters params = { 0 };
     X86_64_Operand_Register reg = x86_64_backend_active_registers[b->active_register_top];
@@ -1424,6 +1508,9 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
         } break;
         case LL_IR_OPCODE_LOAD: {
             x86_64_generate_load_cast(cc, b, bir, operands[0], operands[1], false);
+        } break;
+        case LL_IR_OPCODE_CLONE: {
+            x86_64_generate_clone_cast(cc, b, bir, operands[0], operands[1]);
         } break;
 
         case LL_IR_OPCODE_MEMCOPY: {

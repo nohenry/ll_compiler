@@ -42,6 +42,7 @@ enum {
     LL_IR_OPCODE_STORE,     // x
     LL_IR_OPCODE_MEMCOPY,   // 
     LL_IR_OPCODE_LOAD,      // x
+    LL_IR_OPCODE_CLONE,      // x
     // operands: invokee, arg_count, arg0, arg1, ... arg(arg_count-1)
     LL_IR_OPCODE_INVOKE,    // x
     // operands: result_register, invokee, arg_count, arg0, arg1, ... arg(arg_count-1)

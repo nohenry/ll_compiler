@@ -7,4 +7,4 @@ fosbar
 fosbar
 fosbar
 bar
-ba
+fo
