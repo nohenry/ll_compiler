@@ -7,7 +7,7 @@
 static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand lvalue, LL_Eval_Value rvalue) {
     (void)cc;
     LL_Type* type;
-    type = ir_get_operand_type(FUNCTION(), lvalue);
+    type = ir_get_operand_type(bir, FUNCTION(), lvalue);
 
     switch (OPD_TYPE(lvalue)) {
     case LL_IR_OPERAND_LOCAL_BIT: {
@@ -49,7 +49,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         result.uval = OPD_VALUE(lvalue);
         break;
     case LL_IR_OPERAND_LOCAL_BIT: {
-        type = ir_get_operand_type(FUNCTION(), lvalue);
+        type = ir_get_operand_type(bir, FUNCTION(), lvalue);
         switch (type->kind) {
         case LL_TYPE_ANYBOOL:
         case LL_TYPE_BOOL:
@@ -65,7 +65,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         break;
     }
     case LL_IR_OPERAND_REGISTER_BIT: {
-        type = ir_get_operand_type(FUNCTION(), lvalue);
+        type = ir_get_operand_type(bir, FUNCTION(), lvalue);
         switch (type->kind) {
         case LL_TYPE_ANYBOOL:
         case LL_TYPE_BOOL:
@@ -88,7 +88,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
 
 static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand result, LL_Ir_Operand src, bool load) {
     (void)cc;
-    LL_Type* to_type = ir_get_operand_type(FUNCTION(), result);
+    LL_Type* to_type = ir_get_operand_type(bir, FUNCTION(), result);
     // @TODO: why did we have this???
     // LL_Type* from_type;
 
@@ -98,7 +98,7 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     //     break;
     // }
     // case LL_IR_OPERAND_REGISTER_BIT: {
-    //     from_type = ir_get_operand_type(FUNCTION(), src);
+    //     from_type = ir_get_operand_type(bir, FUNCTION(), src);
     //     break;
     // }
     // case LL_IR_OPERAND_IMMEDIATE_BIT: {
@@ -189,7 +189,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
         }
 
 #define DO_OP(op) \
-            type = ir_get_operand_type(FUNCTION(), operands[0]); \
+            type = ir_get_operand_type(bir, FUNCTION(), operands[0]); \
             switch (type->kind) { \
             case LL_TYPE_INT: \
                 b->registers.items[OPD_VALUE(operands[0])].uval = (b->registers.items[OPD_VALUE(operands[1])].ival op b->registers.items[OPD_VALUE(operands[2])].ival) ? 1 : 0; \
@@ -211,7 +211,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
         case LL_IR_OPCODE_LT: DO_OP(<); break;
 #undef DO_OP
 #define DO_OP(op) \
-            type = ir_get_operand_type(FUNCTION(), operands[0]); \
+            type = ir_get_operand_type(bir, FUNCTION(), operands[0]); \
             switch (type->kind) { \
             case LL_TYPE_INT: \
                 b->registers.items[OPD_VALUE(operands[0])].ival = ll_eval_get_value(cc, b, bir, operands[1]).ival op ll_eval_get_value(cc, b, bir, operands[2]).ival; \

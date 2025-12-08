@@ -125,6 +125,7 @@ string LL_KEYWORD_FLOAT64;
 string LL_KEYWORD_FLOAT;
 string LL_KEYWORD_STRING;
 string LL_KEYWORD_VOID;
+string LL_KEYWORD_CHAR;
 
 Compiler_Context ll_compiler_context_create() {
     Compiler_Context result = { 0 };
@@ -169,6 +170,7 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_FLOAT = ll_intern_string(&result, lit("float"));
     LL_KEYWORD_STRING = ll_intern_string(&result, lit("string"));
     LL_KEYWORD_VOID = ll_intern_string(&result, lit("void"));
+    LL_KEYWORD_CHAR = ll_intern_string(&result, lit("char"));
 
     return result;
 }

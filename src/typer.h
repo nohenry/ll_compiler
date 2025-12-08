@@ -52,6 +52,7 @@ typedef struct {
 
 typedef enum {
     LL_TYPE_VOID,
+    LL_TYPE_CHAR,
     LL_TYPE_INT,
     LL_TYPE_UINT,
     LL_TYPE_ANYINT,
@@ -155,7 +156,7 @@ typedef struct ll_typer {
             *ty_anyfloat,
             *ty_void,
             *ty_string,
-            *ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool, *ty_code_ref;
+            *ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool, *ty_code_ref, *ty_char;
     
     LL_Type_Function* current_fn;
     LL_Type* block_type;

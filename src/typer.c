@@ -85,6 +85,7 @@ LL_Typer ll_typer_create(Compiler_Context* cc) {
 
     result.ty_string = create_type(((LL_Type){ .kind = LL_TYPE_STRING }));
     result.ty_code_ref = create_type(((LL_Type){ .kind = LL_TYPE_CODE_REF }));
+    result.ty_char = create_type(((LL_Type){ .kind = LL_TYPE_CHAR, .width = 8 }));
 
     return result;
 }
@@ -807,8 +808,19 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
     }
 
     switch (src_type->kind) {
+    case LL_TYPE_CHAR:
+        switch (dst_type->kind) {
+        case LL_TYPE_CHAR:
+        case LL_TYPE_INT:
+        case LL_TYPE_UINT:
+            return true;
+        default: break;
+        }
+        break;
+
     case LL_TYPE_INT:
         switch (dst_type->kind) {
+        case LL_TYPE_CHAR:
         case LL_TYPE_INT:
         case LL_TYPE_UINT:
         case LL_TYPE_FLOAT:
@@ -818,6 +830,7 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         break;
     case LL_TYPE_UINT:
         switch (dst_type->kind) {
+        case LL_TYPE_CHAR:
         case LL_TYPE_INT:
         case LL_TYPE_UINT:
         case LL_TYPE_FLOAT:
@@ -829,6 +842,8 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         switch (dst_type->kind) {
         case LL_TYPE_SLICE:
             return ((LL_Type_Slice*)dst_type)->element_type == ((LL_Type_Array*)src_type)->element_type;
+        case LL_TYPE_STRING:
+            return ((LL_Type_Array*)src_type)->element_type == typer->ty_char;
         default: break;
         }
         break;
@@ -882,10 +897,20 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
         default: break;
         }
         break;
+    case LL_TYPE_STRING:
+        switch (dst_type->kind) {
+        case LL_TYPE_SLICE:
+            return ((LL_Type_Slice*)dst_type)->element_type == typer->ty_char;
+        default: break;
+        }
+        break;
+
     case LL_TYPE_ARRAY:
         switch (dst_type->kind) {
         case LL_TYPE_SLICE:
             return ((LL_Type_Slice*)dst_type)->element_type == ((LL_Type_Array*)src_type)->element_type;
+        case LL_TYPE_STRING:
+            return ((LL_Type_Array*)src_type)->element_type == typer->ty_char;
         default: break;
         }
         break;
@@ -1106,7 +1131,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         }
         break;
     case AST_KIND_LITERAL_STRING:
-        result = typer->ty_string;
+        result = ll_typer_get_array_type(cc, typer, typer->ty_char, AST_AS((*expr), Ast_Literal)->str.len);
+        // result = typer->ty_string;
         break;
     case AST_KIND_ARRAY_INITIALIZER: {
         Ast_Initializer* init = AST_AS((*expr), Ast_Initializer);
@@ -1176,12 +1202,26 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                     base_type = ((LL_Type_Named*)base_type)->actual_type;
                 }
 
-                if (base_type->kind == LL_TYPE_SLICE || base_type->kind == LL_TYPE_ARRAY) {
-                    if (string_eql(right_ident->str, lit("length"))) {
+                if (base_type->kind == LL_TYPE_SLICE || base_type->kind == LL_TYPE_STRING || base_type->kind == LL_TYPE_ARRAY) {
+                    if (string_eql(right_ident->str, lit("data"))) {
+                        switch (base_type->kind) {
+                        case LL_TYPE_SLICE:
+                            right_ident->base.type = ((LL_Type_Slice*)base_type)->element_type;
+                            break;
+                        case LL_TYPE_ARRAY:
+                            right_ident->base.type = ((LL_Type_Array*)base_type)->element_type;
+                            break;
+                        case LL_TYPE_STRING:
+                            right_ident->base.type = typer->ty_char;
+                            break;
+                        default: oc_unreachable("invalid type"); break;
+                        }
+                    } else if (string_eql(right_ident->str, lit("length"))) {
                         right_ident->base.type = typer->ty_uint64;
-                        (*expr)->type = right_ident->base.type;
-                        return right_ident->base.type;
                     }
+
+                    (*expr)->type = right_ident->base.type;
+                    return right_ident->base.type;
                 }
 
                 if (!base_scope) {
@@ -1760,7 +1800,7 @@ TRY_MEMBER_FUNCTION_CALL:
                     ll_print_type_raw(provided_type, &stderr_writer);
                     eprint(" to it. You can try explicitly casting the value with `cast(");
                     ll_print_type_raw(declared_type, &stderr_writer);
-                    eprint(")\x1b[0m\n");
+                    eprint(")`\x1b[0m\n");
 
                     ll_typer_report_error_done(cc, typer);
                 }
@@ -1895,7 +1935,7 @@ TRY_MEMBER_FUNCTION_CALL:
             result = ((LL_Type_Slice*)result)->element_type;
             break;
         case LL_TYPE_STRING:
-            result = typer->ty_uint8;
+            result = typer->ty_char;
             break;
         default:
             ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Index expression requires an array or pointer type on the left");
@@ -1910,8 +1950,8 @@ TRY_MEMBER_FUNCTION_CALL:
     case AST_KIND_SLICE: {
         Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
         result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
-        ll_typer_type_expression(cc, typer, &cf->start, typer->ty_uint64, NULL);
-        ll_typer_type_expression(cc, typer, &cf->stop, typer->ty_uint64, NULL);
+        if (cf->start) ll_typer_type_expression(cc, typer, &cf->start, typer->ty_uint64, NULL);
+        if (cf->stop) ll_typer_type_expression(cc, typer, &cf->stop, typer->ty_uint64, NULL);
 
         switch (result->kind) {
         case LL_TYPE_SLICE:
@@ -2196,6 +2236,8 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
             result = typer->ty_string;
         } else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_VOID.ptr) {
             result = typer->ty_void;
+        } else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_CHAR.ptr) {
+            result = typer->ty_char;
         } else if (string_eql(AST_AS(typename, Ast_Ident)->str, lit("code_ref"))) {
             result = typer->ty_code_ref;
         }
@@ -2251,6 +2293,7 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     case LL_TYPE_STRING:   wprint(w, "string"); break;
     case LL_TYPE_BOOL:     wprint(w, "bool{}", type->width); break;
     case LL_TYPE_ANYBOOL:  wprint(w, "bool"); break;
+    case LL_TYPE_CHAR:     wprint(w, "char"); break;
     case LL_TYPE_POINTER: {
         LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
         ll_print_type_raw(ptr_type->element_type, w);

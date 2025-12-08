@@ -144,6 +144,7 @@ typedef struct {
 typedef struct {
     void* ptr;
     size_t len, binary_offset;
+    LL_Type* type;
 } LL_Ir_Data_Item;
 
 typedef struct {
@@ -192,7 +193,7 @@ void ir_init(Compiler_Context* cc, LL_Backend_Ir* b);
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath);
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt);
 LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, bool ref);
-LL_Type* ir_get_operand_type(LL_Ir_Function* fn, LL_Ir_Operand operand);
+LL_Type* ir_get_operand_type(LL_Backend_Ir* bir, LL_Ir_Function* fn, LL_Ir_Operand operand);
 
 size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i);
 void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i, Oc_Writer* w);

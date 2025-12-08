@@ -1048,7 +1048,7 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
                 print_node(AST_AS(node, Ast_Block)->items[i], indent + 1, w);
             }
 
-        default: oc_unreachable("");
+        default: break;
     }
 }
 
