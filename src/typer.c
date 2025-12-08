@@ -99,6 +99,7 @@ typedef struct {
 #define ll_typer_report_error(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 #define ll_typer_report_error_info(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_info_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 #define ll_typer_report_error_note(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_note_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_no_src(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_no_src_raw((cc), (typer), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 
 void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_Info line_info, LL_Token_Info start_info, LL_Token_Info end_info, bool print_dot_dot_dot, bool print_underline) {
     (void)typer;
@@ -248,6 +249,24 @@ void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
     } else if (error.main_token.kind) {
         eprint(" {} | {}\n", line_info.line, line_info.line);
     }
+}
+
+void ll_typer_report_error_no_src_raw(Compiler_Context* cc, LL_Typer* typer, const char* fmt, ...) {
+    (void)cc;
+    (void)typer;
+    eprint("\x1b[0;1m");
+    va_list list;
+    va_start(list, fmt);
+    _oc_vprintw(&stderr_writer, fmt, list);
+    va_end(list);
+}
+
+void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type) {
+    (void)cc;
+    (void)typer;
+    eprint("\x1b[0;36m");
+    ll_print_type_raw(type, &stderr_writer);
+    eprint("\x1b[0m");
 }
 
 void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer) {
@@ -594,11 +613,11 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                 oc_assert(declared_type != NULL);
                 ll_typer_report_error(((LL_Error){ .main_token = var_decl->base.token_info }), "Can't assign value to variable");
 
-                eprint("\x1b[1m    variable is declared with type ");
-                ll_print_type_raw(declared_type, &stderr_writer);
-                eprint(", but tried to initialize it with type ");
-                ll_print_type_raw(init_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    variable is declared with type ");
+                ll_typer_report_error_type(cc, typer, declared_type);
+                ll_typer_report_error_no_src(", but tried to initialize it with type ");
+                ll_typer_report_error_type(cc, typer, init_type);
+                ll_typer_report_error_no_src("\n");
 
                 ll_typer_report_error_done(cc, typer);
             }
@@ -659,11 +678,11 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                     if (!ll_typer_implicit_cast_tofrom(cc, typer, init_type, types[i])) {
                         ll_typer_report_error(((LL_Error){ .main_token = parameter->base.token_info }), "Provided default parameter type does not match declared type of parameter");
 
-                        eprint("\x1b[1m    parameter is declared with type ");
-                        ll_print_type_raw(types[i], &stderr_writer);
-                        eprint(", but tried to assign default value with type ");
-                        ll_print_type_raw(init_type, &stderr_writer);
-                        eprint("\x1b[0m\n");
+                        ll_typer_report_error_no_src("    parameter is declared with type ");
+                        ll_typer_report_error_type(cc, typer, types[i]);
+                        ll_typer_report_error_no_src(", but tried to assign default value with type ");
+                        ll_typer_report_error_type(cc, typer, init_type);
+                        ll_typer_report_error_no_src("\n");
 
                         ll_typer_report_error_done(cc, typer);
                     }
@@ -1164,9 +1183,9 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                     oc_assert(provided_type != NULL);
                     oc_assert(arr_type->element_type != NULL);
                     eprint("\x1b[31;1merror\x1b[0;1m: array initializer element does not match declared type of array! Expected ");
-                    ll_print_type_raw(arr_type->element_type, &stderr_writer);
+                    ll_typer_report_error_type(cc, typer, arr_type->element_type);
                     eprint(" but got ");
-                    ll_print_type_raw(provided_type, &stderr_writer);
+                    ll_typer_report_error_type(cc, typer, provided_type);
                     eprint("\n");
                 }
             }
@@ -1313,13 +1332,13 @@ TRY_MEMBER_FUNCTION_CALL:
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't assign value to left hand side");
 
-                eprint("\x1b[1m    left hand side has the type ");
-                ll_print_type_raw(result, &stderr_writer);
-                eprint(", but tried to assign value with type ");
-                ll_print_type_raw(opr->right->type, &stderr_writer);
-                eprint(" to it. You can explicitly cast the value with `cast(");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(")\x1b[0m\n");
+                ll_typer_report_error_no_src("    left hand side has the type ");
+                ll_typer_report_error_type(cc, typer, result);
+                ll_typer_report_error_no_src(", but tried to assign value with type ");
+                ll_typer_report_error_type(cc, typer, opr->right->type);
+                ll_typer_report_error_no_src(" to it. You can explicitly cast the value with `cast(");
+                ll_typer_report_error_type(cc, typer, lhs_type);
+                ll_typer_report_error_no_src(")\n");
 
                 ll_typer_report_error_done(cc, typer);
                 break;
@@ -1337,13 +1356,13 @@ TRY_MEMBER_FUNCTION_CALL:
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, lhs_type)) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't assign value to left hand side");
 
-                eprint("\x1b[1m    left hand side has the type ");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(", but tried to assign value with type ");
-                ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint(" to it. You can explicitly cast the value with `cast(");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(")\x1b[0m\n");
+                ll_typer_report_error_no_src("    left hand side has the type ");
+                ll_typer_report_error_type(cc, typer, lhs_type);
+                ll_typer_report_error_no_src(", but tried to assign value with type ");
+                ll_typer_report_error_type(cc, typer, rhs_type);
+                ll_typer_report_error_no_src(" to it. You can explicitly cast the value with `cast(");
+                ll_typer_report_error_type(cc, typer, lhs_type);
+                ll_typer_report_error_no_src(")\n");
 
                 ll_typer_report_error_done(cc, typer);
                 break;
@@ -1385,15 +1404,15 @@ TRY_MEMBER_FUNCTION_CALL:
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
                     ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
 
-                    eprint("\x1b[1m    left hand side has the type ");
-                    ll_print_type_raw(lhs_type, &stderr_writer);
-                    eprint(", and right hand side has the type ");
-                    ll_print_type_raw(rhs_type, &stderr_writer);
-                    eprint("\n");
+                    ll_typer_report_error_no_src("    left hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, lhs_type);
+                    ll_typer_report_error_no_src(", and right hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, rhs_type);
+                    ll_typer_report_error_no_src("\n");
 
-                    eprint("    expecting type ");
-                    ll_print_type_raw(result, &stderr_writer);
-                    eprint("\x1b[0m\n");
+                    ll_typer_report_error_no_src("    expecting type ");
+                    ll_typer_report_error_type(cc, typer, result);
+                    ll_typer_report_error_no_src("\n");
                     ll_typer_report_error_done(cc, typer);
                     break;
                 }
@@ -1401,15 +1420,15 @@ TRY_MEMBER_FUNCTION_CALL:
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
                     ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
 
-                    eprint("\x1b[1m    left hand side has the type ");
-                    ll_print_type_raw(lhs_type, &stderr_writer);
-                    eprint(", and right hand side has the type ");
-                    ll_print_type_raw(rhs_type, &stderr_writer);
-                    eprint("\n");
+                    ll_typer_report_error_no_src("    left hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, lhs_type);
+                    ll_typer_report_error_no_src(", and right hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, rhs_type);
+                    ll_typer_report_error_no_src("\n");
 
-                    eprint("    expecting type ");
-                    ll_print_type_raw(result, &stderr_writer);
-                    eprint("\x1b[0m\n");
+                    ll_typer_report_error_no_src("    expecting type ");
+                    ll_typer_report_error_type(cc, typer, result);
+                    ll_typer_report_error_no_src("\n");
                     ll_typer_report_error_done(cc, typer);
                     break;
                 }
@@ -1419,11 +1438,11 @@ TRY_MEMBER_FUNCTION_CALL:
                 if (result == NULL) {
                     ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
 
-                    eprint("\x1b[1m    left hand side has the type ");
-                    ll_print_type_raw(lhs_type, &stderr_writer);
-                    eprint(", and right hand side has the type ");
-                    ll_print_type_raw(rhs_type, &stderr_writer);
-                    eprint("\x1b[0m\n");
+                    ll_typer_report_error_no_src("    left hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, lhs_type);
+                    ll_typer_report_error_no_src(", and right hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, rhs_type);
+                    ll_typer_report_error_no_src("\n");
 
                     ll_typer_report_error_done(cc, typer);
                     break;
@@ -1445,11 +1464,11 @@ TRY_MEMBER_FUNCTION_CALL:
             if (result == NULL) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
 
-                eprint("\x1b[1m    left hand side has the type ");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(", and right hand side has the type ");
-                ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    left hand side has the type ");
+                ll_typer_report_error_type(cc, typer, lhs_type);
+                ll_typer_report_error_no_src(", and right hand side has the type ");
+                ll_typer_report_error_type(cc, typer, rhs_type);
+                ll_typer_report_error_no_src("\n");
 
                 ll_typer_report_error_done(cc, typer);
 
@@ -1459,11 +1478,11 @@ TRY_MEMBER_FUNCTION_CALL:
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
 
-                eprint("\x1b[1m    left hand side has the type ");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(", and right hand side has the type ");
-                ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    left hand side has the type ");
+                ll_typer_report_error_type(cc, typer, lhs_type);
+                ll_typer_report_error_no_src(", and right hand side has the type ");
+                ll_typer_report_error_type(cc, typer, rhs_type);
+                ll_typer_report_error_no_src("\n");
 
                 ll_typer_report_error_done(cc, typer);
 
@@ -1473,11 +1492,11 @@ TRY_MEMBER_FUNCTION_CALL:
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
 
-                eprint("\x1b[1m    left hand side has the type ");
-                ll_print_type_raw(lhs_type, &stderr_writer);
-                eprint(", and right hand side has the type ");
-                ll_print_type_raw(rhs_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    left hand side has the type ");
+                ll_typer_report_error_type(cc, typer, lhs_type);
+                ll_typer_report_error_no_src(", and right hand side has the type ");
+                ll_typer_report_error_type(cc, typer, rhs_type);
+                ll_typer_report_error_no_src("\n");
 
                 ll_typer_report_error_done(cc, typer);
                 break;
@@ -1562,9 +1581,9 @@ TRY_MEMBER_FUNCTION_CALL:
 
         if (!result) {
             eprint("\x1b[31;1merror\x1b[0;1m: types of operands to operation do not match! Found left type was ");
-            ll_print_type_raw(lhs_type, &stderr_writer);
+            ll_typer_report_error_type(cc, typer, lhs_type);
             eprint(" but right type was ");
-            ll_print_type_raw(rhs_type, &stderr_writer);
+            ll_typer_report_error_type(cc, typer, rhs_type);
             eprint("\n");
 
             eprint("Error: lhs type does not match rhs type\n");
@@ -1587,9 +1606,9 @@ TRY_MEMBER_FUNCTION_CALL:
             default:
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Negation only works for signed ints and floats");
                 ll_typer_report_error(((LL_Error){ .main_token = AST_AS((*expr), Ast_Operation)->right->token_info }), "");
-                eprint("\x1b[1m    has type");
-                ll_print_type_raw(expr_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    has type");
+                ll_typer_report_error_type(cc, typer, expr_type);
+                ll_typer_report_error_no_src("\n");
                 ll_typer_report_error_done(cc, typer);
 
                 break;
@@ -1617,9 +1636,9 @@ TRY_MEMBER_FUNCTION_CALL:
             default:
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Dereference only works with a pointer");
                 ll_typer_report_error(((LL_Error){ .main_token = AST_AS((*expr), Ast_Operation)->right->token_info }), "");
-                eprint("\x1b[1m    has type");
-                ll_print_type_raw(expr_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    has type");
+                ll_typer_report_error_type(cc, typer, expr_type);
+                ll_typer_report_error_no_src("\n");
                 ll_typer_report_error_done(cc, typer);
                 break;
             }
@@ -1641,7 +1660,7 @@ TRY_MEMBER_FUNCTION_CALL:
             eprint("\x1b[31;1mTODO:\x1b[0m operator '");
             lexer_print_token_raw_to_writer(&AST_AS((*expr), Ast_Operation)->op, &stderr_writer);
             eprint("' cannot be applied to expression of type \n");
-            ll_print_type_raw(expr_type, &stderr_writer);
+            ll_typer_report_error_type(cc, typer, expr_type);
             eprint("\n");
         }
     } break;
@@ -1654,9 +1673,9 @@ TRY_MEMBER_FUNCTION_CALL:
             ll_typer_report_error(((LL_Error){ .highlight_start = (*expr)->token_info, .highlight_end = cast->p_close }), "Incompatible cast types");
 
             eprint("\x1b[1m    unable to cast value with type ");
-            ll_print_type_raw(src_type, &stderr_writer);
+            ll_typer_report_error_type(cc, typer, src_type);
             eprint(" to type ");
-            ll_print_type_raw(specified_type, &stderr_writer);
+            ll_typer_report_error_type(cc, typer, specified_type);
             eprint("\x1b[0m\n");
 
             ll_typer_report_error_done(cc, typer);
@@ -1674,9 +1693,9 @@ TRY_MEMBER_FUNCTION_CALL:
         LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, &inv->expr, NULL, &resolve);
         if (fn_type->base.kind != LL_TYPE_FUNCTION) {
             ll_typer_report_error(((LL_Error){ .main_token = inv->expr->token_info }), "Unable to call this like a function");
-            eprint("\x1b[1m    type ");
-            ll_print_type_raw(&fn_type->base, &stderr_writer);
-            eprint(" is not a callable function\x1b[0m\n");
+            ll_typer_report_error_no_src("    type ");
+            ll_typer_report_error_type(cc, typer, &fn_type->base);
+            ll_typer_report_error_no_src(" is not a callable function\n");
             ll_typer_report_error_done(cc, typer);
             return NULL;
         }
@@ -1794,13 +1813,17 @@ TRY_MEMBER_FUNCTION_CALL:
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, *value, declared_type)) {
                     ll_typer_report_error(((LL_Error){ .main_token = (*value)->token_info }), "Can't pass value to function parameter");
 
-                    eprint("\x1b[1m    the parameter expects type ");
-                    ll_print_type_raw(declared_type, &stderr_writer);
-                    eprint(", but tried passing value with type ");
-                    ll_print_type_raw(provided_type, &stderr_writer);
-                    eprint(" to it. You can try explicitly casting the value with `cast(");
-                    ll_print_type_raw(declared_type, &stderr_writer);
-                    eprint(")`\x1b[0m\n");
+                    ll_typer_report_error_no_src("    the parameter expects type ");
+                    ll_typer_report_error_type(cc, typer, declared_type);
+                    ll_typer_report_error_no_src(", but tried passing value with type ");
+                    ll_typer_report_error_type(cc, typer, provided_type);
+                    ll_typer_report_error_no_src(" to it. ");
+                    if (ll_typer_can_cast(cc, typer, (*value)->type, declared_type)) {
+                        ll_typer_report_error_no_src("You can try explicitly casting the value with `cast(");
+                        ll_typer_report_error_type(cc, typer, declared_type);
+                        ll_typer_report_error_no_src(")`");
+                    }
+                    ll_typer_report_error_no_src("\n");
 
                     ll_typer_report_error_done(cc, typer);
                 }
@@ -1841,9 +1864,9 @@ TRY_MEMBER_FUNCTION_CALL:
             if (fn_decl) {
                 ll_typer_report_error_info(((LL_Error){ .highlight_start = fn_decl->p_open, .highlight_end = fn_decl->p_close }), "Function defined here");
             } else {
-                eprint("\x1b[1m    function signature: ");
-                ll_print_type_raw(&fn_type->base, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    function signature: ");
+                ll_typer_report_error_type(cc, typer, &fn_type->base);
+                ll_typer_report_error_no_src("\n");
             }
             ll_typer_report_error_done(cc, typer);
         }
@@ -1857,9 +1880,9 @@ TRY_MEMBER_FUNCTION_CALL:
             if (fn_decl) {
                 ll_typer_report_error_info(((LL_Error){ .highlight_start = fn_decl->p_open, .highlight_end = fn_decl->p_close }), "Function defined here");
             } else {
-                eprint("\x1b[1m    function signature: ");
-                ll_print_type_raw(&fn_type->base, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    function signature: ");
+                ll_typer_report_error_type(cc, typer, &fn_type->base);
+                ll_typer_report_error_no_src("\n");
             }
             ll_typer_report_error_done(cc, typer);
         }
@@ -1939,9 +1962,15 @@ TRY_MEMBER_FUNCTION_CALL:
             break;
         default:
             ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Index expression requires an array or pointer type on the left");
-            eprint("\x1b[1m found type ");
-            ll_print_type_raw(result, &stderr_writer);
-            eprint("\x1b[0m\n");
+
+            ll_typer_report_error_no_src(" found type ");
+            ll_typer_report_error_type(cc, typer, result);
+            ll_typer_report_error_no_src("\n");
+
+            ll_typer_report_error_no_src(" found type ");
+            ll_typer_report_error_type(cc, typer, result);
+            ll_typer_report_error_no_src("\n");
+
             ll_typer_report_error_done(cc, typer);
             break;
         }
@@ -1958,9 +1987,9 @@ TRY_MEMBER_FUNCTION_CALL:
             break;
         default:
             ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Slice expression requires an array, pointer, or slice type on the left");
-            eprint("\x1b[1m found type ");
-            ll_print_type_raw(result, &stderr_writer);
-            eprint("\x1b[0m\n");
+            ll_typer_report_error_no_src(" found type ");
+            ll_typer_report_error_type(cc, typer, result);
+            ll_typer_report_error_no_src("\n");
             ll_typer_report_error_done(cc, typer);
             break;
         }
@@ -2079,11 +2108,11 @@ AST_BREAK_EXIT_SCOPE:
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, cf->expr, break_type)) {
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value that is incompatible with the expected type");
 
-                eprint("\x1b[1m    expecting type ");
-                ll_print_type_raw(break_type, &stderr_writer);
-                eprint(", but tried to break with value of type ");
-                ll_print_type_raw(value_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    expecting type ");
+                ll_typer_report_error_type(cc, typer, break_type);
+                ll_typer_report_error_no_src(", but tried to break with value of type ");
+                ll_typer_report_error_type(cc, typer, value_type);
+                ll_typer_report_error_no_src("\n");
 
                 switch (cf->referenced_scope->kind) {
                 case LL_SCOPE_KIND_BLOCK_VALUE:
@@ -2115,9 +2144,9 @@ AST_BREAK_EXIT_SCOPE:
                     ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this sceop");
                     break;
                 }
-                eprint("\x1b[1m    expecting type ");
-                ll_print_type_raw(break_type, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src("    expecting type ");
+                ll_typer_report_error_type(cc, typer, break_type);
+                ll_typer_report_error_no_src("\n");
                 ll_typer_report_error_done(cc, typer);
             }
         }
@@ -2137,9 +2166,9 @@ AST_BREAK_EXIT_SCOPE:
             break;
         default:
             ll_typer_report_error(((LL_Error){ .main_token = iff->cond->token_info }), "If statement condition should be boolean, integer or pointer");
-            eprint("\x1b[1 found type ");
-            ll_print_type_raw(result, &stderr_writer);
-            eprint("\x1b[0m\n");
+            ll_typer_report_error_no_src(" found type ");
+            ll_typer_report_error_type(cc, typer, result);
+            ll_typer_report_error_no_src("\n");
             ll_typer_report_error_done(cc, typer);
             break;
         }
@@ -2175,9 +2204,9 @@ AST_BREAK_EXIT_SCOPE:
             case LL_TYPE_INT: break;
             default:
                 ll_typer_report_error(((LL_Error){ .main_token = loop->cond->token_info }), "Loop condition should be boolean, integer or pointer");
-                eprint("\x1b[1 found type ");
-                ll_print_type_raw(result, &stderr_writer);
-                eprint("\x1b[0m\n");
+                ll_typer_report_error_no_src(" found type ");
+                ll_typer_report_error_type(cc, typer, result);
+                ll_typer_report_error_no_src("\n");
                 ll_typer_report_error_done(cc, typer);
                 break;
             }
