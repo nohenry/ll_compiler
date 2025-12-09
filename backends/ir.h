@@ -68,6 +68,7 @@ enum {
     LL_IR_OPCODE_NEG, // x
     LL_IR_OPCODE_NOT, // x
 
+    LL_IR_OPCODE_TEST, // x
     LL_IR_OPCODE_AND, // x
     LL_IR_OPCODE_OR,  // x
     LL_IR_OPCODE_XOR, // x

@@ -515,11 +515,13 @@ LL_Type* ll_typer_implicit_cast_leftright(Compiler_Context* cc, LL_Typer* typer,
         if (rhs->kind == LL_TYPE_INT) return rhs;
         else if (rhs->kind == LL_TYPE_UINT) return rhs;
         else if (rhs->kind == LL_TYPE_FLOAT) return rhs;
+        else if (rhs->kind == LL_TYPE_CHAR) return rhs;
         else if (rhs->kind == LL_TYPE_ANYINT) return lhs;
     } else if (rhs == typer->ty_anyint) {
         if (lhs->kind == LL_TYPE_INT) return lhs;
         else if (lhs->kind == LL_TYPE_UINT) return lhs;
         else if (lhs->kind == LL_TYPE_FLOAT) return lhs;
+        else if (lhs->kind == LL_TYPE_CHAR) return lhs;
         else if (lhs->kind == LL_TYPE_ANYINT) return lhs;
     } else if (lhs->kind == LL_TYPE_INT) {
         if (rhs->kind == LL_TYPE_INT) return create_type(((LL_Type){ .kind = LL_TYPE_INT, .width = max(lhs->width, rhs->width) }));
@@ -1122,6 +1124,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             case LL_TYPE_UINT:
             case LL_TYPE_INT:
             case LL_TYPE_FLOAT:
+            case LL_TYPE_CHAR:
                 result = expected_type;
                 break;
             default:
@@ -1462,7 +1465,7 @@ TRY_MEMBER_FUNCTION_CALL:
             result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
 
             if (result == NULL) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types (1)");
 
                 ll_typer_report_error_no_src("    left hand side has the type ");
                 ll_typer_report_error_type(cc, typer, lhs_type);
@@ -1476,7 +1479,7 @@ TRY_MEMBER_FUNCTION_CALL:
             }
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types (2)");
 
                 ll_typer_report_error_no_src("    left hand side has the type ");
                 ll_typer_report_error_type(cc, typer, lhs_type);
@@ -1490,7 +1493,7 @@ TRY_MEMBER_FUNCTION_CALL:
             }
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types (3)");
 
                 ll_typer_report_error_no_src("    left hand side has the type ");
                 ll_typer_report_error_type(cc, typer, lhs_type);
@@ -1508,6 +1511,10 @@ TRY_MEMBER_FUNCTION_CALL:
             result = typer->ty_bool;
             break;
 #pragma GCC diagnostic pop
+        case LL_TOKEN_KIND_AND:
+        case LL_TOKEN_KIND_OR:
+            result = typer->ty_bool;
+            break;
         default: 
             eprint("Error: Invalid binary operation '");
             lexer_print_token_raw_to_writer(&opr->op, &stderr_writer);
@@ -2185,6 +2192,7 @@ AST_BREAK_EXIT_SCOPE:
 
         result = NULL;
     } break;
+    case AST_KIND_WHILE:
     case AST_KIND_FOR: {
         Ast_Loop* loop = AST_AS((*expr), Ast_Loop);
 

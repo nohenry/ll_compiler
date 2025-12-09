@@ -321,6 +321,8 @@ typedef struct {
         (array)->count = (_count);                                                                 \
     } while (0)
 
+#define oc_breakpoint() __asm__("int3")
+
 static inline uword oc_align_forward(uword value, uword alignment_in_bytes) {
     return (value + alignment_in_bytes - 1) & ~(alignment_in_bytes - 1);
 }

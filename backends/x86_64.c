@@ -1678,6 +1678,8 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
             }
         } break;
 
+        case LL_IR_OPCODE_TEST:
+
         case LL_IR_OPCODE_AND:
             opcode1 = OPCODE_AND;
             goto DO_OPCODE_ARITHMETIC;

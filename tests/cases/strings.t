@@ -6,6 +6,13 @@ void print_string(string* s) {
     // *s = 
 }
 
+string string_trim(string s) {
+    while s.length > 0 && s[0] == 0x20 {
+        s = s[1:];
+    }
+    return s;
+}
+
 void main() {
     string a = "fosbar";
     char c1 = a[0];
@@ -25,4 +32,8 @@ void main() {
     write_string(a[:]);
     write_string(a[3:]);
     write_string(a[:2]);
+
+    string s = "   sdf";
+    s = string_trim(s);
+    write_string(s);
 }

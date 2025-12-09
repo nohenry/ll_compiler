@@ -157,7 +157,7 @@ HANDLE_IDENT:
             }
 
             result = parser_parse_expression(cc, parser, NULL, 0, true);
-            if (result && (result->kind == AST_KIND_IF || result->kind == AST_KIND_FOR)) break;
+            if (result && (result->kind == AST_KIND_IF || result->kind == AST_KIND_FOR  || result->kind == AST_KIND_WHILE)) break;
 
             PEEK(&token);
             if (token.kind == LL_TOKEN_KIND_IDENT) // this includes macro keyword
@@ -371,6 +371,8 @@ int get_binary_precedence(LL_Token token, bool from_statement) {
         case LL_TOKEN_KIND_ASSIGN_DIVIDE:
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
             return 20;
+        case LL_TOKEN_KIND_OR: return 40;
+        case LL_TOKEN_KIND_AND: return 50;
         case '|': return 60;
         case '^': return 70;
         case '&': return 80;
@@ -491,6 +493,9 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
             } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
                 left = parser_parse_primary(cc, parser, from_statement);
                 return left;
+            } else if (token.str.ptr == LL_KEYWORD_WHILE.ptr) {
+                left = parser_parse_primary(cc, parser, from_statement);
+                return left;
             } else if (token.str.ptr == LL_KEYWORD_STRUCT.ptr) {
                 left = parser_parse_struct(cc, parser);
                 return left;
@@ -510,6 +515,9 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
             CONSUME();
             LL_Token op_tok = token;
             right = parser_parse_primary(cc, parser, false);
+            // if (op_tok.kind == '.') {
+            //     oc_breakpoint();
+            // }
             while (PEEK(&token)) {
                 int next_bin_precedence = get_binary_precedence(token, false);
                 int next_post_precedence = get_postfix_precedence(token);
@@ -524,6 +532,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
 
             left = CREATE_NODE(AST_KIND_BINARY_OP, ((Ast_Operation){ .left = left, .right = right, .op = op_tok }));
             left->token_info = TOKEN_INFO(op_tok);
+            from_statement = false;
         } else if (post_precedence != 0 && post_precedence >= last_precedence) {
             switch (token.kind) {
 #pragma GCC diagnostic push
@@ -614,6 +623,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
 #pragma GCC diagnostic pop
                 default: oc_assert(false); break;
             }
+            from_statement = false;
         } else break;
     }
 
@@ -709,6 +719,23 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
             result = CREATE_NODE(AST_KIND_IF, ((Ast_If){ .cond = result, .body = body, .else_clause = right, .else_kw = else_kw }));
             result->token_info = if_kw;
             break;
+        } else if (token.str.ptr == LL_KEYWORD_WHILE.ptr) {
+            LL_Token_Info for_kw = TOKEN_INFO(token);
+            CONSUME();
+
+            right = parser_parse_expression(cc, parser, NULL, 0, false);
+
+            PEEK(&token);
+            if (token.kind == '{') {
+                body = (Ast_Base*)parser_parse_block(cc, parser);
+            } else {
+                body = parser_parse_expression(cc, parser, NULL, 0, false);
+                if (from_statement) EXPECT(';', &token);
+            }
+
+            result = CREATE_NODE(AST_KIND_WHILE, ((Ast_Loop){ .cond = right, .body = body }));
+            result->token_info = for_kw;
+            break;
         } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
             LL_Token_Info for_kw = TOKEN_INFO(token);
             CONSUME();
@@ -797,9 +824,9 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
                     // } else if (token.str.ptr == LL_KEYWORD_IF.ptr) {
                     //     CONSUME();
                     //     target = AST_CONTROL_FLOW_TARGET_IF;
-                    // } else if (token.str.ptr == LL_KEYWORD_WHILE.ptr) {
-                    //     CONSUME();
-                    //     target = AST_CONTROL_FLOW_TARGET_WHILE;
+                    } else if (token.str.ptr == LL_KEYWORD_WHILE.ptr) {
+                        CONSUME();
+                        target = AST_CONTROL_FLOW_TARGET_WHILE;
                     }
                 }
                 PEEK(&token);
@@ -863,6 +890,7 @@ const char* ast_get_node_kind(Ast_Base* node) {
         case AST_KIND_CONTINUE: return "Continue";
         case AST_KIND_IF: return "If";
         case AST_KIND_FOR: return "For";
+        case AST_KIND_WHILE: return "While";
         case AST_KIND_INDEX: return "Index";
         case AST_KIND_SLICE: return "Slice";
         case AST_KIND_CAST: return "Cast";
@@ -895,6 +923,7 @@ void print_node_value(Ast_Base* node, Oc_Writer* w) {
         case AST_KIND_CONTINUE: break;
         case AST_KIND_IF: break;
         case AST_KIND_FOR: break;
+        case AST_KIND_WHILE: break;
         case AST_KIND_INDEX: break;
         case AST_KIND_SLICE: break;
         case AST_KIND_GENERIC: break;
@@ -1007,6 +1036,7 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
             if (AST_AS(node, Ast_If)->else_clause)
                 print_node(AST_AS(node, Ast_If)->else_clause, indent + 1, w);
             break;
+        case AST_KIND_WHILE:
         case AST_KIND_FOR:
             if (AST_AS(node, Ast_Loop)->init)
                 print_node(AST_AS(node, Ast_Loop)->init, indent + 1, w);
@@ -1165,6 +1195,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
             .else_clause = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->else_clause, params),
         }));
         break;
+    case AST_KIND_WHILE:
     case AST_KIND_FOR:
         result = CREATE_NODE(node->kind, ((Ast_Loop){
             .init = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->init, params),

@@ -30,6 +30,7 @@ typedef enum {
     AST_KIND_CONTINUE,
     AST_KIND_IF,
     AST_KIND_FOR,
+    AST_KIND_WHILE,
 
     AST_KIND_STRUCT,
     AST_KIND_INDEX,

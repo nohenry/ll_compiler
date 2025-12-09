@@ -300,10 +300,11 @@ DONE_NUMBER:
         case ':':
         case ';':
         case ',':
-        case '&':
         case '%':
             out->kind = (LL_Token_Kind)lexer->source.ptr[lexer->pos++];
             return true;
+
+        case '&': lexer_prefixed(cc, lexer, out, '&', LL_TOKEN_KIND_AND); return true;
 
         case '<': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_LTE); return true;
         case '>': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_GTE); return true;

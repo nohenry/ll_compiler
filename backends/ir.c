@@ -67,6 +67,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
     case LL_IR_OPCODE_OR:
     case LL_IR_OPCODE_XOR:
     case LL_IR_OPCODE_ADD: return 4;
+    case LL_IR_OPCODE_TEST:
     case LL_IR_OPCODE_NEG: return 3;
 
     case LL_IR_OPCODE_BRANCH: return 2;
@@ -135,6 +136,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     case LL_IR_OPCODE_GTE:         wprint(w, INDENT OPERAND_FMT " = gte " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_EQ:          wprint(w, INDENT OPERAND_FMT " = eq " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_NEQ:         wprint(w, INDENT OPERAND_FMT " = neq " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+    case LL_IR_OPCODE_TEST:        wprint(w, INDENT OPERAND_FMT " = test " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_NEG:         wprint(w, INDENT OPERAND_FMT " = neg " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_NOT:         wprint(w, INDENT OPERAND_FMT " = not " OPERAND_FMT , OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_AND:         wprint(w, INDENT OPERAND_FMT " = and " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
@@ -188,6 +190,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
             case LL_IR_OPCODE_OR:
             case LL_IR_OPCODE_XOR:
             case LL_IR_OPCODE_INVOKEVALUE:
+            case LL_IR_OPCODE_TEST:
                 if (OPD_TYPE(operands[0]) != LL_IR_OPERAND_IMMEDIATE_BIT) {
                     ll_print_type_raw(ir_get_operand_type(b, &b->fns.items[b->current_function], operands[0]), w);
                 }
@@ -736,6 +739,15 @@ DO_BIN_OP_BOOLEAN:
 
             result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
             return result;
+        
+        case LL_TOKEN_KIND_AND: {
+            r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+            r1 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, AST_AS(expr, Ast_Operation)->left->type, r1);
+            r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+            r2 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, AST_AS(expr, Ast_Operation)->right->type, r2);
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_AND, expr->type, r1, r2);
+        } break;
+
 
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
             op = LL_IR_OPCODE_DIV;
@@ -1149,6 +1161,7 @@ HANDLE_SLICE_OP:
 
         return 0;
     }
+    case AST_KIND_WHILE:
     case AST_KIND_FOR: {
         Ast_Loop* loop = AST_AS(expr, Ast_Loop);
 

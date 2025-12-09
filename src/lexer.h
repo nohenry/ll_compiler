@@ -25,6 +25,9 @@ typedef enum {
     LL_TOKEN_KIND_LTE,
     LL_TOKEN_KIND_GTE,
 
+    LL_TOKEN_KIND_AND,
+    LL_TOKEN_KIND_OR,
+
     LL_TOKEN_KIND_RANGE,
 } LL_Token_Kind;
 
