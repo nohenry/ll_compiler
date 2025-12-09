@@ -32,6 +32,26 @@ typedef struct {
     uint64_t* items;
 } X86_64_Locals_List;
 
+typedef uint32_t X86_64_Register_Location;
+enum {
+    X86_64_REGISTER_LOCATION_REGISTER,
+    X86_64_REGISTER_LOCATION_STACK,
+    X86_64_REGISTER_LOCATION_FLAGS,
+};
+
+typedef struct {
+    X86_64_Register_Location location;
+    uint32_t value;
+#ifdef _DEBUG
+    uint32_t usedup;
+#endif
+} X86_64_Register;
+
+typedef struct {
+    size_t count, capacity;
+    X86_64_Register* items;
+} X86_64_Registers_List;
+
 struct ll_native_function_map_entry {
     struct ll_native_function_map_entry* next;
     string name;
@@ -46,7 +66,7 @@ typedef struct {
 
     LL_Ir_Function* fn;
     X86_64_Locals_List locals;
-    X86_64_Locals_List registers;
+    X86_64_Registers_List registers;
     X86_64_Locals_List parameters;
 
     X86_64_Section section_text;
@@ -97,7 +117,19 @@ const static X86_64_Operand_Register call_convention_vector_registers_systemv[] 
 const static X86_64_Operand_Register x86_64_backend_active_registers[] = {
     X86_64_OPERAND_REGISTER_rax,
     X86_64_OPERAND_REGISTER_rcx,
+    X86_64_OPERAND_REGISTER_rbx,
+    X86_64_OPERAND_REGISTER_r10,
+    X86_64_OPERAND_REGISTER_r11,
+    X86_64_OPERAND_REGISTER_r12,
+    X86_64_OPERAND_REGISTER_r13,
+    X86_64_OPERAND_REGISTER_r14,
+    X86_64_OPERAND_REGISTER_r15,
 };
+
+#define x86_64_alloc_tmp_regs(n) (b->active_register_top += (n), b->active_register_top - (n))
+#define x86_64_tmp_regs(rg, i) (x86_64_backend_active_registers[(rg) + (i)])
+#define x86_64_free_tmp_regs(rg) (b->active_register_top = (rg))
+#define push_regs(_name, n) for (uint32_t _name = x86_64_alloc_tmp_regs(n), _name ## _ii = 1; _name ## _ii; (_name ## _ii --, x86_64_free_tmp_regs(_name)))
 
 X86_64_Call_Convention x86_64_call_convention_systemv(X86_64_Backend* b) {
     (void)b;
@@ -431,6 +463,76 @@ static X86_64_Variant_Kind x86_64_get_variant_raw(Compiler_Context* cc, X86_64_B
 
 #define x86_64_get_variant(type, ...) x86_64_get_variant_raw(cc, b, bir, (type), (X86_64_Get_Variant_Params) { __VA_ARGS__ })
 
+static void x86_64_useup_register(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, X86_64_Register* reg) {
+    (void)cc;
+    (void)b;
+    oc_assert(!reg->usedup);
+    reg->usedup = 1;
+
+    switch (reg->location) {
+    case X86_64_REGISTER_LOCATION_REGISTER:
+        oc_todo("implement register alloc");
+        // print("{} {}\n", reg->value, x86_64_backend_active_registers[b->active_register_top]);
+        // oc_assert(reg->value == (uint32_t)x86_64_backend_active_registers[b->active_register_top]);
+        break;
+    case X86_64_REGISTER_LOCATION_STACK:
+        break;
+    case X86_64_REGISTER_LOCATION_FLAGS:
+        break;
+    default: oc_todo(""); break;
+    }
+}
+
+static X86_64_Operand_Register x86_64_load_register(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, X86_64_Operand_Register dst_hint, X86_64_Register* src, LL_Type* operand_type) {
+    X86_64_Instruction_Parameters params = { 0 };
+    X86_64_Get_Variant_Params get_variant = { .mem_right = true };
+
+    if ((int32_t)dst_hint < 0) {
+        params.reg0 = x86_64_backend_active_registers[b->active_register_top++];
+    } else {
+        params.reg0 = dst_hint;
+    }
+    x86_64_useup_register(cc, b, bir, src);
+    switch (src->location) {
+    case X86_64_REGISTER_LOCATION_REGISTER: {
+        oc_todo("implement register alloc");
+        if (src->value != (uint32_t)dst_hint) {
+            params.reg1 = src->value;
+        }
+    } break;
+    case X86_64_REGISTER_LOCATION_STACK: {
+        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+        params.displacement = -(int64_t)(int32_t)src->value;
+    } break;
+    default: oc_todo(""); break;
+    }
+
+    operand_type = get_base_type(operand_type);
+
+    switch (operand_type->kind) {
+    case LL_TYPE_FLOAT:
+        if (operand_type->width <= 32)
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+        else if (operand_type->width <= 64)
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+        else oc_todo("implement other sizes");
+        break;
+    case LL_TYPE_BOOL:
+    case LL_TYPE_CHAR:
+    case LL_TYPE_UINT:
+    case LL_TYPE_INT:
+    case LL_TYPE_POINTER:
+    case LL_TYPE_STRING:
+    case LL_TYPE_STRUCT:
+    case LL_TYPE_SLICE:
+        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+        break;
+    default: oc_todo("add types");
+    }
+
+    return params.reg0;
+}
+
 static X86_64_Operand_Register x86_64_load_operand_with_type(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Operand operand, LL_Type* operand_type) {
     X86_64_Instruction_Parameters params = { 0 };
     X86_64_Get_Variant_Params get_variant = { 0 };
@@ -440,8 +542,24 @@ static X86_64_Operand_Register x86_64_load_operand_with_type(Compiler_Context* c
     switch (OPD_TYPE(operand)) {
     case LL_IR_OPERAND_REGISTER_BIT:
         get_variant.mem_right = true;
-        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-        params.displacement = -b->registers.items[OPD_VALUE(operand)];
+        X86_64_Register src_reg = b->registers.items[OPD_VALUE(operand)];
+        x86_64_useup_register(cc, b, bir, &b->registers.items[OPD_VALUE(operand)]);
+
+        switch (src_reg.location) {
+        case X86_64_REGISTER_LOCATION_STACK: {
+            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+            params.displacement = -(int64_t)(int32_t)src_reg.value;
+        } break;
+        case X86_64_REGISTER_LOCATION_REGISTER: {
+            oc_todo("flskdjf");
+            return src_reg.value;
+        } break;
+        case X86_64_REGISTER_LOCATION_FLAGS: {
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_SETNE, rm8, params);
+            return reg;
+        } break;
+        default: oc_todo(""); break;
+        }
         break;
     case LL_IR_OPERAND_IMMEDIATE_BIT:
         get_variant.immediate = true;
@@ -529,14 +647,34 @@ static void x86_64_generate_mov_to_register(Compiler_Context* cc, X86_64_Backend
             params.immediate = b->fn->literals.items[OPD_VALUE(src)].as_u64;
             OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true, .large_immediate = true }), params);
             break;
-        case LL_IR_OPERAND_REGISTER_BIT:
-            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-            params.displacement = -b->registers.items[OPD_VALUE(src)];
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
+        case LL_IR_OPERAND_REGISTER_BIT: {
+            X86_64_Register* src_reg = &b->registers.items[OPD_VALUE(src)];
+            x86_64_useup_register(cc, b, bir, src_reg);
+
+            switch (src_reg->location) {
+            case X86_64_REGISTER_LOCATION_STACK: {
+                params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                params.displacement = -(int64_t)(int32_t)src_reg->value;
+                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
+            } break;
+            case X86_64_REGISTER_LOCATION_REGISTER: {
+                if (src_reg->value != (uint32_t)result) {
+                    params.reg1 = src_reg->value;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
+                }
+            } break;
+            default: oc_todo(""); break;
+            }
+        } break;
             break;
         case LL_IR_OPERAND_LOCAL_BIT:
             params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
             params.displacement = -b->locals.items[OPD_VALUE(src)];
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+            break;
+        case LL_IR_OPERAND_PARMAETER_BIT:
+            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+            params.displacement = -b->parameters.items[OPD_VALUE(src)];
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
             break;
         case LL_IR_OPERAND_DATA_BIT:
@@ -558,7 +696,7 @@ static void x86_64_generate_mov_to_register(Compiler_Context* cc, X86_64_Backend
 
 static void x86_64_generate_memcpy_assum_rdi_rsi(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, LL_Ir_Operand byte_size, LL_Type* operand_type) {
     X86_64_Instruction_Parameters params = { 0 };
-    X86_64_Get_Variant_Params get_variant = { 0 };
+    // X86_64_Get_Variant_Params get_variant = { 0 };
     LL_Backend_Layout elem_layout = x86_64_get_layout(type);
 
     size_t alignment = min(8, elem_layout.alignment);
@@ -574,11 +712,7 @@ static void x86_64_generate_memcpy_assum_rdi_rsi(Compiler_Context* cc, X86_64_Ba
         x86_64_generate_mov_to_register(cc, b, bir, cc->typer->ty_int64, X86_64_OPERAND_REGISTER_rcx, size_value, false);
         break;
     case LL_IR_OPERAND_REGISTER_BIT: {
-        get_variant.mem_right = true;
-        params.reg0 = X86_64_OPERAND_REGISTER_rcx;
-        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-        params.displacement = -b->registers.items[OPD_VALUE(byte_size)];
-        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+        x86_64_load_register(cc, b, bir, X86_64_OPERAND_REGISTER_rcx, &b->registers.items[OPD_VALUE(byte_size)], operand_type);
 
         b->active_register_top -= 1;
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_SHR, rm64_i8, ((X86_64_Instruction_Parameters) {
@@ -619,10 +753,7 @@ static uword x86_64_make_struct_copy(Compiler_Context* cc, X86_64_Backend* b, LL
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
 
         oc_assert(OPD_TYPE(reg) == LL_IR_OPERAND_REGISTER_BIT);
-        params.reg0 = X86_64_OPERAND_REGISTER_rsi;
-        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-        params.displacement = -b->registers.items[OPD_VALUE(reg)];
-        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
+        x86_64_load_register(cc, b, bir, X86_64_OPERAND_REGISTER_rsi, &b->registers.items[OPD_VALUE(reg)], type);
 
         oc_assert(l.size <= 0xFFFFFFF);
         x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, type, LL_IR_OPERAND_IMMEDIATE_BIT | l.size, NULL);
@@ -670,6 +801,66 @@ static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, L
     }
 
     return b->stack_used;
+}
+
+static X86_64_Register x86_64_move_reg_alloc(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, X86_64_Operand_Register reg) {
+    X86_64_Register result = { 0 };
+    X86_64_Instruction_Parameters params = { 0 };
+    X86_64_Get_Variant_Params get_variant = { 0 };
+
+    if (false && b->active_register_top < oc_len(x86_64_backend_active_registers)) {
+        result.location = X86_64_REGISTER_LOCATION_REGISTER;
+        if (x86_64_backend_active_registers[b->active_register_top] == reg) {
+            b->active_register_top++;
+            result.value = reg;
+            return result;
+        } else {
+            result.value = x86_64_backend_active_registers[b->active_register_top++];
+            params.reg0 = result.value;
+            params.reg1 = reg;
+        }
+    } else {
+        LL_Backend_Layout l = x86_64_get_layout(type);
+
+        uword stride = max(l.size, l.alignment);
+        uword offset = b->stack_used;
+        b->stack_used = oc_align_forward(offset + stride, l.alignment);
+
+        params.displacement = -(long long int)b->stack_used;
+        params.reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+        params.reg1 = reg;
+
+        result.value = b->stack_used;
+        result.location = X86_64_REGISTER_LOCATION_STACK;
+    }
+
+    type = get_base_type(type);
+
+    switch (type->kind) {
+    case LL_TYPE_FLOAT:
+        if (type->width <= 32)
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+        else if (type->width <= 64)
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+        else oc_todo("implement other sizes");
+        break;
+    case LL_TYPE_BOOL:
+    case LL_TYPE_CHAR:
+    case LL_TYPE_UINT:
+    case LL_TYPE_INT:
+    case LL_TYPE_POINTER:
+        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+        break;
+    case LL_TYPE_STRING:
+    case LL_TYPE_ARRAY:
+    case LL_TYPE_SLICE:
+    case LL_TYPE_STRUCT:
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, params);
+        break;
+    default: ll_print_type(type); oc_todo("add types");
+    }
+
+    return result;
 }
 
 typedef struct {
@@ -934,63 +1125,70 @@ static void x86_64_generate_clone_cast(Compiler_Context* cc, X86_64_Backend* b, 
     LL_Backend_Layout struct_layout = x86_64_get_layout(src_type);
     size_t actual_size = max(struct_layout.size, struct_layout.alignment);
 
+    int64_t displacement;
+
     switch (OPD_TYPE(src)) {
     case LL_IR_OPERAND_LOCAL_BIT: {
-        switch (src_type->kind) {
-        case LL_TYPE_ARRAY:
-        case LL_TYPE_STRING:
-        case LL_TYPE_SLICE:
-            goto HANDLE_CLONE_STRUCT;
-        case LL_TYPE_STRUCT: {
-            if (actual_size <= 8) goto HANDLE_CLONE_LOCAL_INTEGRAL;
+        displacement = -(int64_t)b->locals.items[OPD_VALUE(src)];
+    } break;
+    case LL_IR_OPERAND_PARMAETER_BIT: {
+        displacement = -(int64_t)b->parameters.items[OPD_VALUE(src)];
+    } break;
+    default: oc_todo("unpkemented"); break;
+    }
+
+    switch (src_type->kind) {
+    case LL_TYPE_ARRAY:
+    case LL_TYPE_STRING:
+    case LL_TYPE_SLICE:
+        goto HANDLE_CLONE_STRUCT;
+    case LL_TYPE_STRUCT: {
+        if (actual_size <= 8) goto HANDLE_CLONE_LOCAL_INTEGRAL;
 
 HANDLE_CLONE_STRUCT: (void)0;
-            uword dst_offset = x86_64_make_struct_copy(cc, b, bir, src_type, 0, true);
+        uword dst_offset = x86_64_make_struct_copy(cc, b, bir, src_type, 0, true);
 
-            { // memcpy
-                params.reg0 = X86_64_OPERAND_REGISTER_rdi;
-                params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-                params.displacement = -(long long int)dst_offset;
-                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
-
-                params.reg0 = X86_64_OPERAND_REGISTER_rsi;
-                params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-                params.displacement = -b->locals.items[OPD_VALUE(src)];
-                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
-
-                x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, src_type, LL_IR_OPERAND_IMMEDIATE_BIT | actual_size, cc->typer->ty_uint64);
-            }
-
-            params.reg0 = reg;
+        { // memcpy
+            params.reg0 = X86_64_OPERAND_REGISTER_rdi;
             params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
             params.displacement = -(long long int)dst_offset;
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
-            
-            uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
-            b->registers.items[OPD_VALUE(dst)] = offset;
-        } break;
-        case LL_TYPE_FLOAT:
-        case LL_TYPE_POINTER:
-        case LL_TYPE_ANYBOOL:
-        case LL_TYPE_BOOL:
-        case LL_TYPE_CHAR:
-        case LL_TYPE_ANYINT:
-        case LL_TYPE_UINT:
-        case LL_TYPE_INT: {
-    HANDLE_CLONE_LOCAL_INTEGRAL:
-            params.reg0 = reg;
-            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-            params.displacement = -b->locals.items[OPD_VALUE(src)];
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
-            // TODO: should we handle move_info.explicit_cast_instruction (casting)
 
-            uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
-            b->registers.items[OPD_VALUE(dst)] = offset;
-        } break;
-        default: oc_todo("handle type"); break;
+            params.reg0 = X86_64_OPERAND_REGISTER_rsi;
+            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+            params.displacement = displacement;
+            OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+
+            x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, src_type, LL_IR_OPERAND_IMMEDIATE_BIT | actual_size, cc->typer->ty_uint64);
         }
+
+        params.reg0 = reg;
+        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+        params.displacement = -(long long int)dst_offset;
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+        
+        X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
+        b->registers.items[OPD_VALUE(dst)] = offset;
     } break;
-    default: oc_todo("unimeplented operand"); break;
+    case LL_TYPE_FLOAT:
+    case LL_TYPE_POINTER:
+    case LL_TYPE_ANYBOOL:
+    case LL_TYPE_BOOL:
+    case LL_TYPE_CHAR:
+    case LL_TYPE_ANYINT:
+    case LL_TYPE_UINT:
+    case LL_TYPE_INT: {
+HANDLE_CLONE_LOCAL_INTEGRAL:
+        params.reg0 = reg;
+        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+        params.displacement = displacement;
+        OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
+        // TODO: should we handle move_info.explicit_cast_instruction (casting)
+
+        X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
+        b->registers.items[OPD_VALUE(dst)] = offset;
+    } break;
+    default: oc_todo("handle type"); break;
     }
 }
 
@@ -1053,7 +1251,7 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
                 OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
             }
 
-            uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+            X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
             b->registers.items[OPD_VALUE(dst)] = offset;
 
         } break;
@@ -1071,17 +1269,28 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
             if (src_type == dst_type) {
                 b->registers.items[OPD_VALUE(dst)] = b->registers.items[OPD_VALUE(src)];
             } else {
+                X86_64_Register src_reg = b->registers.items[OPD_VALUE(src)];
+                switch (src_reg.location) {
+                case X86_64_REGISTER_LOCATION_REGISTER: {
+                    oc_todo("implement register alloc");
+                    params.reg1 = src_reg.value;
+                } break;
+                case X86_64_REGISTER_LOCATION_STACK: {
+                    params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                    params.displacement = -(int64_t)(int32_t)src_reg.value;
+                } break;
+                default: oc_todo(""); break;
+                }
                 params.reg0 = reg;
-                params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-                params.displacement = -b->registers.items[OPD_VALUE(src)];
                 OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
+
                 if (move_info.explicit_cast_instruction) {
                     params.reg0 = reg;
                     params.reg1 = reg;
                     OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
                 }
 
-                uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+                X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
                 b->registers.items[OPD_VALUE(dst)] = offset;
             }
             break;
@@ -1122,8 +1331,8 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
                     params.displacement = -offset;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
 
-                    offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, tmp_reg);
-                    b->registers.items[OPD_VALUE(dst)] = offset;
+                    X86_64_Register moved_reg = x86_64_move_reg_alloc(cc, b, bir, dst_type, tmp_reg);
+                    b->registers.items[OPD_VALUE(dst)] = moved_reg;
                 } break;
                 default: goto HANDLE_LOAD_STRUCT_DATA;
                 }
@@ -1154,7 +1363,7 @@ HANDLE_LOAD_STRUCT_DATA:
                     .text_rel_byte_offset = b->section_text.count - 8 /* sizeof displacement */
                 }));
                 
-                uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+                X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
                 b->registers.items[OPD_VALUE(dst)] = offset;
             } break;
             case LL_TYPE_FLOAT:
@@ -1167,7 +1376,9 @@ HANDLE_LOAD_STRUCT_DATA:
             case LL_TYPE_INT: {
         HANDLE_LOAD_LOCAL_INTEGRAL_DATA:
                 if (src_type == dst_type) {
-                    b->registers.items[OPD_VALUE(dst)] = b->locals.items[OPD_VALUE(src)];
+                    b->registers.items[OPD_VALUE(dst)].location = X86_64_REGISTER_LOCATION_STACK;
+                    b->registers.items[OPD_VALUE(dst)].value = b->locals.items[OPD_VALUE(src)];
+                    b->registers.items[OPD_VALUE(dst)].usedup = 0;
                 } else {
                     params.reg0 = reg;
                     params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
@@ -1179,7 +1390,7 @@ HANDLE_LOAD_STRUCT_DATA:
                         OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
                     }
 
-                    uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+                    X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
                     b->registers.items[OPD_VALUE(dst)] = offset;
                 }
             } break;
@@ -1221,8 +1432,8 @@ HANDLE_LOAD_STRUCT_DATA:
                     params.displacement = -offset;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
 
-                    offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, tmp_reg);
-                    b->registers.items[OPD_VALUE(dst)] = offset;
+                    X86_64_Register moved_reg = x86_64_move_reg_alloc(cc, b, bir, dst_type, tmp_reg);
+                    b->registers.items[OPD_VALUE(dst)] = moved_reg;
                 } break;
                 default: goto HANDLE_LOAD_STRUCT;
                 }
@@ -1251,7 +1462,7 @@ HANDLE_LOAD_STRUCT:
                 params.displacement = -b->locals.items[OPD_VALUE(src)];
                 OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                 
-                uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+                X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
                 b->registers.items[OPD_VALUE(dst)] = offset;
             } break;
             case LL_TYPE_FLOAT:
@@ -1264,7 +1475,9 @@ HANDLE_LOAD_STRUCT:
             case LL_TYPE_INT: {
         HANDLE_LOAD_LOCAL_INTEGRAL:
                 if (src_type == dst_type) {
-                    b->registers.items[OPD_VALUE(dst)] = b->locals.items[OPD_VALUE(src)];
+                    b->registers.items[OPD_VALUE(dst)].location = X86_64_REGISTER_LOCATION_STACK;
+                    b->registers.items[OPD_VALUE(dst)].value = b->locals.items[OPD_VALUE(src)];
+                    b->registers.items[OPD_VALUE(dst)].usedup = 0;
                 } else {
                     params.reg0 = reg;
                     params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
@@ -1276,7 +1489,7 @@ HANDLE_LOAD_STRUCT:
                         OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
                     }
 
-                    uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+                    X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
                     b->registers.items[OPD_VALUE(dst)] = offset;
                 }
             } break;
@@ -1285,11 +1498,13 @@ HANDLE_LOAD_STRUCT:
             break;
         case LL_IR_OPERAND_PARMAETER_BIT:
             if (src_type == dst_type) {
-                b->registers.items[OPD_VALUE(dst)] = b->parameters.items[OPD_VALUE(src)];
+                b->registers.items[OPD_VALUE(dst)].location = X86_64_REGISTER_LOCATION_STACK;
+                b->registers.items[OPD_VALUE(dst)].value = (uint32_t)b->parameters.items[OPD_VALUE(src)];
+                b->registers.items[OPD_VALUE(dst)].usedup = 0;
             } else {
                 params.reg0 = reg;
                 params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-                params.displacement = -b->parameters.items[OPD_VALUE(src)];
+                params.displacement = -(int64_t)b->parameters.items[OPD_VALUE(src)];
                 OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, move_info.kind, params);
                 if (move_info.explicit_cast_instruction) {
                     params.reg0 = reg;
@@ -1297,7 +1512,7 @@ HANDLE_LOAD_STRUCT:
                     OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.cast_opcode, move_info.cast_kind, params);
                 }
 
-                uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+                X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
                 b->registers.items[OPD_VALUE(dst)] = offset;
             }
             break;
@@ -1306,7 +1521,7 @@ HANDLE_LOAD_STRUCT:
             params.immediate = OPD_VALUE(src);
             OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, x86_64_get_variant(dst_type, .immediate = true), params);
 
-            uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+            X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
             b->registers.items[OPD_VALUE(dst)] = offset;
         } break;
         case LL_IR_OPERAND_IMMEDIATE64_BIT: {
@@ -1315,7 +1530,7 @@ HANDLE_LOAD_STRUCT:
             params.immediate = (int64_t)b->fn->literals.items[lit_index].as_u64;
             OC_X86_64_WRITE_INSTRUCTION_DYN(b, move_info.opcode, x86_64_get_variant(dst_type, .large_immediate = true), params);
 
-            uword offset = x86_64_move_reg_to_stack(cc, b, bir, dst_type, reg);
+            X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, dst_type, reg);
             b->registers.items[OPD_VALUE(dst)] = offset;
         } break;
         default: oc_unreachable("unsupported operand"); break;
@@ -1376,6 +1591,7 @@ HANDLE_STRUCT_MEMCPY:
         if (actual_size <= 8) goto HANDLE_INTEGRAL_TYPE;
 
         switch (OPD_TYPE(dst)) {
+        case LL_IR_OPERAND_PARMAETER_BIT:
         case LL_IR_OPERAND_LOCAL_BIT: {
             x86_64_generate_memcpy(cc, b, bir, dst, src, (LL_Ir_Operand)actual_size | LL_IR_OPERAND_IMMEDIATE_BIT, dst_type);
         } break;
@@ -1512,6 +1728,13 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
         case LL_IR_OPCODE_CLONE: {
             x86_64_generate_clone_cast(cc, b, bir, operands[0], operands[1]);
         } break;
+        case LL_IR_OPCODE_ALIAS: {
+            oc_assert(OPD_TYPE(operands[0]) == LL_IR_OPERAND_REGISTER_BIT);
+            oc_assert(OPD_TYPE(operands[1]) == LL_IR_OPERAND_REGISTER_BIT);
+
+            b->registers.items[OPD_VALUE(operands[0])] = b->registers.items[OPD_VALUE(operands[1])];
+            oc_x86_64_write_nop(b, 1);
+        } break;
 
         case LL_IR_OPCODE_MEMCOPY: {
             if (OPD_TYPE(operands[3]) == LL_IR_OPERAND_IMMEDIATE_BIT) {
@@ -1547,7 +1770,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                     params.displacement = -b->locals.items[OPD_VALUE(operands[1])];
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
 
-                    uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, params.reg0);
+                    X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, params.reg0);
                     b->registers.items[OPD_VALUE(operands[0])] = offset;
                 } break;
                 case LL_IR_OPERAND_DATA_BIT: {
@@ -1559,7 +1782,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                         .text_rel_byte_offset = b->section_text.count - 8 /* sizeof displacement */
                     }));
 
-                    uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, params.reg0);
+                    X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, params.reg0);
                     b->registers.items[OPD_VALUE(operands[0])] = offset;
                 } break;
                 default: oc_todo("add lea operands"); break;
@@ -1585,8 +1808,8 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
             case LL_TYPE_UINT:
             case LL_TYPE_INT: {
                 /* oc_todo: max immeidiate is 28 bits */
-                X86_64_Operand_Register reg = x86_64_backend_active_registers[b->active_register_top++];
-                params.reg0 = reg;
+                uint32_t tmp_regs = x86_64_alloc_tmp_regs(1);
+                params.reg0 = x86_64_tmp_regs(tmp_regs, 0);
                 int64_t displacement = 0;
 
                 switch (OPD_TYPE(operands[2])) {
@@ -1600,7 +1823,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 } break;
                 case LL_IR_OPERAND_REGISTER_BIT: {
                     params.use_sib = 1 | X86_64_SIB_INDEX | X86_64_SIB_SCALE;
-                    params.index = b->registers.items[OPD_VALUE(operands[2])];
+                    params.index = x86_64_load_register(cc, b, bir, -1, &b->registers.items[OPD_VALUE(operands[2])], cc->typer->ty_uint64);
                     // oc_todo("i don't think this is right");
 
                     switch (OPD_VALUE(operands[3])) {
@@ -1618,7 +1841,6 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 case LL_IR_OPERAND_REGISTER_BIT: {
                     params.reg1 = x86_64_load_operand(cc, b, bir, operands[1]) | X86_64_REG_BASE;
                     params.displacement = displacement;
-                    b->active_register_top -= 1;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                 } break;
                 case LL_IR_OPERAND_LOCAL_BIT: {
@@ -1638,6 +1860,16 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 case LL_IR_OPERAND_PARMAETER_BIT: {
                     LL_Type* src_type = ir_get_operand_type(bir, b->fn, operands[1]);
                     switch (src_type->kind) {
+                    case LL_TYPE_STRING:
+                    case LL_TYPE_SLICE: {
+                        params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                        params.displacement = -b->parameters.items[OPD_VALUE(operands[1])];
+                        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_rm64, params);
+
+                        params.reg1 = params.reg0 | X86_64_REG_BASE;
+                        params.displacement = displacement;
+                        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
+                    } break;
                     case LL_TYPE_STRUCT: {
                         LL_Backend_Layout struct_layout = x86_64_get_layout(src_type);
                         size_t actual_size = max(struct_layout.size, struct_layout.alignment);
@@ -1664,21 +1896,28 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                         params.displacement = displacement - b->parameters.items[OPD_VALUE(operands[1])];
                         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                     } break;
-                    default: ll_print_type(type); oc_todo("add lea types"); break;
+                    default: ll_print_type(src_type); oc_todo("add lea types"); break;
                     }
                 } break;
                 default: ll_print_type(type); oc_todo("add lea operands"); break;
                 }
 
-                uword offset = x86_64_move_reg_to_stack(cc, b, bir, (LL_Type*)ptr_type, reg);
+                X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, (LL_Type*)ptr_type, params.reg0);
                 b->registers.items[OPD_VALUE(operands[0])] = offset;
-                b->active_register_top -= 1;
+                x86_64_free_tmp_regs(tmp_regs);
             } break;
             default: ll_print_type(type); oc_todo("add lea types"); break;
             }
         } break;
 
-        case LL_IR_OPCODE_TEST:
+        case LL_IR_OPCODE_TEST: {
+            type = ir_get_operand_type(bir, b->fn, operands[0]);
+            push_regs(tmp_regs, 0) {
+                params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
+            }
+            X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, params.reg0);
+            b->registers.items[OPD_VALUE(operands[0])] = offset;
+        } break;
 
         case LL_IR_OPCODE_AND:
             opcode1 = OPCODE_AND;
@@ -1721,13 +1960,13 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
 
 DO_OPCODE_ARITHMETIC:
 
-            params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
-            params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
-            b->active_register_top -= 2;
+            push_regs(tmp_regs, 0) {
+                params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
+                params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
+                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode1, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+            }
 
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode1, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
-
-            uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, params.reg0);
+            X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, params.reg0);
             b->registers.items[OPD_VALUE(operands[0])] = offset;
         } break;
         case LL_IR_OPCODE_MUL: {
@@ -1738,31 +1977,32 @@ DO_OPCODE_ARITHMETIC:
                 OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_XOR, r64_rm64, params);
             }
 
-            params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
-            params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
-            b->active_register_top -= 2;
-            oc_assert(params.reg0 == X86_64_OPERAND_REGISTER_rax);
+            push_regs(tmp_regs, 0) {
+                params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
+                params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
+                oc_assert(params.reg0 == X86_64_OPERAND_REGISTER_rax);
 
-            switch (type->kind) {
-            case LL_TYPE_INT:
-                params.reg0 = params.reg1;
-                params.reg1 = 0;
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_IMUL, x86_64_get_variant(type, .single = true), params);
-                break;
-            case LL_TYPE_UINT:
-                params.reg0 = params.reg1;
-                params.reg1 = 0;
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MUL, x86_64_get_variant(type, .single = true), params);
-                break;
-            case LL_TYPE_FLOAT:
-                if (type->width <= 32) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MULSS, r128_rm128, params);
-                else if (type->width <= 64) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MULSD, r128_rm128, params);
-                else oc_todo("implement");
-                break;
-            default: oc_todo("implement other types"); break;
+                switch (type->kind) {
+                case LL_TYPE_INT:
+                    params.reg0 = params.reg1;
+                    params.reg1 = 0;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_IMUL, x86_64_get_variant(type, .single = true), params);
+                    break;
+                case LL_TYPE_UINT:
+                    params.reg0 = params.reg1;
+                    params.reg1 = 0;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MUL, x86_64_get_variant(type, .single = true), params);
+                    break;
+                case LL_TYPE_FLOAT:
+                    if (type->width <= 32) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MULSS, r128_rm128, params);
+                    else if (type->width <= 64) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MULSD, r128_rm128, params);
+                    else oc_todo("implement");
+                    break;
+                default: oc_todo("implement other types"); break;
+                }
             }
 
-            uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, X86_64_OPERAND_REGISTER_rax);
+            X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, X86_64_OPERAND_REGISTER_rax);
             b->registers.items[OPD_VALUE(operands[0])] = offset;
 
         } break;
@@ -1774,68 +2014,74 @@ DO_OPCODE_ARITHMETIC:
                 OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_XOR, r64_rm64, params);
             }
 
-            params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
-            params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
-            b->active_register_top -= 2;
-            oc_assert(params.reg0 == X86_64_OPERAND_REGISTER_rax);
+            push_regs(tmp_regs, 0) {
+                params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
+                params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
+                oc_assert(params.reg0 == X86_64_OPERAND_REGISTER_rax);
 
-            switch (type->kind) {
-            case LL_TYPE_INT:
-                params.reg0 = params.reg1;
-                params.reg1 = 0;
+                switch (type->kind) {
+                case LL_TYPE_INT:
+                    params.reg0 = params.reg1;
+                    params.reg1 = 0;
 
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_IDIV, x86_64_get_variant(type, .single = true), params);
-                break;
-            case LL_TYPE_UINT:
-                params.reg0 = params.reg1;
-                params.reg1 = 0;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_IDIV, x86_64_get_variant(type, .single = true), params);
+                    break;
+                case LL_TYPE_UINT:
+                    params.reg0 = params.reg1;
+                    params.reg1 = 0;
 
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_DIV, x86_64_get_variant(type, .single = true), params);
-                break;
-            case LL_TYPE_FLOAT:
-                if (type->width <= 32) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_DIVSS, r128_rm128, params);
-                else if (type->width <= 64) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_DIVSD, r128_rm128, params);
-                else oc_todo("implement");
-                break;
-            default: ll_print_type(type); oc_todo("implement other types"); break;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_DIV, x86_64_get_variant(type, .single = true), params);
+                    break;
+                case LL_TYPE_FLOAT:
+                    if (type->width <= 32) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_DIVSS, r128_rm128, params);
+                    else if (type->width <= 64) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_DIVSD, r128_rm128, params);
+                    else oc_todo("implement");
+                    break;
+                default: ll_print_type(type); oc_todo("implement other types"); break;
+                }
             }
 
-            uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, X86_64_OPERAND_REGISTER_rax);
+            X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, X86_64_OPERAND_REGISTER_rax);
             b->registers.items[OPD_VALUE(operands[0])] = offset;
 
         } break;
 
         case LL_IR_OPCODE_EQ:
-            b->registers.items[OPD_VALUE(operands[0])] = OPCODE_JE;
+            b->registers.items[OPD_VALUE(operands[0])].value = OPCODE_JE;
             goto DO_OPCODE_COMPARE;
         case LL_IR_OPCODE_NEQ:
-            b->registers.items[OPD_VALUE(operands[0])] = OPCODE_JNE;
+            b->registers.items[OPD_VALUE(operands[0])].value = OPCODE_JNE;
             goto DO_OPCODE_COMPARE;
         case LL_IR_OPCODE_GTE:
-            b->registers.items[OPD_VALUE(operands[0])] = OPCODE_JGE;
+            b->registers.items[OPD_VALUE(operands[0])].value = OPCODE_JGE;
             goto DO_OPCODE_COMPARE;
         case LL_IR_OPCODE_GT:
-            b->registers.items[OPD_VALUE(operands[0])] = OPCODE_JG;
+            b->registers.items[OPD_VALUE(operands[0])].value = OPCODE_JG;
             goto DO_OPCODE_COMPARE;
         case LL_IR_OPCODE_LTE:
-            b->registers.items[OPD_VALUE(operands[0])] = OPCODE_JLE;
+            b->registers.items[OPD_VALUE(operands[0])].value = OPCODE_JLE;
             goto DO_OPCODE_COMPARE;
         case LL_IR_OPCODE_LT: {
-            b->registers.items[OPD_VALUE(operands[0])] = OPCODE_JL;
+            b->registers.items[OPD_VALUE(operands[0])].value = OPCODE_JL;
             LL_Type* type;
 DO_OPCODE_COMPARE:
+            b->registers.items[OPD_VALUE(operands[0])].location = X86_64_REGISTER_LOCATION_FLAGS;
+            b->registers.items[OPD_VALUE(operands[0])].usedup = 0;
+
             type = ir_get_operand_type(bir, b->fn, operands[1]);
             switch (type->kind) {
             case LL_TYPE_ANYBOOL:
             case LL_TYPE_BOOL:
+            case LL_TYPE_CHAR:
             case LL_TYPE_ANYINT:
             case LL_TYPE_UINT:
             case LL_TYPE_INT: {
-                params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
-                params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
-                b->active_register_top -= 2;
 
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_CMP, x86_64_get_variant(type), params);
+                push_regs(tmp_regs, 0) {
+                    params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
+                    params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_CMP, x86_64_get_variant(type), params);
+                }
                 break;
             }
             default: oc_todo("handle other type"); break;
@@ -1856,12 +2102,13 @@ DO_OPCODE_ARITHMETIC_PREOP:
             switch (type->kind) {
             case LL_TYPE_ANYINT:
             case LL_TYPE_INT: {
-                params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
-                b->active_register_top -= 1;
 
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode1, x86_64_get_variant(type, .single = true), params);
+                push_regs(tmp_regs, 0) {
+                    params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode1, x86_64_get_variant(type, .single = true), params);
+                }
 
-                uword offset = x86_64_move_reg_to_stack(cc, b, bir, type, params.reg0);
+                X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, params.reg0);
                 b->registers.items[OPD_VALUE(operands[0])] = offset;
             } break;
             default: ll_print_type(type); oc_todo("handle other type"); break;
@@ -1884,22 +2131,43 @@ DO_OPCODE_ARITHMETIC_PREOP:
                 block->fixup_offset = (int64_t)b->section_text.count - 4u;
             }
             break;
-        case LL_IR_OPCODE_BRANCH_COND:
+        case LL_IR_OPCODE_BRANCH_COND: {
             params.relative = 0;
+
+            X86_64_Register* src_reg = &b->registers.items[OPD_VALUE(operands[0])];
+            if (src_reg->location == X86_64_REGISTER_LOCATION_FLAGS) {
+                if (operands[1] == block->next) {
+                    OC_X86_64_WRITE_INSTRUCTION(b, oc_x86_64_get_inverse_compare(src_reg->value), rel32, params);
+                } else if (operands[2] == block->next) {
+                    OC_X86_64_WRITE_INSTRUCTION(b, src_reg->value, rel32, params);
+                } else oc_unreachable("figure this out");
+            } else {
+                LL_Type* op_type = ir_get_operand_type(bir, b->fn, operands[0]);
+                
+                push_regs(tmp_regs, 0) {
+                    params.reg0 = x86_64_load_register(cc, b, bir, -1, src_reg, op_type);
+                    params.reg1 = params.reg0;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_TEST, x86_64_get_variant(op_type), params);
+                }
+
+                if (operands[1] == block->next) {
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_JE, rel32, params);
+                } else if (operands[2] == block->next) {
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_JNE, rel32, params);
+                } else oc_unreachable("figure this out");
+            }
+
             if (operands[1] == block->next) {
                 // then block is next
-
-                OC_X86_64_WRITE_INSTRUCTION(b, oc_x86_64_get_inverse_compare(b->registers.items[OPD_VALUE(operands[0])]), rel32, params);
                 bir->blocks.items[operands[1]].ref1 = 0;
                 bir->blocks.items[operands[2]].ref1 = bir->blocks.items[operands[1]].prev;
             } else if (operands[2] == block->next) {
                 // else block is next
-                OC_X86_64_WRITE_INSTRUCTION(b, b->registers.items[OPD_VALUE(operands[0])], rel32, params);
                 bir->blocks.items[operands[2]].ref1 = 0;
                 bir->blocks.items[operands[1]].ref1 = bir->blocks.items[operands[2]].prev;
             } else oc_unreachable("figure this out");
             block->fixup_offset = (int64_t)b->section_text.count - 4u;
-            break;
+        } break;
 
         case LL_IR_OPCODE_INVOKEVALUE:
             invoke_offset = 1;
@@ -1955,6 +2223,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
                     case LL_IR_OPERAND_REGISTER_BIT: 
                         reg = x86_64_call_convention_next_reg(b, &callconv, type);
 
+                        oc_assert(b->registers.items[OPD_VALUE(arg_operand)].location == X86_64_REGISTER_LOCATION_STACK);
                         // don't need to switch on type here, large struct comes in as pointer, so we can just copy that ptr direcly
                         if (reg == X86_64_OPERAND_REGISTER_invalid) {
                             X86_64_Operand_Register tmp_reg;
@@ -1983,8 +2252,9 @@ DO_OPCODE_ARITHMETIC_PREOP:
                                 params.displacement = -x86_64_make_struct_copy(cc, b, bir, type, arg_operand, false);
                                 OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                             } else {
-                                params.displacement = -b->registers.items[OPD_VALUE(arg_operand)];
+                                params.displacement = -(int64_t)b->registers.items[OPD_VALUE(arg_operand)].value;
                                 OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+                                // x86_64_load_register(cc, b, bir, reg, &b->registers.items[OPD_VALUE(arg_operand)], type);
                             }
                         }
                         break;
@@ -2050,10 +2320,10 @@ DO_OPCODE_ARITHMETIC_PREOP:
                     params.displacement = -return_struct_offset;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
 
-                    uword offset = x86_64_move_reg_to_stack(cc, b, bir, fn_type->return_type, params.reg0);
+                    X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, fn_type->return_type, params.reg0);
                     b->registers.items[OPD_VALUE(operands[0])] = offset;
                 } else {
-                    uword offset = x86_64_move_reg_to_stack(cc, b, bir, fn_type->return_type, X86_64_OPERAND_REGISTER_rax);
+                    X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, fn_type->return_type, X86_64_OPERAND_REGISTER_rax);
                     b->registers.items[OPD_VALUE(operands[0])] = offset;
                 }
             }
@@ -2079,9 +2349,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
                 OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_rm64, params);
 
                 params.reg0 = X86_64_OPERAND_REGISTER_rsi;
-                params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
-                params.displacement = -b->registers.items[OPD_VALUE(operands[0])];
-                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_rm64, params);
+                x86_64_load_register(cc, b, bir, X86_64_OPERAND_REGISTER_rsi, &b->registers.items[OPD_VALUE(operands[0])], cc->typer->ty_uint64);
 
                 oc_assert(stride <= 0xFFFFFFF);
                 x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, return_type, LL_IR_OPERAND_IMMEDIATE_BIT | stride, NULL);
@@ -2158,7 +2426,9 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         // generate prologue
         size_t function_offset = b->section_text.count;
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
-        // OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbx }));
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbx }));
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rdi }));
+
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp, .reg1 = X86_64_OPERAND_REGISTER_rsp }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_SUB, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = 0xface0102 }));
         size_t stack_size_offset = b->section_text.count - 4;
@@ -2190,7 +2460,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, ptr_type, param.reg);
                 b->indirect_return_ptr_offset = offset;
             } else {
-                b->indirect_return_ptr_offset = -param.stack_offset - 0x10 /* rbp and return address */;
+                b->indirect_return_ptr_offset = -param.stack_offset - 0x20 /* rbp and return address */;
             }
             
             b->indirect_return_type = true;
@@ -2204,7 +2474,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, fn_type->parameters[j], param.reg);
                 b->parameters.items[j] = offset;
             } else {
-                b->parameters.items[j] = -param.stack_offset - 0x10 /* rbp and return address */;
+                b->parameters.items[j] = -param.stack_offset - 0x20 /* rbp and return address */;
             }
             if (!cc->quiet) {
                 print("parameter {} - offset {x}", j, b->parameters.items[j]);
@@ -2221,7 +2491,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
 
         for (uint32_t li = 0; li < b->registers.count; ++li) {
             if (!cc->quiet) {
-                print("register {} - offset {x}\n", li, b->registers.items[li]);
+                print("register {} - location {x} offset {x}\n", li, b->registers.items[li].location, b->registers.items[li].value);
             }
         }
         if (!cc->quiet) print("\n\n");
@@ -2236,7 +2506,9 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         int32_t* pstack_size = (int32_t*)&b->section_text.items[stack_size_offset];
         *pstack_size = stack_used;
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_ADD, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = stack_used }));
-        // OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbx }));
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rdi }));
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbx }));
+
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_RET, noarg, ((X86_64_Instruction_Parameters){ 0 }));
 

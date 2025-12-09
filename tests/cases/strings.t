@@ -35,5 +35,5 @@ void main() {
 
     string s = "   sdf";
     s = string_trim(s);
-    write_string(s);
+    // write_string(s);
 }

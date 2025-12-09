@@ -52,6 +52,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
     case LL_IR_OPCODE_MEMCOPY: return 4;
     case LL_IR_OPCODE_LOAD: return 3;
     case LL_IR_OPCODE_CLONE: return 3;
+    case LL_IR_OPCODE_ALIAS: return 3;
     case LL_IR_OPCODE_CAST: return 3;
 
     case LL_IR_OPCODE_SUB:
@@ -116,6 +117,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     case LL_IR_OPCODE_MEMCOPY:     wprint(w, INDENT "memcpy " OPERAND_FMT ", " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_LOAD:        wprint(w, INDENT OPERAND_FMT " = load " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_CLONE:       wprint(w, INDENT OPERAND_FMT " = clone " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
+    case LL_IR_OPCODE_ALIAS:       wprint(w, INDENT OPERAND_FMT " = alias " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_LEA:         wprint(w, INDENT OPERAND_FMT " = lea " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1])); break;
     case LL_IR_OPCODE_LEA_INDEX:
         if (LL_IR_OPERAND_IMMEDIATE_SIGN & OPD_VALUE(operands[3])) {
@@ -171,6 +173,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
             case LL_IR_OPCODE_MEMCOPY:
             case LL_IR_OPCODE_LOAD:
             case LL_IR_OPCODE_CLONE:
+            case LL_IR_OPCODE_ALIAS:
             case LL_IR_OPCODE_LEA:
             case LL_IR_OPCODE_LEA_INDEX:
             case LL_IR_OPCODE_CAST:
@@ -746,6 +749,7 @@ DO_BIN_OP_BOOLEAN:
             r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
             r2 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, AST_AS(expr, Ast_Operation)->right->type, r2);
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_AND, expr->type, r1, r2);
+            return result;
         } break;
 
 
@@ -998,6 +1002,7 @@ DO_BIN_OP_ASSIGN_OP:
         LL_Type* ptr_element_type;
         LL_Type* ptr_ptr_element_type;
         LL_Backend_Layout layout;
+        LL_Ir_Operand alias1, alias2;
 
         switch (op->ptr->type->kind) {
         case LL_TYPE_STRING:
@@ -1013,23 +1018,36 @@ DO_BIN_OP_ASSIGN_OP:
 HANDLE_SLICE_OP:
             lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
             lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_CLONE, op->ptr->type, lvalue_op);
+            if (op->start) {
+                alias1 = IR_APPEND_OP_DST(LL_IR_OPCODE_ALIAS, op->ptr->type, lvalue_op);
+                alias2 = IR_APPEND_OP_DST(LL_IR_OPCODE_ALIAS, op->ptr->type, lvalue_op);
+            } else if (op->stop) {
+                alias2 = IR_APPEND_OP_DST(LL_IR_OPCODE_ALIAS, op->ptr->type, lvalue_op);
+            }
 
             if (op->start) {
-                ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_ptr_element_type, lvalue_op, 0, 8);
+                ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_ptr_element_type, alias1, 0, 8);
+                LL_Ir_Operand ptr_op1 = IR_APPEND_OP_DST(LL_IR_OPCODE_ALIAS, ptr_ptr_element_type, ptr_op);
+
                 LL_Ir_Operand new_ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ptr_element_type, ptr_op);
                 inc_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_element_type, new_ptr_op, start_op, max(layout.size, layout.alignment));
-                IR_APPEND_OP(LL_IR_OPCODE_STORE, ptr_op, inc_op);
+
+                IR_APPEND_OP(LL_IR_OPCODE_STORE, ptr_op1, inc_op);
             }
 
             if (op->stop) {
-                ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_size_type, lvalue_op, 1, 8);
+                ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_size_type, alias2, 1, 8);
+
                 inc_op = IR_APPEND_OP_DST(LL_IR_OPCODE_SUB, size_type, stop_op, start_op);
                 IR_APPEND_OP(LL_IR_OPCODE_STORE, ptr_op, inc_op);
             } else if (op->start) {
-                ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_size_type, lvalue_op, 1, 8);
+                ptr_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_size_type, alias2, 1, 8);
+                LL_Ir_Operand ptr_op1 = IR_APPEND_OP_DST(LL_IR_OPCODE_ALIAS, ptr_size_type, ptr_op);
+
                 LL_Ir_Operand size_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, size_type, ptr_op);
                 inc_op = IR_APPEND_OP_DST(LL_IR_OPCODE_SUB, size_type, size_op, start_op);
-                IR_APPEND_OP(LL_IR_OPCODE_STORE, ptr_op, inc_op);
+
+                IR_APPEND_OP(LL_IR_OPCODE_STORE, ptr_op1, inc_op);
             }
 
             result = lvalue_op;
