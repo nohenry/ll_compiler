@@ -965,8 +965,16 @@ DO_BIN_OP_ASSIGN_OP:
         case LL_TYPE_POINTER:
             lvalue_op = ir_generate_expression(cc, b, op->ptr, false);
             break;
-        case LL_TYPE_STRING:
-        case LL_TYPE_SLICE:
+        case LL_TYPE_STRING: {
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+
+            LL_Type* ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, cc->typer->ty_char);
+            LL_Type* ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
+
+            lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_ptr_element_type, lvalue_op, 0, 8);
+            lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ptr_element_type, lvalue_op);
+        } break;
+        case LL_TYPE_SLICE: {
             lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
 
             LL_Type* ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ((LL_Type_Slice*)op->ptr->type)->element_type);
@@ -974,7 +982,7 @@ DO_BIN_OP_ASSIGN_OP:
 
             lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_ptr_element_type, lvalue_op, 0, 8);
             lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ptr_element_type, lvalue_op);
-            break;
+        } break;
         default:
             lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
             break;
@@ -1226,8 +1234,8 @@ HANDLE_SLICE_OP:
 
         if (loop->update) {
             ir_generate_expression(cc, b, loop->update, false);
-            IR_APPEND_OP(LL_IR_OPCODE_BRANCH, cond_block);
         }
+        IR_APPEND_OP(LL_IR_OPCODE_BRANCH, cond_block);
 
         b->current_block = end_block;
 

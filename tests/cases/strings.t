@@ -10,6 +10,9 @@ string string_trim(string s) {
     while s.length > 0 && s[0] == 0x20 {
         s = s[1:];
     }
+    while s.length > 0 && s[s.length - 1] == 0xa {
+        s = s[:s.length - 1];
+    }
     return s;
 }
 
@@ -33,7 +36,7 @@ void main() {
     write_string(a[3:]);
     write_string(a[:2]);
 
-    string s = "   sdf";
+    string s = "   sdf   \n";
     s = string_trim(s);
-    // write_string(s);
+    write_string(s);
 }
