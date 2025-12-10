@@ -781,7 +781,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
             result = parser_parse_expression(cc, parser, NULL, 0, true);
             EXPECT(')', &token);
             LL_Token_Info p_close = TOKEN_INFO(token);
-            right = parser_parse_expression(cc, parser, NULL, 0, false);
+            right = parser_parse_expression(cc, parser, NULL, 150, false);
 
             result = CREATE_NODE(AST_KIND_CAST, ((Ast_Cast){ .cast_type = result, .expr = right, .p_open = p_open, .p_close = p_close }));
             result->token_info = cast_kw;

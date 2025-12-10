@@ -300,11 +300,11 @@ DONE_NUMBER:
         case ':':
         case ';':
         case ',':
-        case '%':
             out->kind = (LL_Token_Kind)lexer->source.ptr[lexer->pos++];
             return true;
 
         case '&': lexer_prefixed(cc, lexer, out, '&', LL_TOKEN_KIND_AND); return true;
+        case '|': lexer_prefixed(cc, lexer, out, '|', LL_TOKEN_KIND_OR); return true;
 
         case '<': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_LTE); return true;
         case '>': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_GTE); return true;
@@ -315,6 +315,7 @@ DONE_NUMBER:
         case '-': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_MINUS); return true;
         case '*': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_TIMES); return true;
         case '/': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_DIVIDE); return true;
+        case '%': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_PERCENT); return true;
 
         case '.': lexer_prefixed(cc, lexer, out, '.', LL_TOKEN_KIND_RANGE); return true;
         
@@ -392,6 +393,8 @@ void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w) {
     case LL_TOKEN_KIND_GTE: wprint(w, ">="); break;
 
     case LL_TOKEN_KIND_RANGE: wprint(w, ".."); break;
+    case LL_TOKEN_KIND_AND: wprint(w, "&&"); break;
+    case LL_TOKEN_KIND_OR: wprint(w, "||"); break;
     
     default:
         wprint(w, "{}", (char)token->kind);

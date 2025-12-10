@@ -152,10 +152,8 @@ void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error e
         end_line_info = line_info;
     }
 
-    if (error.main_token.kind) {
+    if (error.highlight_start.kind || error.highlight_end.kind || error.main_token.kind) {
         eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
-    } else {
-        eprint("{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename);
     }
 
     va_list list;
@@ -189,10 +187,8 @@ void ll_typer_report_error_note_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
         end_line_info = line_info;
     }
 
-    if (error.main_token.kind) {
+    if (error.highlight_start.kind || error.highlight_end.kind || error.main_token.kind) {
         eprint("{}:{}:{}: \x1b[34;1mnote\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
-    } else {
-        eprint("{}: \x1b[34;1mnote\x1b[0m: \x1b[1m", cc->lexer->filename);
     }
 
     va_list list;
@@ -1401,6 +1397,7 @@ TRY_MEMBER_FUNCTION_CALL:
         case '-':
         case '*':
         case '/':
+        case '%':
             if (expected_type) {
                 result = expected_type;
 

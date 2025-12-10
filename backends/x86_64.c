@@ -319,6 +319,40 @@ void* native_realloc(void* ptr, uword u) {
     return realloc(ptr, u);
 }
 
+struct native_string native_read_entire_file(struct native_string filepath) {
+    struct native_string result = { 0 };
+    FILE* fptr = NULL;
+    if (fopen_s(&fptr, filepath.data, "rb")) {
+        string s = { .ptr = filepath.data, .len = filepath.length };
+        eprint("unable to open file '{}'\n", s);
+        oc_exit(-1);
+    }
+    if (!fptr) {
+        string s = { .ptr = filepath.data, .len = filepath.length };
+        eprint("unable to open file '{}'\n", s);
+        oc_exit(-1);
+    }
+
+    fseek(fptr, 0, SEEK_END);
+    size_t input_size = ftell(fptr);
+    fseek(fptr, 0, SEEK_SET);
+
+    uint8_t* input_contents = malloc(input_size);
+    if (!input_contents) oc_oom();
+
+    size_t read_amount = fread(input_contents, 1, input_size, fptr);
+    if (read_amount != input_size) {
+        eprint("Unable to read file: ferror() = {}\n", ferror(fptr));
+        oc_assert(false);
+    }
+    fclose(fptr);
+
+    result.data = (char*)input_contents;
+    result.length = input_size;
+
+    return result;
+}
+
 void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     b->arena = &cc->arena;
     b->w.append_u8 = x86_64_append_op_segment_u8;
@@ -338,6 +372,7 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     ll_native_fn_put(cc, b, lit("write_float64"), native_write_float64);
     ll_native_fn_put(cc, b, lit("write_string"), native_write_string);
     ll_native_fn_put(cc, b, lit("write_many"), native_write_many);
+    ll_native_fn_put(cc, b, lit("read_entire_file"), native_read_entire_file);
     ll_native_fn_put(cc, b, lit("malloc"), native_malloc);
     ll_native_fn_put(cc, b, lit("realloc"), native_realloc);
 }
@@ -1611,6 +1646,10 @@ static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backe
         break;
     }
 
+    if (OPD_TYPE(dst) == LL_IR_OPERAND_REGISTER_BIT && dst_type->kind == LL_TYPE_POINTER) {
+        dst_type = ((LL_Type_Pointer*)dst_type)->element_type;
+    }
+
     switch (dst_type->kind) {
     case LL_TYPE_STRING:
     case LL_TYPE_SLICE: {
@@ -1659,6 +1698,9 @@ HANDLE_STRUCT_MEMCPY:
             x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, dst_type, (LL_Ir_Operand)actual_size | LL_IR_OPERAND_IMMEDIATE_BIT, cc->typer->ty_uint64);
         } break;
         case LL_IR_OPERAND_LOCAL_BIT: {
+            x86_64_generate_memcpy(cc, b, bir, dst, src, (LL_Ir_Operand)actual_size | LL_IR_OPERAND_IMMEDIATE_BIT, dst_type);
+        } break;
+        case LL_IR_OPERAND_REGISTER_BIT: {
             x86_64_generate_memcpy(cc, b, bir, dst, src, (LL_Ir_Operand)actual_size | LL_IR_OPERAND_IMMEDIATE_BIT, dst_type);
         } break;
         default: oc_todo("handle other operands"); break;
@@ -1727,8 +1769,8 @@ HANDLE_INTEGRAL_TYPE:
 
         } break;
         case LL_IR_OPERAND_REGISTER_BIT:
-            assert(dst_type->kind == LL_TYPE_POINTER);
-            dst_type = ((LL_Type_Pointer*)dst_type)->element_type;
+            // assert(dst_type->kind == LL_TYPE_POINTER);
+            // dst_type = ((LL_Type_Pointer*)dst_type)->element_type;
 
             switch (OPD_TYPE(src)) {
             case LL_IR_OPERAND_IMMEDIATE_BIT:
@@ -2110,6 +2152,53 @@ DO_OPCODE_ARITHMETIC:
             b->registers.items[OPD_VALUE(operands[0])] = offset;
 
         } break;
+        case LL_IR_OPCODE_MOD: {
+            LL_Type* type = ir_get_operand_type(bir, b->fn, operands[0]);
+            if (type->kind == LL_TYPE_INT || type->kind == LL_TYPE_UINT) {
+                params.reg0 = X86_64_OPERAND_REGISTER_rdx;
+                params.reg1 = X86_64_OPERAND_REGISTER_rdx;
+                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_XOR, r64_rm64, params);
+            }
+
+            push_regs(tmp_regs, 0) {
+                params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
+                params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
+                oc_assert(params.reg0 == X86_64_OPERAND_REGISTER_rax);
+
+
+                switch (type->kind) {
+                case LL_TYPE_INT:
+                    params.reg0 = params.reg1;
+                    params.reg1 = 0;
+
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_CQO , noarg, params);
+
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_IDIV, x86_64_get_variant(type, .single = true), params);
+                    break;
+                case LL_TYPE_UINT:
+                    params.reg0 = params.reg1;
+                    params.reg1 = 0;
+
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_DIV, x86_64_get_variant(type, .single = true), params);
+                    break;
+                case LL_TYPE_FLOAT:
+                    if (type->width <= 32) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_DIVSS, r128_rm128, params);
+                    else if (type->width <= 64) OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_DIVSD, r128_rm128, params);
+                    else oc_todo("implement");
+                    break;
+                default: ll_print_type(type); oc_todo("implement other types"); break;
+                }
+            }
+
+            if (type->kind == LL_TYPE_FLOAT) {
+                X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, params.reg0);
+                b->registers.items[OPD_VALUE(operands[0])] = offset;
+            } else {
+                X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, X86_64_OPERAND_REGISTER_rdx);
+                b->registers.items[OPD_VALUE(operands[0])] = offset;
+            }
+
+        } break;
 
         case LL_IR_OPCODE_EQ:
             b->registers.items[OPD_VALUE(operands[0])].value = OPCODE_JE;
@@ -2448,8 +2537,10 @@ DO_OPCODE_ARITHMETIC_PREOP:
                 oc_assert(stride <= 0xFFFFFFF);
                 x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, return_type, LL_IR_OPERAND_IMMEDIATE_BIT | stride, NULL);
             } else {
-                params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[0], fn_type->return_type);
-                oc_assert(params.reg0 == X86_64_OPERAND_REGISTER_rax);
+                push_regs(tmp_regs, 0) {
+                    params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[0], fn_type->return_type);
+                    oc_assert(params.reg0 == X86_64_OPERAND_REGISTER_rax);
+                }
             }
 
             break;

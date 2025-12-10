@@ -59,6 +59,7 @@ enum {
     LL_IR_OPCODE_SUB, // x
     LL_IR_OPCODE_MUL, // x
     LL_IR_OPCODE_DIV, // x
+    LL_IR_OPCODE_MOD, // x
     LL_IR_OPCODE_LT,  // x
     LL_IR_OPCODE_LTE, // x
     LL_IR_OPCODE_GT,  // x

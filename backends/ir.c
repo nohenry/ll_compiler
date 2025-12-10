@@ -58,6 +58,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
     case LL_IR_OPCODE_SUB:
     case LL_IR_OPCODE_MUL:
     case LL_IR_OPCODE_DIV:
+    case LL_IR_OPCODE_MOD:
     case LL_IR_OPCODE_LT:
     case LL_IR_OPCODE_LTE:
     case LL_IR_OPCODE_GT:
@@ -132,6 +133,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     case LL_IR_OPCODE_SUB:         wprint(w, INDENT OPERAND_FMT " = sub " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_MUL:         wprint(w, INDENT OPERAND_FMT " = mul " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_DIV:         wprint(w, INDENT OPERAND_FMT " = div " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
+    case LL_IR_OPCODE_MOD:         wprint(w, INDENT OPERAND_FMT " = mod " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_LT:          wprint(w, INDENT OPERAND_FMT " = lt " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_LTE:         wprint(w, INDENT OPERAND_FMT " = lte " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
     case LL_IR_OPCODE_GT:          wprint(w, INDENT OPERAND_FMT " = gt " OPERAND_FMT ", " OPERAND_FMT, OPERAND_FMT_VALUE(operands[0]), OPERAND_FMT_VALUE(operands[1]), OPERAND_FMT_VALUE(operands[2])); break;
@@ -181,6 +183,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
             case LL_IR_OPCODE_SUB:
             case LL_IR_OPCODE_MUL:
             case LL_IR_OPCODE_DIV:
+            case LL_IR_OPCODE_MOD:
             case LL_IR_OPCODE_LT:
             case LL_IR_OPCODE_LTE:
             case LL_IR_OPCODE_GT:
@@ -714,6 +717,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
         case '-': op = LL_IR_OPCODE_SUB; break;
         case '*': op = LL_IR_OPCODE_MUL; break;
         case '/': op = LL_IR_OPCODE_DIV; break;
+        case '%': op = LL_IR_OPCODE_MOD; break;
 
         case '<':
             op = LL_IR_OPCODE_LT;
@@ -743,6 +747,14 @@ DO_BIN_OP_BOOLEAN:
             result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
             return result;
         
+        case LL_TOKEN_KIND_OR: {
+            r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
+            r1 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, AST_AS(expr, Ast_Operation)->left->type, r1);
+            r2 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->right, false);
+            r2 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, AST_AS(expr, Ast_Operation)->right->type, r2);
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_OR, expr->type, r1, r2);
+            return result;
+        } break;
         case LL_TOKEN_KIND_AND: {
             r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);
             r1 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, AST_AS(expr, Ast_Operation)->left->type, r1);
@@ -754,7 +766,7 @@ DO_BIN_OP_BOOLEAN:
 
 
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
-            op = LL_IR_OPCODE_DIV;
+            op = LL_IR_OPCODE_MOD;
             goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_DIVIDE:
             op = LL_IR_OPCODE_DIV;
@@ -847,6 +859,7 @@ DO_BIN_OP_ASSIGN_OP:
                     if (fn_type->parameters[i]->kind == LL_TYPE_POINTER) {
                         if (parameter_type->kind != LL_TYPE_POINTER) {
                             arg_lvalue = true;
+                            parameter_type = ll_typer_get_ptr_type(cc, cc->typer, parameter_type);
                             if (inv->ordered_arguments.items[i]->kind != AST_KIND_INDEX && inv->ordered_arguments.items[i]->kind != AST_KIND_BINARY_OP) {
                                 arg_lea = true;
                             }
@@ -1213,8 +1226,8 @@ HANDLE_SLICE_OP:
             uint32_t index = FUNCTION()->locals.count;
             oc_array_append(&cc->arena, &FUNCTION()->locals, var);
             loop->scope->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
-            loop->scope->break_block_ref = break_block;
         }
+        loop->scope->break_block_ref = break_block;
 
 
         /* cond_block->ref1 = body_block; */
