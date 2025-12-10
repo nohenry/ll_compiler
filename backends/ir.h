@@ -89,7 +89,7 @@ typedef struct {
 
 typedef struct ll_ir_block {
     uint32_t next, prev;
-    uint32_t ref1, ref2;
+    // uint32_t ref1, ref2;
     /* struct ll_ir_block *next, *prev; */
     /* struct ll_ir_block *ref1, *ref2; */
     LL_Ir_Op_List ops;

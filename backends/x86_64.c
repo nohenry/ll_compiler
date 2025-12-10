@@ -18,6 +18,16 @@ typedef struct {
 } X86_64_Section;
 
 typedef struct {
+    LL_Ir_Block_Ref branch_from;
+    LL_Ir_Block_Ref branch_to;
+} X86_64_Branch_Relocation;
+
+typedef struct {
+    size_t count, capacity;
+    X86_64_Branch_Relocation* items;
+} X86_64_Branch_Relocation_List;
+
+typedef struct {
     size_t text_rel_byte_offset;
     uint32_t data_item;
 } X86_64_Internal_Relocation;
@@ -84,6 +94,7 @@ typedef struct {
     X86_64_Section section_text;
     X86_64_Section section_data;
 
+    X86_64_Branch_Relocation_List branch_relocations;
     X86_64_Internal_Relocation_List internal_relocations;
     uint32_t stack_used, stack_used_for_args;
 
@@ -365,6 +376,7 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     b->w.assert_abort = x86_64_assert_abort;
     memset(&b->ops, 0, sizeof(b->ops));
     memset(&b->internal_relocations, 0, sizeof(b->internal_relocations));
+    memset(&b->branch_relocations, 0, sizeof(b->branch_relocations));
 
 
     ll_native_fn_put(cc, b, lit("write_int"), native_write);
@@ -1800,22 +1812,14 @@ HANDLE_INTEGRAL_TYPE:
 }
 
 
-static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
+static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Ir_Block_Ref block_ref) {
     size_t i;
     int32_t opcode1;
     X86_64_Get_Variant_Params get_variant = { 0 };
     LL_Type* type;
 
+    LL_Ir_Block* block = &bir->blocks.items[block_ref];
     block->generated_offset = (int64_t)b->section_text.count;
-
-    if (block->ref1) {
-        int32_t* dst_offset = (int32_t*)&b->section_text.items[bir->blocks.items[block->ref1].fixup_offset];
-        *dst_offset = (int32_t)(block->generated_offset - bir->blocks.items[block->ref1].fixup_offset - 4);
-    }
-    if (block->ref2) {
-        int32_t* dst_offset = (int32_t*)&b->section_text.items[bir->blocks.items[block->ref2].fixup_offset];
-        *dst_offset = (int32_t)(block->generated_offset - bir->blocks.items[block->ref2].fixup_offset - 4);
-    }
 
     for (i = 0; i < block->ops.count; ) {
         LL_Ir_Opcode opcode = (LL_Ir_Opcode)block->ops.items[i];
@@ -2115,11 +2119,6 @@ DO_OPCODE_ARITHMETIC:
         } break;
         case LL_IR_OPCODE_DIV: {
             LL_Type* type = ir_get_operand_type(bir, b->fn, operands[0]);
-            if (type->kind == LL_TYPE_INT || type->kind == LL_TYPE_UINT) {
-                params.reg0 = X86_64_OPERAND_REGISTER_rdx;
-                params.reg1 = X86_64_OPERAND_REGISTER_rdx;
-                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_XOR, r64_rm64, params);
-            }
 
             push_regs(tmp_regs, 0) {
                 params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
@@ -2128,12 +2127,18 @@ DO_OPCODE_ARITHMETIC:
 
                 switch (type->kind) {
                 case LL_TYPE_INT:
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_CQO , noarg, params);
+
                     params.reg0 = params.reg1;
                     params.reg1 = 0;
 
                     OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_IDIV, x86_64_get_variant(type, .single = true), params);
                     break;
                 case LL_TYPE_UINT:
+                    params.reg0 = X86_64_OPERAND_REGISTER_rdx;
+                    params.reg1 = X86_64_OPERAND_REGISTER_rdx;
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_XOR, r64_rm64, params);
+
                     params.reg0 = params.reg1;
                     params.reg1 = 0;
 
@@ -2154,11 +2159,6 @@ DO_OPCODE_ARITHMETIC:
         } break;
         case LL_IR_OPCODE_MOD: {
             LL_Type* type = ir_get_operand_type(bir, b->fn, operands[0]);
-            if (type->kind == LL_TYPE_INT || type->kind == LL_TYPE_UINT) {
-                params.reg0 = X86_64_OPERAND_REGISTER_rdx;
-                params.reg1 = X86_64_OPERAND_REGISTER_rdx;
-                OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_XOR, r64_rm64, params);
-            }
 
             push_regs(tmp_regs, 0) {
                 params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
@@ -2168,14 +2168,18 @@ DO_OPCODE_ARITHMETIC:
 
                 switch (type->kind) {
                 case LL_TYPE_INT:
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_CQO , noarg, params);
+
                     params.reg0 = params.reg1;
                     params.reg1 = 0;
-
-                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_CQO , noarg, params);
 
                     OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_IDIV, x86_64_get_variant(type, .single = true), params);
                     break;
                 case LL_TYPE_UINT:
+                    params.reg0 = X86_64_OPERAND_REGISTER_rdx;
+                    params.reg1 = X86_64_OPERAND_REGISTER_rdx;
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_XOR, r64_rm64, params);
+
                     params.reg0 = params.reg1;
                     params.reg1 = 0;
 
@@ -2283,6 +2287,11 @@ DO_OPCODE_ARITHMETIC_PREOP:
                 params.relative = 0;
                 OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_JMP, rel32, params);
                 block->fixup_offset = (int64_t)b->section_text.count - 4u;
+
+                oc_array_append(&cc->arena, &b->branch_relocations, ((X86_64_Branch_Relocation) {
+                    .branch_from = block_ref, // this block
+                    .branch_to = operands[0],
+                }));
             }
             break;
         case LL_IR_OPCODE_BRANCH_COND: {
@@ -2311,16 +2320,21 @@ DO_OPCODE_ARITHMETIC_PREOP:
                 } else oc_unreachable("figure this out");
             }
 
+            block->fixup_offset = (int64_t)b->section_text.count - 4u;
+
             if (operands[1] == block->next) {
                 // then block is next
-                bir->blocks.items[operands[1]].ref1 = 0;
-                bir->blocks.items[operands[2]].ref1 = bir->blocks.items[operands[1]].prev;
+                oc_array_append(&cc->arena, &b->branch_relocations, ((X86_64_Branch_Relocation) {
+                    .branch_from = block_ref, // this block
+                    .branch_to = operands[2],
+                }));
             } else if (operands[2] == block->next) {
                 // else block is next
-                bir->blocks.items[operands[2]].ref1 = 0;
-                bir->blocks.items[operands[1]].ref1 = bir->blocks.items[operands[2]].prev;
+                oc_array_append(&cc->arena, &b->branch_relocations, ((X86_64_Branch_Relocation) {
+                    .branch_from = block_ref, // this block
+                    .branch_to = operands[1],
+                }));
             } else oc_unreachable("figure this out");
-            block->fixup_offset = (int64_t)b->section_text.count - 4u;
         } break;
 
         case LL_IR_OPCODE_INVOKEVALUE:
@@ -2667,11 +2681,21 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
             }
         }
 
+        oc_array_reserve(&cc->arena, &b->branch_relocations, fn->block_count);
+        b->branch_relocations.count = 0;
 
         // generate body
         while (block) {
-            x86_64_generate_block(cc, b, bir, &bir->blocks.items[block]);
+            x86_64_generate_block(cc, b, bir, block);
             block = bir->blocks.items[block].next;
+        }
+
+        for (size_t br = 0; br < b->branch_relocations.count; ++br) {
+            LL_Ir_Block* from = &bir->blocks.items[b->branch_relocations.items[br].branch_from];
+            LL_Ir_Block* to   = &bir->blocks.items[b->branch_relocations.items[br].branch_to];
+            
+            int32_t* dst_offset = (int32_t*)&b->section_text.items[from->fixup_offset];
+            *dst_offset = (int32_t)(to->generated_offset - from->fixup_offset - 4);
         }
 
         for (uint32_t li = 0; li < b->registers.count; ++li) {

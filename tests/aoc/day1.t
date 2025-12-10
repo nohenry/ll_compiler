@@ -49,10 +49,10 @@ void main() {
     int64 cursor = 50;
     int64 pwd = 0;
     while lexer.has_next() {
-        int64 a = lexer.next() % 100;
-
-        if a < 0   cursor += (100 + a)
-        else       cursor += a;
+        int64 b = lexer.next();
+        int64 a = (cursor + b);
+        if b < 0  cursor = a % 100 + 100
+        else      cursor = a;
         cursor %= 100;
 
         if cursor == 0 {

@@ -285,7 +285,6 @@ LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool app
     block.did_branch = false;
     block.bi = FUNCTION()->block_count;
     FUNCTION()->block_count++; 
-    block.ref1 = block.ref2 = 0;
     block.generated_offset = -1;
 
     block.next = 0;
@@ -1146,7 +1145,6 @@ HANDLE_SLICE_OP:
         }
 
         IR_APPEND_OP(LL_IR_OPCODE_BRANCH, cf->referenced_scope->break_block_ref);
-        b->blocks.items[cf->referenced_scope->break_block_ref].ref1 = b->current_block;
 
         LL_Ir_Block_Ref next_block = ir_create_block(cc, b, false);
         b->blocks.items[next_block].prev = b->current_block;
@@ -1166,13 +1164,6 @@ HANDLE_SLICE_OP:
         LL_Ir_Block_Ref else_block = ir_create_block(cc, b, true);
         b->current_block = else_block;
         LL_Ir_Block_Ref end_block = iff->else_clause ? ir_create_block(cc, b, true) : else_block;
-
-        b->blocks.items[body_block].ref1 = b->current_block;
-        b->blocks.items[end_block].ref1 = body_block;
-        if (else_block != end_block) {
-            b->blocks.items[else_block].ref1 = b->current_block;
-            b->blocks.items[end_block].ref2 = else_block;
-        }
 
         b->current_block = cond_block;
         result = ir_generate_expression(cc, b, iff->cond, false);
@@ -1213,8 +1204,6 @@ HANDLE_SLICE_OP:
         LL_Ir_Block_Ref break_block = ir_create_block(cc, b, true);
         b->current_block = break_block;
         LL_Ir_Block_Ref end_block = ir_create_block(cc, b, true);
-        b->blocks.items[end_block].ref1 = cond_block;
-
 
         if (loop->base.type) {
             Ast_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Ast_Ident));
