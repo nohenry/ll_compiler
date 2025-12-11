@@ -59,7 +59,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         case LL_TYPE_INT:
             result.ival = b->locals.items[OPD_VALUE(lvalue)].ival;
             break;
-        default: oc_assert(false); break;
+        default: result.uval = 0; oc_assert(false); break;
         }
 
         break;
@@ -75,7 +75,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         case LL_TYPE_INT:
             result.ival = b->registers.items[OPD_VALUE(lvalue)].ival;
             break;
-        default: oc_assert(false);
+        default: result.uval = 0; oc_assert(false); break;
         }
         break;
     }

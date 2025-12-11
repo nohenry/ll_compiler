@@ -330,6 +330,10 @@ void* native_realloc(void* ptr, uword u) {
     return realloc(ptr, u);
 }
 
+void native_breakpoint(void) {
+    __asm__ volatile ("int3");
+}
+
 struct native_string native_read_entire_file(struct native_string filepath) {
     struct native_string result = { 0 };
     FILE* fptr = NULL;
@@ -387,6 +391,7 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     ll_native_fn_put(cc, b, lit("read_entire_file"), native_read_entire_file);
     ll_native_fn_put(cc, b, lit("malloc"), native_malloc);
     ll_native_fn_put(cc, b, lit("realloc"), native_realloc);
+    ll_native_fn_put(cc, b, lit("breakpoint"), native_breakpoint);
 }
 
 
@@ -542,8 +547,11 @@ static X86_64_Variant_Kind x86_64_get_variant_raw(Compiler_Context* cc, X86_64_B
 static void x86_64_useup_register(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, X86_64_Register* reg) {
     (void)cc;
     (void)b;
+    (void)bir;
+#ifndef _NDEBUG
     oc_assert(!reg->usedup);
     reg->usedup = 1;
+#endif
 
     switch (reg->location) {
     case X86_64_REGISTER_LOCATION_REGISTER:
@@ -1482,7 +1490,9 @@ HANDLE_LOAD_STRUCT_DATA:
                 if (src_type == dst_type) {
                     b->registers.items[OPD_VALUE(dst)].location = X86_64_REGISTER_LOCATION_STACK;
                     b->registers.items[OPD_VALUE(dst)].value = b->locals.items[OPD_VALUE(src)];
-                    b->registers.items[OPD_VALUE(dst)].usedup = 0;
+                    #ifndef _NDEBUG
+                        b->registers.items[OPD_VALUE(dst)].usedup = 0;
+                    #endif
                 } else {
                     params.reg0 = reg;
                     params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
@@ -1581,7 +1591,10 @@ HANDLE_LOAD_STRUCT:
                 if (src_type == dst_type) {
                     b->registers.items[OPD_VALUE(dst)].location = X86_64_REGISTER_LOCATION_STACK;
                     b->registers.items[OPD_VALUE(dst)].value = b->locals.items[OPD_VALUE(src)];
-                    b->registers.items[OPD_VALUE(dst)].usedup = 0;
+
+                    #ifndef _NDEBUG
+                        b->registers.items[OPD_VALUE(dst)].usedup = 0;
+                    #endif
                 } else {
                     params.reg0 = reg;
                     params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
@@ -1604,7 +1617,10 @@ HANDLE_LOAD_STRUCT:
             if (src_type == dst_type) {
                 b->registers.items[OPD_VALUE(dst)].location = X86_64_REGISTER_LOCATION_STACK;
                 b->registers.items[OPD_VALUE(dst)].value = (uint32_t)b->parameters.items[OPD_VALUE(src)];
-                b->registers.items[OPD_VALUE(dst)].usedup = 0;
+
+                #ifndef _NDEBUG
+                    b->registers.items[OPD_VALUE(dst)].usedup = 0;
+                #endif
             } else {
                 params.reg0 = reg;
                 params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
@@ -2224,7 +2240,10 @@ DO_OPCODE_ARITHMETIC:
             LL_Type* type;
 DO_OPCODE_COMPARE:
             b->registers.items[OPD_VALUE(operands[0])].location = X86_64_REGISTER_LOCATION_FLAGS;
-            b->registers.items[OPD_VALUE(operands[0])].usedup = 0;
+
+            #ifndef _NDEBUG
+                b->registers.items[OPD_VALUE(operands[0])].usedup = 0;
+            #endif
 
             type = ir_get_operand_type(bir, b->fn, operands[1]);
             switch (type->kind) {
@@ -2627,6 +2646,8 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbx }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rdi }));
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsi }));
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_PUSH, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_r12 }));
 
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, rm64_r64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp, .reg1 = X86_64_OPERAND_REGISTER_rsp }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_SUB, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = 0xface0102 }));
@@ -2659,7 +2680,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, ptr_type, param.reg);
                 b->indirect_return_ptr_offset = offset;
             } else {
-                b->indirect_return_ptr_offset = -param.stack_offset - 0x20 /* rbp and return address */;
+                b->indirect_return_ptr_offset = -param.stack_offset - 0x30 /* rbp and return address */;
             }
             
             b->indirect_return_type = true;
@@ -2673,7 +2694,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, fn_type->parameters[j], param.reg);
                 b->parameters.items[j] = offset;
             } else {
-                b->parameters.items[j] = -param.stack_offset - 0x20 /* rbp and return address */;
+                b->parameters.items[j] = -param.stack_offset - 0x30 /* rbp and return address */;
             }
             if (!cc->quiet) {
                 print("parameter {} - offset {x}", j, b->parameters.items[j]);
@@ -2715,10 +2736,12 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         int32_t* pstack_size = (int32_t*)&b->section_text.items[stack_size_offset];
         *pstack_size = stack_used;
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_ADD, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = stack_used }));
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_r12 }));
+        OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsi }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rdi }));
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbx }));
-
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_POP, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp }));
+
         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_RET, noarg, ((X86_64_Instruction_Parameters){ 0 }));
 
     }

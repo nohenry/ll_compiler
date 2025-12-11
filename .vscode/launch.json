@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/main.exe",
-            "args": ["--run", "./tests/cases/arithmetic.t"],
+            "args": ["--run", "./tests/aoc/cases/day1.t"],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}",
             "environment": [],

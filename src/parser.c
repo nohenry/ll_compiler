@@ -80,19 +80,25 @@ static Ast_Ident* create_ident(Compiler_Context* cc, string sym) {
 }
 
 static void unexpected_token(Compiler_Context* cc, LL_Parser* parser, char* file, int line) {
+    (void)file;
+    (void)line;
     LL_Token tok;
     PEEK(&tok);
-    eprint("{} line {}: \x1b[31;1merror\x1b[0m\x1b[1m: unexpected token '", file, line);
+
+    LL_Line_Info line_info = lexer_get_line_info(&parser->lexer, TOKEN_INFO(tok));
+    eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m:\x1b[1m unexpected token '", parser->lexer.filename, line_info.line, line_info.column);
     lexer_print_token_raw_to_writer(&tok, &stderr_writer);
     eprint("' ({})\x1b[0m\n", tok.kind);
 }
 
 static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind kind, LL_Token* out, char* file, int line) {
+    (void)file;
+    (void)line;
     LL_Token tok;
     PEEK(&tok);
     if (tok.kind != kind) {
-
-        eprint("{} line {}: \x1b[31;1merror\x1b[0m\x1b[1m: expected token '", file, line);
+        LL_Line_Info line_info = lexer_get_line_info(&parser->lexer, TOKEN_INFO(tok));
+        eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m:\x1b[1m expected token '", parser->lexer.filename, line_info.line, line_info.column);
         lexer_print_token_kind(kind, &stderr_writer);
         eprint("' ({}), but found '", tok.kind);
         lexer_print_token_raw_to_writer(&tok, &stderr_writer);
@@ -710,7 +716,8 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
                     right = (Ast_Base*)parser_parse_block(cc, parser);
                 } else {
                     right = parser_parse_expression(cc, parser, NULL, 0, false);
-                    if (from_statement) EXPECT(';', &token);
+                    if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_IF.ptr) {}
+                    else if (from_statement) EXPECT(';', &token);
                 }
             } else {
                 right = NULL;

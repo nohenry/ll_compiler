@@ -2,16 +2,11 @@
 #define  NOB_IMPLEMENTATION
 #include "nob.h"
 
-int main(int argc, char** argv) {
+int run_test_suite_dir(const char* dir) {
+    int result = 0;
 	Nob_File_Paths children = {0};
-	int result = 0;
-	NOB_GO_REBUILD_URSELF(argc, argv);
-	const char* initial_dir = nob_get_current_dir_temp();
-	const char* exe = nob_temp_running_executable_path();
-	const char* test_dir = nob_temp_dir_name(exe);
-	nob_set_current_dir(test_dir);
 
-	if (!nob_read_entire_dir("./cases", &children)) nob_return_defer(false);
+	if (!nob_read_entire_dir(dir, &children)) nob_return_defer(false);
 
 	Nob_Cmd cmds = {0};
 	Nob_Procs procs = {0};
@@ -23,28 +18,32 @@ int main(int argc, char** argv) {
 		if (!nob_sv_end_with(filepath, ".t")) continue;
 
 		Nob_String_Builder src_sb = {0};
-		nob_sb_append_cstr(&src_sb, "./cases/");
+		nob_sb_append_cstr(&src_sb, dir);
+		nob_sb_append_cstr(&src_sb, "/");
 		nob_sb_append_cstr(&src_sb, children.items[i]);
 		nob_sb_append_null(&src_sb);
 
 		Nob_String_Builder dst_sb = {0};
-		nob_sb_append_cstr(&dst_sb, "./cases/");
+		nob_sb_append_cstr(&dst_sb, dir);
+		nob_sb_append_cstr(&dst_sb, "/");
 		nob_sb_append_cstr(&dst_sb, children.items[i]);
 		nob_sb_append_cstr(&dst_sb, ".out");
 		nob_sb_append_null(&dst_sb);
 
 		Nob_String_Builder err_sb = {0};
-		nob_sb_append_cstr(&err_sb, "./cases/");
+		nob_sb_append_cstr(&err_sb, dir);
+		nob_sb_append_cstr(&err_sb, "/");
 		nob_sb_append_cstr(&err_sb, children.items[i]);
 		nob_sb_append_cstr(&err_sb, ".err");
 		nob_sb_append_null(&err_sb);
 
 		Nob_String_Builder  expected_path_sb = {0};
-		nob_sb_append_cstr(&expected_path_sb, "./output/");
+		nob_sb_append_cstr(&expected_path_sb, dir);
+		nob_sb_append_cstr(&expected_path_sb, "/../output/");
 		nob_sb_append_cstr(&expected_path_sb, children.items[i]);
 		nob_sb_append_null(&expected_path_sb);
 
-		nob_cmd_append(&cmds, "../main.exe", "--quiet", "--run", src_sb.items);
+		nob_cmd_append(&cmds, "./main.exe", "--quiet", "--run", src_sb.items);
 		if (!nob_cmd_run(&cmds, .stdout_path = dst_sb.items, .stderr_path = err_sb.items)) nob_return_defer(false);
 
 
@@ -99,6 +98,21 @@ int main(int argc, char** argv) {
 	}
 
 defer:
-	nob_set_current_dir(initial_dir);
+    return result;
+}
+
+int main(int argc, char** argv) {
+	int result = 0;
+	NOB_GO_REBUILD_URSELF(argc, argv);
+	// const char* initial_dir = nob_get_current_dir_temp();
+	// const char* exe = nob_temp_running_executable_path();
+	// const char* test_dir = nob_temp_dir_name(exe);
+	// nob_set_current_dir(test_dir);
+
+    run_test_suite_dir("./tests/cases");
+    run_test_suite_dir("./tests/aoc/cases");
+
+defer:
+	// nob_set_current_dir(initial_dir);
 	return result;
 }

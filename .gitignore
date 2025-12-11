@@ -1,6 +1,7 @@
 /main
 *.o
 /out.bin
+/out.ir
 /out.s
 /test.s
 /out

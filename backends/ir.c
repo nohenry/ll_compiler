@@ -207,12 +207,12 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     }
 }
 
-static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block) {
+static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* block, Oc_Writer* w) {
     size_t i;
     // oc_hex_dump(block->ops.items, block->ops.count * sizeof(*block->ops.items), 0, -1);
     for (i = 0; i < block->ops.count; ) {
-        ir_print_op(cc, b, block->ops.items, i, &stdout_writer);
-        print("\n");
+        ir_print_op(cc, b, block->ops.items, i, w);
+        wprint(w, "\n");
         i += ir_get_op_count(cc, b, block->ops.items, i);
     }
 }
@@ -234,7 +234,7 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b, Oc_Writer* w) {
         int bi = 0;
         while (block) {
             wprint(w, "b{}(abs{}):\n", bi, block);
-            ir_print_block(cc, b, &b->blocks.items[block]);
+            ir_print_block(cc, b, &b->blocks.items[block], w);
             bi++;
             block = b->blocks.items[block].next;
         }
@@ -270,10 +270,24 @@ void ir_init(Compiler_Context* cc, LL_Backend_Ir* b) {
 //     fn_decl->ir_index = b->fns.count;
 // }
 
+#include <stdio.h>
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath) {
     (void)filepath;
-    ir_print(cc, b, &stdout_writer);
-    return false;
+
+    Oc_String_Builder sb;
+    oc_sb_init(&sb, &cc->arena);
+    ir_print(cc, b, &sb.writer);
+
+    FILE* fptr;
+    if (fopen_s(&fptr, filepath, "wb")) {
+        eprint("Unable to open output file: %s\n", filepath);
+        return false;
+    }
+
+    bool s =  fwrite(sb.items, 1, sb.count, fptr) == sb.count;
+    fclose(fptr);
+
+    return s;
 }
 
 LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool append) {
@@ -799,7 +813,11 @@ DO_BIN_OP_ASSIGN_OP:
             return r2;
 
 #pragma GCC diagnostic pop
-        default: oc_assert(false);
+        default:
+            oc_assert(false);
+            result = 0;
+            op = 0;
+            break;
         }
 
         r1 = ir_generate_expression(cc, b, AST_AS(expr, Ast_Operation)->left, false);

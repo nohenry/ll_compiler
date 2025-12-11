@@ -280,7 +280,11 @@ typedef struct {
 #define OC_DEFAULT_MAP_SEED 0xf8abc103ba79eb85LLu
 #define OC_ARENA_CHUNK_SIZE (4096)
 
+#ifndef _NDEBUG
 #define oc_assert(expr) ((expr) ? 1 : _oc_assert_fail(#expr, __FILE__, __LINE__, __func__))
+#else
+#define oc_assert(expr) (void)(0)
+#endif
 #define oc_unreachable(expr) (_oc_assert_fail(#expr, __FILE__, __LINE__, __func__))
 #define wprint(writer, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); _oc_printw((writer), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 #define print(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); _oc_printw(&stdout_writer, fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
@@ -474,7 +478,7 @@ _Noreturn int _oc_assert_fail(const char *assertion, const char *file, unsigned 
 
 Oc_Arena_Chunk* oc_arena_new_chunk(Oc_Arena* arena, uword size_in_bytes) {
     // Oc_Arena_Chunk* chunk = malloc(OC_ARENA_CHUNK_SIZE /* should be word aligned */);
-    uword aligned_bytes = oc_align_forward(size_in_bytes, OC_ARENA_CHUNK_SIZE);
+    uword aligned_bytes = oc_align_forward(size_in_bytes + sizeof(Oc_Arena_Chunk), OC_ARENA_CHUNK_SIZE);
     Oc_Arena_Chunk* chunk = oc_allocate_pages(aligned_bytes);
     if (arena->current && chunk == (void*)(arena->current->data + chunk->size)) {
         // if new chunk is right after current chunk, just extend current chunk
@@ -660,7 +664,7 @@ Oc_Writer stderr_writer = {
 };
 
 void oc_writer_format_and_write_int(Oc_Writer *writer, Oc_Format_Config cfg, uint64 ivalue) {
-    char int_buffer[128];
+    static char int_buffer[128];
     uword int_buffer_offset = sizeof(int_buffer) - 1;
     char base_base = cfg.base_upper ? 'A' : 'a';
 

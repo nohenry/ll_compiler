@@ -10,7 +10,9 @@ int main(int argc, char** argv) {
 	bool quiet = false;
 	bool run = false;
     char* filename = NULL;
+    bool output_ir = false;
 	shift(argv, argc);
+
     while (argc) {
         char* arg = shift(argv, argc);
 
@@ -18,6 +20,8 @@ int main(int argc, char** argv) {
             quiet = true;
         } else if (strcmp(arg, "--run") == 0) {
             run = true;
+        } else if (strcmp(arg, "--ir") == 0) {
+            output_ir = true;
         } else {
             if (arg[0] == '-' && arg[1] == '-') {
 				eprint("Ignoring unknown argument '{}'\n", arg);
@@ -63,8 +67,7 @@ int main(int argc, char** argv) {
     // ll_backend_write_to_file(&cc, &backend_c, "out.c");
 
     ll_backend_generate_statement(&cc, &backend_ir, root);
-    if (!cc.quiet) ir_write_to_file(&cc, backend_ir.backend, "");
-    /* ll_backend_write_to_file(&cc, &backend_ir, ""); */
+    if (output_ir) ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
 
     /* LL_Backend backend = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_GAS); */
     /* ll_backend_generate_statement_from_ir(&cc, &backend, backend_ir.backend); */

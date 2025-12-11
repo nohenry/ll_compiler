@@ -62,7 +62,9 @@ SmallStruct return_small_struct() {
 }
 
 void main() {
+    SmallStruct sssss;
     Foobar foo;
+    foo.s = &sssss;
     foo.a = 123;
     write_int(foo.a);
 

@@ -1189,7 +1189,10 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 }
             }
             result = expected_type;
-        } else oc_assert(false);
+        } else {
+            oc_assert(false);
+            result = NULL;
+        }
         break;
     }
     case AST_KIND_BINARY_OP: {
