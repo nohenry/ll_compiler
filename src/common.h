@@ -31,6 +31,7 @@ typedef struct {
     struct ll_backend* target;
     struct ll_lexer* lexer;
 	bool quiet;
+    bool exit_0;
 } Compiler_Context;
 
 extern string LL_KEYWORD_CONST;

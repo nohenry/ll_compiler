@@ -12,6 +12,7 @@ int main(int argc, char** argv) {
     char* filename = NULL;
     bool output_ir = false;
 	shift(argv, argc);
+    bool exit_0 = false;
 
     while (argc) {
         char* arg = shift(argv, argc);
@@ -22,6 +23,8 @@ int main(int argc, char** argv) {
             run = true;
         } else if (strcmp(arg, "--ir") == 0) {
             output_ir = true;
+        } else if (strcmp(arg, "--exit-0") == 0) {
+            exit_0 = true;
         } else {
             if (arg[0] == '-' && arg[1] == '-') {
 				eprint("Ignoring unknown argument '{}'\n", arg);
@@ -42,6 +45,7 @@ int main(int argc, char** argv) {
 
     Compiler_Context cc = ll_compiler_context_create();
 	cc.quiet = quiet;
+    cc.exit_0 = exit_0;
 
     LL_Parser parser = parser_create_from_file(&cc, filename);
     Ast_Base* root = parser_parse_file(&cc, &parser);

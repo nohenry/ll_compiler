@@ -50,6 +50,8 @@ typedef struct {
     #define STD_OUTPUT_HANDLE   ((sint32)-11)
     #define STD_ERROR_HANDLE    ((sint32)-12)
 
+    #define ENABLE_VIRTUAL_TERMINAL_PROCESSING ((sint32)0x0004)
+
     _Noreturn void WINAPI ExitProcess(uint32 uExitCode);
     void* WINAPI VirtualAlloc(void* lpAddress, sword dwSize, sint32 flAllocationType, sint32 flProtect);
     void* WINAPI VirtualProtect(void* BaseAddress, sword Size, sint32 flNewProtect, sint32* lpflOldProtect);
@@ -63,6 +65,9 @@ typedef struct {
         unsigned long* lpNumberOfBytesWritten,
         void* lpOverlapped
     );
+
+    int WINAPI GetConsoleMode(HANDLE hConsoleHandle, sint32* lpMode);
+    int WINAPI SetConsoleMode(HANDLE hConsoleHandle, sint32 lpMode);
 #elif OC_PLATFORM_UNIX
     #include <sys/mman.h>
     #include <unistd.h>
@@ -280,6 +285,10 @@ typedef struct {
 #define OC_DEFAULT_MAP_SEED 0xf8abc103ba79eb85LLu
 #define OC_ARENA_CHUNK_SIZE (4096)
 
+#define OC_FD_INPUT  (0u)
+#define OC_FD_OUTPUT (1u)
+#define OC_FD_ERROR  (2u)
+
 #ifndef _NDEBUG
 #define oc_assert(expr) ((expr) ? 1 : _oc_assert_fail(#expr, __FILE__, __LINE__, __func__))
 #else
@@ -357,6 +366,8 @@ void* alloca(size_t);
 void* oc_allocate_pages(uword required_size);
 uword stdout_write(void* writer, const uint8* data, uword data_size);
 uword stderr_write(void* writer, const uint8* data, uword data_size);
+bool oc_is_tty(uint32 fd);
+bool oc_fd_supports_color(uint32 fd);
 
 /* --------     Others        -------- */
 _Noreturn int _oc_assert_fail(const char *assertion, const char *file, unsigned int line, const char *function);
@@ -449,6 +460,31 @@ extern Oc_Writer stderr_writer;
 
         _Noreturn void oc_exit(int status)  {
             ExitProcess(status);
+        }
+
+        bool oc_is_tty(uint32 fd) {
+            static const sint32 h[] = { STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE };
+            oc_assert(fd < oc_len(h));
+            HANDLE handle = GetStdHandle(h[fd]);
+
+        }
+
+        bool oc_fd_supports_color(uint32 fd) {
+            static const sint32 h[] = { STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE };
+            oc_assert(fd < oc_len(h));
+            HANDLE handle = GetStdHandle(h[fd]);
+            if (handle == (void*)-1ll) return false;
+
+            sint32 mode = 0;
+            GetConsoleMode(handle, &mode);
+
+            if (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING) return true;
+
+            if (SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+                return true;
+            }
+
+            return false;
         }
     #else
         void* oc_allocate_pages(uword required_size) {

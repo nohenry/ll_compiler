@@ -109,12 +109,19 @@ void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_In
     size_t line_offset = sb.count;
     eprint("{}", oc_sb_to_string(&sb));
 
-    if (start_info.kind || end_info.kind) {
-        string start     = string_slice(cc->lexer->source, line_info.start_pos  , start_info.position);
-        string highlight = string_slice(cc->lexer->source, start_info.position  , end_info.position);
-        string end       = string_slice(cc->lexer->source, end_info.position, line_info.end_pos);
+    bool do_color = oc_fd_supports_color(OC_FD_ERROR);
 
-        eprint("\x1b[32m{}\x1b[31m{}\x1b[32m{}\x1b[0m\n", start, highlight, end);
+    if (start_info.kind || end_info.kind) {
+
+        if (do_color) {
+            string start     = string_slice(cc->lexer->source, line_info.start_pos  , start_info.position);
+            string highlight = string_slice(cc->lexer->source, start_info.position  , end_info.position);
+            string end       = string_slice(cc->lexer->source, end_info.position, line_info.end_pos);
+            eprint("\x1b[32m{}\x1b[31m{}\x1b[32m{}\x1b[0m\n", start, highlight, end);
+        } else {
+            string line = string_slice(cc->lexer->source, line_info.start_pos, line_info.end_pos);
+            eprint("{}\n", line);
+        }
     }
 
     if (print_underline && start_info.kind && end_info.kind) {
@@ -132,12 +139,13 @@ void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_In
                 stderr_writer.write(&stderr_writer, " ", 1);
             }
         }
-        stderr_writer.write(&stderr_writer, "\x1b[31m", sizeof( "\x1b[31m") - 1);
+        if (do_color) stderr_writer.write(&stderr_writer, "\x1b[31m", sizeof( "\x1b[31m") - 1);
         for (size_t i = start_info.position; i < end_info.position; ++i) {
             stderr_writer.write(&stderr_writer, "^", 1);
         }
     }
-    eprint("\n\x1b[0m");
+    eprint("\n");
+    if (do_color) eprint("\x1b[0m");
 }
 
 void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...) {
@@ -152,15 +160,22 @@ void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error e
         end_line_info = line_info;
     }
 
+    bool do_color = oc_fd_supports_color(OC_FD_ERROR);
+
     if (error.highlight_start.kind || error.highlight_end.kind || error.main_token.kind) {
-        eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
+        if (do_color) {
+            eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
+        } else {
+            eprint("{}:{}:{}: error: ", cc->lexer->filename, line_info.line, line_info.column);
+        }
     }
 
     va_list list;
     va_start(list, fmt);
     _oc_vprintw(&stderr_writer, fmt, list);
     va_end(list);
-    eprint("\x1b[0m\n");
+    if (do_color) eprint("\x1b[0m");
+    eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
         if (line_info.line == end_line_info.line) {
@@ -187,15 +202,22 @@ void ll_typer_report_error_note_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
         end_line_info = line_info;
     }
 
+    bool do_color = oc_fd_supports_color(OC_FD_ERROR);
+
     if (error.highlight_start.kind || error.highlight_end.kind || error.main_token.kind) {
-        eprint("{}:{}:{}: \x1b[34;1mnote\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
+        if (do_color) {
+            eprint("{}:{}:{}: \x1b[31;1mnote\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
+        } else {
+            eprint("{}:{}:{}: note: ", cc->lexer->filename, line_info.line, line_info.column);
+        }
     }
 
     va_list list;
     va_start(list, fmt);
     _oc_vprintw(&stderr_writer, fmt, list);
     va_end(list);
-    eprint("\x1b[0m\n");
+    if (do_color) eprint("\x1b[0m");
+    eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
         if (line_info.line == end_line_info.line) {
@@ -222,18 +244,21 @@ void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
         end_line_info = line_info;
     }
 
+    bool do_color = oc_fd_supports_color(OC_FD_ERROR);
+
     // if (error.main_token.kind) {
     //     eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
     // } else {
     //     eprint("{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename);
     // }
-    eprint("\x1b[1m");
+    if (do_color) eprint("\x1b[1m");
 
     va_list list;
     va_start(list, fmt);
     _oc_vprintw(&stderr_writer, fmt, list);
     va_end(list);
-    eprint("\x1b[0m\n");
+    if (do_color) eprint("\x1b[0m");
+    eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
         if (line_info.line == end_line_info.line) {
@@ -250,7 +275,8 @@ void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
 void ll_typer_report_error_no_src_raw(Compiler_Context* cc, LL_Typer* typer, const char* fmt, ...) {
     (void)cc;
     (void)typer;
-    eprint("\x1b[0;1m");
+    bool do_color = oc_fd_supports_color(OC_FD_ERROR);
+    if (do_color) eprint("\x1b[0;1m");
     va_list list;
     va_start(list, fmt);
     _oc_vprintw(&stderr_writer, fmt, list);
@@ -260,14 +286,22 @@ void ll_typer_report_error_no_src_raw(Compiler_Context* cc, LL_Typer* typer, con
 void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type) {
     (void)cc;
     (void)typer;
-    eprint("\x1b[0;36m");
-    ll_print_type_raw(type, &stderr_writer);
-    eprint("\x1b[0m");
+    bool do_color = oc_fd_supports_color(OC_FD_ERROR);
+    if (do_color) {
+        eprint("\x1b[0;36m");
+        ll_print_type_raw(type, &stderr_writer);
+        eprint("\x1b[0m");
+    } else {
+        eprint("'");
+        ll_print_type_raw(type, &stderr_writer);
+        eprint("'");
+    }
 }
 
 void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer) {
     (void)cc;
     (void)typer;
+    if (cc->exit_0) oc_exit(0);
     oc_exit(-1);
 }
 
