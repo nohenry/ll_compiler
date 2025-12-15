@@ -1,8 +1,291 @@
 
 #include "eval.h"
+#include "callconv.h"
+#include "../backends/x86_64.h"
 #include "../backends/ir.h"
 
-#define FUNCTION() (&bir->const_stack.items[bir->current_function & CURRENT_INDEX])
+#define FUNCTION() (&bir->fns.items[bir->current_function & CURRENT_INDEX])
+#define FRAME() (&b->frames.items[b->frames.count - 1])
+
+static inline bool is_large_aggregate_type(LL_Type* type) {
+    switch (type->kind) {
+    case LL_TYPE_STRUCT:
+    case LL_TYPE_ARRAY: {
+        LL_Backend_Layout struct_layout = x86_64_get_layout(type);
+        size_t actual_size = max(struct_layout.size, struct_layout.alignment);
+        return actual_size > 8;
+    } break;
+    case LL_TYPE_SLICE:
+    case LL_TYPE_STRING:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void copy_native_code(
+    Compiler_Context* cc,
+    LL_Eval_Context* b
+) {
+    if (b->native_fn_stub_section.count > b->native_fn_exe_code_size) {
+        if (b->native_fn_exe_code) {
+            VirtualFree(b->native_fn_exe_code, b->native_fn_exe_code_size, MEM_COMMIT|MEM_RESERVE);
+        }
+
+        b->native_fn_exe_code = VirtualAlloc(NULL, b->native_fn_stub_section.count * 4, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+        if (!b->native_fn_exe_code) {
+            oc_assert(false && "Unable to allocate memory\n");
+            return;
+        }
+        b->native_fn_exe_code_size = b->native_fn_stub_section.count * 4;
+    } else {
+        sint32 a;
+        if (!VirtualProtect(b->native_fn_exe_code, b->native_fn_exe_code_size, PAGE_READWRITE, &a)) {
+            extern sint32 GetLastError();
+            oc_assert(false && "Unable to change protection: {x}\n");
+            return;
+        }
+    }
+    memcpy(b->native_fn_exe_code, b->native_fn_stub_section.items, b->native_fn_stub_section.count);
+
+    sint32 a;
+    if (!VirtualProtect(b->native_fn_exe_code, b->native_fn_exe_code_size, PAGE_EXECUTE, &a)) {
+        extern sint32 GetLastError();
+        oc_assert(false && "Unable to change protection: {x}\n");
+        return;
+    }
+}
+
+int64_t do_native_fn_call(
+    Compiler_Context* cc,
+    LL_Eval_Context* b,
+    LL_Backend_Ir* bir,
+    // LL_Ir_Function* invokee_fn,
+    LL_Ir_Operand invokee,
+    uint32_t operand_count,
+    LL_Ir_Operand* operands
+) {
+    uint32_t active_register_top = 0;
+    uint32_t stack_used = 0;
+    X86_64_Get_Variant_Params get_variant = { 0 };
+    X86_64_Instruction_Parameters params = { 0 };
+
+    X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
+
+
+    switch (OPD_TYPE(invokee)) {
+    case LL_IR_OPERAND_FUNCTION_BIT: {
+        LL_Ir_Function* fn = &bir->fns.items[OPD_VALUE(invokee)];
+        if (fn->generated_offset != -1) {
+            return fn->generated_offset;
+        } else {
+            fn->generated_offset = (int64_t)b->native_fn_stub_section.count;
+        }
+    } break;
+    default: oc_todo("fn type"); break;
+    }
+
+    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_SUB, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = 0xface0102 }));
+    size_t stack_size_offset = b->native_fn_stub_section.count - 4;
+
+
+    LL_Ir_Function* invokee_fn = &bir->fns.items[OPD_VALUE(invokee)];
+    LL_Type_Function* fn_type = (LL_Type_Function*)invokee_fn->ident->base.type;
+    assert(fn_type->base.kind == LL_TYPE_FUNCTION);
+
+    LL_Type* return_type = fn_type->return_type ? ll_get_base_type(fn_type->return_type) : NULL;
+
+    b->invoke_prealloc.count = 0;
+    oc_array_reserve(&cc->arena, &b->invoke_prealloc, operand_count);
+
+    uword invoke_offset = 0;
+    uword pre_invoke_offset = invoke_offset;
+    for (uint32_t j = 0; j < operand_count; ++j) {
+        LL_Ir_Operand arg_operand = operands[pre_invoke_offset++];
+        LL_Type* type = ir_get_operand_type(bir, FUNCTION(), arg_operand);
+
+        uint32_t opcode = OPCODE_MOV;
+        // if (type->kind == LL_TYPE_FLOAT) {
+        //     if (type->width <= 32) opcode = OPCODE_MOVSS;
+        //     else if (type->width <= 64) opcode = OPCODE_MOVSD;
+        //     else oc_todo("add widths");
+        // }
+
+        X86_64_Invoke_Prealloc prealloc = { 0 };
+        switch (OPD_TYPE(arg_operand)) {
+            case LL_IR_OPERAND_REGISTER_BIT: 
+                if (is_large_aggregate_type(type)) {
+                    oc_todo("struct");
+                    // prealloc.immediate_displacement = (uint32_t)x86_64_make_struct_copy(cc, b, bir, type, arg_operand, false);
+                    // prealloc.opcode = OPCODE_LEA;
+                    // prealloc.variant = X86_64_VARIANT_KIND_r64_rm64;
+                } else {
+                    prealloc.immediate_displacement = FRAME()->registers.items[OPD_VALUE(arg_operand)].ival;
+                    prealloc.opcode = opcode;
+                    prealloc.variant = X86_64_VARIANT_KIND_r64_i64;
+                }
+                break;
+            case LL_IR_OPERAND_IMMEDIATE_BIT:
+                prealloc.immediate_displacement = (int64_t)OPD_VALUE(arg_operand);
+                prealloc.opcode = OPCODE_MOV;
+                prealloc.variant = X86_64_VARIANT_KIND_rm64_i32;
+                break;
+            case LL_IR_OPERAND_IMMEDIATE64_BIT:
+                prealloc.immediate_displacement = (int64_t)FUNCTION()->literals.items[OPD_VALUE(arg_operand)].as_u64;
+                prealloc.opcode = OPCODE_MOV;
+                prealloc.variant = X86_64_VARIANT_KIND_r64_i64;
+                break;
+            default: oc_todo("unhadnled argument operand: {x}", OPD_TYPE(arg_operand));
+        }
+
+        b->invoke_prealloc.items[j] = prealloc;
+    }
+    
+
+    uword return_struct_offset;
+    if (return_type && is_large_aggregate_type(return_type)) {
+        oc_todo("struct return");
+        X86_64_Parameter param = x86_64_call_convention_next(&callconv, return_type, &stack_used);
+
+        // return_struct_offset = x86_64_make_struct_copy(cc, b, bir, return_type, 0, true);
+        if (param.is_reg) {
+            params.reg0 = param.reg;
+            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+            params.displacement = -return_struct_offset;
+            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_LEA, r64_rm64, params);
+        } else {
+            X86_64_Operand_Register tmp_reg;
+            tmp_reg = x86_64_backend_active_registers[active_register_top];
+            params.reg0 = tmp_reg;
+            params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+            params.displacement = -return_struct_offset;
+            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_LEA, r64_rm64, params);
+
+            params.displacement = param.stack_offset;
+            params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
+            params.reg1 = tmp_reg;
+            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, rm64_r64, params);
+        }
+    }
+
+
+    for (uint32_t j = 0; j < operand_count; ++j) {
+        LL_Ir_Operand arg_operand = operands[invoke_offset++];
+        LL_Type* type = ir_get_operand_type(bir, FUNCTION(), arg_operand);
+
+        uint32_t opcode = OPCODE_MOV;
+        if (type->kind == LL_TYPE_FLOAT) {
+            if (type->width <= 32) opcode = OPCODE_MOVSS;
+            else if (type->width <= 64) opcode = OPCODE_MOVSD;
+            else oc_todo("add widths");
+        }
+
+        X86_64_Parameter parameter_location = x86_64_call_convention_next(&callconv, type, &stack_used);
+        switch (OPD_TYPE(arg_operand)) {
+            case LL_IR_OPERAND_REGISTER_BIT: 
+                if (parameter_location.is_reg) {
+                    params.reg0 = parameter_location.reg;
+                    params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                    params.immediate = b->invoke_prealloc.items[j].immediate_displacement;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(&b->native_fn_stub_writer, b->invoke_prealloc.items[j].opcode, b->invoke_prealloc.items[j].variant, params);
+                } else {
+                    X86_64_Operand_Register tmp_reg;
+
+                    tmp_reg = x86_64_backend_active_registers[active_register_top];
+                    params.reg0 = tmp_reg;
+                    params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                    params.immediate = b->invoke_prealloc.items[j].immediate_displacement;
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(&b->native_fn_stub_writer, b->invoke_prealloc.items[j].opcode, b->invoke_prealloc.items[j].variant, params);
+
+                    params.displacement = (int32_t)parameter_location.stack_offset;
+                    params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
+                    params.reg1 = tmp_reg;
+                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, opcode, rm64_r64, params);
+                }
+
+                break;
+
+            case LL_IR_OPERAND_IMMEDIATE_BIT:
+                if (parameter_location.is_reg) {
+                    params.reg0 = parameter_location.reg;
+                } else {
+                    params.displacement = (int32_t)parameter_location.stack_offset;
+                    params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
+                }
+                params.immediate = OPD_VALUE(OPD_VALUE(arg_operand));
+                OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, rm64_i32, params);
+
+                break;
+            case LL_IR_OPERAND_IMMEDIATE64_BIT:
+                if (parameter_location.is_reg) {
+                    params.reg0 = parameter_location.reg;
+                    params.immediate = FUNCTION()->literals.items[OPD_VALUE(arg_operand)].as_u64;
+                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, r64_i64, params);
+                } else {
+                    params.reg0 = x86_64_backend_active_registers[active_register_top];
+                    params.immediate = FUNCTION()->literals.items[OPD_VALUE(arg_operand)].as_u64;
+                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, r64_i64, params);
+
+                    params.reg1 = params.reg0;
+                    params.displacement = (int32_t)parameter_location.stack_offset;
+                    params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
+                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, rm64_r64, params);
+                }
+                break;
+            default: oc_todo("unhadnled argument operand: {x}", OPD_TYPE(arg_operand));
+        }
+    }
+
+    int64_t result = -1;
+    switch (OPD_TYPE(invokee)) {
+    case LL_IR_OPERAND_FUNCTION_BIT: {
+        LL_Ir_Function* fn = &bir->fns.items[OPD_VALUE(invokee)];
+        oc_assert(fn->flags & LL_IR_FUNCTION_FLAG_NATIVE);;
+
+        void (*native_fn_ptr)() = ll_native_fn_get(cc, &b->native_funcs, fn->ident->str);
+        if (!native_fn_ptr) {
+            eprint("Unable to find native function: {}\n", fn->ident->str);
+            return result;
+        }
+
+        result = fn->generated_offset;
+
+        params.reg0 = X86_64_OPERAND_REGISTER_rax;
+        params.immediate = (uword)native_fn_ptr;
+        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, r64_i64, params);
+        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_CALL, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rax }));
+
+        stack_used = oc_align_forward(stack_used, 16) ;
+        int32_t* pstack_size = (int32_t*)&b->native_fn_stub_section.items[stack_size_offset];
+        *pstack_size = stack_used;
+        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_ADD, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = stack_used }));
+
+        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_RET, noarg, params);
+
+        copy_native_code(cc, b);
+
+        break;
+    }
+    default: oc_todo("handle inveok type"); break;
+    }
+
+    // if (opcode == LL_IR_OPCODE_INVOKEVALUE) {
+    //     if (return_type && is_large_aggregate_type(return_type)) {
+    //         params.reg0 = x86_64_backend_active_registers[active_register_top];
+    //         params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+    //         params.displacement = -return_struct_offset;
+    //         OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_LEA, r64_rm64, params);
+
+    //         X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, fn_type->return_type, params.reg0);
+    //         FRAME()->registers.items[OPD_VALUE(operands[0])] = offset;
+    //     } else {
+    //         X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, fn_type->return_type, X86_64_OPERAND_REGISTER_rax);
+    //         FRAME()->registers.items[OPD_VALUE(operands[0])] = offset;
+    //     }
+    // }
+
+    return result;
+}
 
 static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand lvalue, LL_Eval_Value rvalue) {
     (void)cc;
@@ -13,10 +296,9 @@ static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backe
     case LL_IR_OPERAND_LOCAL_BIT: {
         switch (type->kind) {
         case LL_TYPE_UINT:
-            b->locals.items[OPD_VALUE(lvalue)].uval = rvalue.uval;
-            break;
         case LL_TYPE_INT:
-            b->locals.items[OPD_VALUE(lvalue)].ival = rvalue.ival;
+        case LL_TYPE_FLOAT:
+            FRAME()->locals.items[OPD_VALUE(lvalue)] = rvalue;
             break;
         default: oc_assert(false); break;
         }
@@ -26,10 +308,20 @@ static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backe
     case LL_IR_OPERAND_REGISTER_BIT: {
         switch (type->kind) {
         case LL_TYPE_UINT:
-            b->registers.items[OPD_VALUE(lvalue)].uval = rvalue.uval;
-            break;
         case LL_TYPE_INT:
-            b->registers.items[OPD_VALUE(lvalue)].ival = rvalue.ival;
+        case LL_TYPE_FLOAT:
+            FRAME()->registers.items[OPD_VALUE(lvalue)] = rvalue;
+            break;
+        default: oc_assert(false);
+        }
+        break;
+    }
+    case LL_IR_OPERAND_PARMAETER_BIT: {
+        switch (type->kind) {
+        case LL_TYPE_UINT:
+        case LL_TYPE_INT:
+        case LL_TYPE_FLOAT:
+            FRAME()->parameters.items[OPD_VALUE(lvalue)] = rvalue;
             break;
         default: oc_assert(false);
         }
@@ -54,10 +346,10 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         case LL_TYPE_ANYBOOL:
         case LL_TYPE_BOOL:
         case LL_TYPE_UINT:
-            result.uval = b->locals.items[OPD_VALUE(lvalue)].uval;
+            result.uval = FRAME()->locals.items[OPD_VALUE(lvalue)].uval;
             break;
         case LL_TYPE_INT:
-            result.ival = b->locals.items[OPD_VALUE(lvalue)].ival;
+            result.ival = FRAME()->locals.items[OPD_VALUE(lvalue)].ival;
             break;
         default: result.uval = 0; oc_assert(false); break;
         }
@@ -70,10 +362,10 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         case LL_TYPE_ANYBOOL:
         case LL_TYPE_BOOL:
         case LL_TYPE_UINT:
-            result.uval = b->registers.items[OPD_VALUE(lvalue)].uval;
+            result.uval = FRAME()->registers.items[OPD_VALUE(lvalue)].uval;
             break;
         case LL_TYPE_INT:
-            result.ival = b->registers.items[OPD_VALUE(lvalue)].ival;
+            result.ival = FRAME()->registers.items[OPD_VALUE(lvalue)].ival;
             break;
         default: result.uval = 0; oc_assert(false); break;
         }
@@ -112,27 +404,41 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     case LL_IR_OPERAND_LOCAL_BIT: {
         switch (to_type->kind) {
         case LL_TYPE_UINT:
-            b->registers.items[OPD_VALUE(result)].uval = b->locals.items[OPD_VALUE(src)].uval;
-            break;
         case LL_TYPE_INT:
-            b->registers.items[OPD_VALUE(result)].ival = b->locals.items[OPD_VALUE(src)].ival;
+        case LL_TYPE_FLOAT:
+            FRAME()->registers.items[OPD_VALUE(result)] = FRAME()->locals.items[OPD_VALUE(src)];
             break;
-        default: break;
+        default: oc_todo("unhandled type"); break;
         }
         break;
     }
     case LL_IR_OPERAND_REGISTER_BIT: {
         if (load) {
-            oc_assert(false);
+            oc_todo("pointer");
         } else {
             switch (to_type->kind) {
             case LL_TYPE_UINT:
-                b->registers.items[OPD_VALUE(result)].uval = b->registers.items[OPD_VALUE(src)].uval;
-                break;
             case LL_TYPE_INT:
-                b->registers.items[OPD_VALUE(result)].ival = b->registers.items[OPD_VALUE(src)].ival;
+            case LL_TYPE_FLOAT:
+                FRAME()->registers.items[OPD_VALUE(result)] = FRAME()->registers.items[OPD_VALUE(src)];
                 break;
-            default: break;
+            default: oc_todo("unhandled type"); break;
+            }
+        }
+
+        break;
+    }
+    case LL_IR_OPERAND_PARMAETER_BIT: {
+        if (load) {
+            oc_todo("pointer");
+        } else {
+            switch (to_type->kind) {
+            case LL_TYPE_UINT:
+            case LL_TYPE_INT:
+            case LL_TYPE_FLOAT:
+                FRAME()->registers.items[OPD_VALUE(result)] = FRAME()->registers.items[OPD_VALUE(src)];
+                break;
+            default: oc_todo("unhandled type"); break;
             }
         }
 
@@ -141,10 +447,31 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     case LL_IR_OPERAND_IMMEDIATE_BIT: {
         switch (to_type->kind) {
         case LL_TYPE_UINT:
-            b->registers.items[OPD_VALUE(result)].uval = OPD_VALUE(src);
+            FRAME()->registers.items[OPD_VALUE(result)].uval = OPD_VALUE(src);
             break;
         case LL_TYPE_INT:
-            b->registers.items[OPD_VALUE(result)].ival = OPD_VALUE(src);
+            FRAME()->registers.items[OPD_VALUE(result)].ival = OPD_VALUE(src);
+            break;
+        default: oc_todo("unhandled type"); break;
+        }
+        break;
+    }
+    case LL_IR_OPERAND_IMMEDIATE64_BIT: {
+        LL_Ir_Literal literal = FUNCTION()->literals.items[OPD_VALUE(src)];
+
+        switch (to_type->kind) {
+        case LL_TYPE_UINT:
+            FRAME()->registers.items[OPD_VALUE(result)].uval = literal.as_u64;
+            break;
+        case LL_TYPE_INT:
+            FRAME()->registers.items[OPD_VALUE(result)].ival = (int64_t)literal.as_u64;
+            break;
+        case LL_TYPE_FLOAT:
+            if (to_type->width <= 32) {
+                FRAME()->registers.items[OPD_VALUE(result)].fval = literal.as_f32;
+            } else if (to_type->width <= 64) {
+                FRAME()->registers.items[OPD_VALUE(result)].fval = literal.as_f64;
+            } else oc_unreachable("invalid type");
             break;
         default: break;
         }
@@ -157,6 +484,7 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
 static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
     size_t i;
     int32_t opcode1, opcode2;
+    uint32_t invoke_offset = 0;
     LL_Type* type;
 
     (void)opcode1;
@@ -168,18 +496,65 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 
         switch (opcode) {
         case LL_IR_OPCODE_BRANCH:
-            b->next_block = operands[0];
+            FRAME()->next_block = operands[0];
             return;
         case LL_IR_OPCODE_BRANCH_COND:
             if (ll_eval_get_value(cc, b, bir, operands[0]).uval) {
-                b->next_block = operands[1];
+                FRAME()->next_block = operands[1];
             } else {
-                b->next_block = operands[2];
+                FRAME()->next_block = operands[2];
             }
             return;
         case LL_IR_OPCODE_RET:
-               break;
+            break;
         case LL_IR_OPCODE_RETVALUE: {
+            LL_Type_Function* fn_type = (LL_Type_Function*)FUNCTION()->ident->base.type;
+            oc_assert(fn_type->base.kind == LL_TYPE_FUNCTION);
+            LL_Type* to_type = fn_type->return_type;
+            switch (OPD_TYPE(operands[0])) {
+            case LL_IR_OPERAND_LOCAL_BIT:
+                FRAME()->return_value = FRAME()->locals.items[OPD_VALUE(operands[0])];
+                break;
+            case LL_IR_OPERAND_REGISTER_BIT:
+                FRAME()->return_value = FRAME()->registers.items[OPD_VALUE(operands[0])];
+                break;
+
+            case LL_IR_OPERAND_IMMEDIATE_BIT: {
+                switch (to_type->kind) {
+                case LL_TYPE_UINT:
+                    FRAME()->return_value.uval = OPD_VALUE(operands[0]);
+                    break;
+                case LL_TYPE_INT:
+                    FRAME()->return_value.ival = OPD_VALUE(operands[0]);
+                    break;
+                default: oc_todo("unhandled type"); break;
+                }
+                break;
+            }
+            case LL_IR_OPERAND_IMMEDIATE64_BIT: {
+                LL_Ir_Literal literal = FUNCTION()->literals.items[OPD_VALUE(operands[0])];
+
+                switch (to_type->kind) {
+                case LL_TYPE_UINT:
+                    FRAME()->return_value.uval = literal.as_u64;
+                    break;
+                case LL_TYPE_INT:
+                    FRAME()->return_value.ival = (int64_t)literal.as_u64;
+                    break;
+                case LL_TYPE_FLOAT:
+                    if (to_type->width <= 32) {
+                        FRAME()->return_value.fval = literal.as_f32;
+                    } else if (to_type->width <= 64) {
+                        FRAME()->return_value.fval = literal.as_f64;
+                    } else oc_unreachable("invalid type");
+                    break;
+                default: break;
+                }
+                break;
+            }
+            default: oc_todo("unhandled op"); break;
+            }
+
             break;
         }
         case LL_IR_OPCODE_STORE: {
@@ -192,14 +567,14 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             type = ir_get_operand_type(bir, FUNCTION(), operands[0]); \
             switch (type->kind) { \
             case LL_TYPE_INT: \
-                b->registers.items[OPD_VALUE(operands[0])].uval = (b->registers.items[OPD_VALUE(operands[1])].ival op b->registers.items[OPD_VALUE(operands[2])].ival) ? 1 : 0; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].uval = (FRAME()->registers.items[OPD_VALUE(operands[1])].ival op FRAME()->registers.items[OPD_VALUE(operands[2])].ival) ? 1 : 0; \
                 break; \
             case LL_TYPE_UINT: \
-                b->registers.items[OPD_VALUE(operands[0])].uval = (b->registers.items[OPD_VALUE(operands[1])].uval op b->registers.items[OPD_VALUE(operands[2])].uval) ? 1 : 0; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].uval = (FRAME()->registers.items[OPD_VALUE(operands[1])].uval op FRAME()->registers.items[OPD_VALUE(operands[2])].uval) ? 1 : 0; \
                 break; \
             case LL_TYPE_ANYBOOL: \
             case LL_TYPE_BOOL: \
-                b->registers.items[OPD_VALUE(operands[0])].uval = (b->registers.items[OPD_VALUE(operands[1])].uval op b->registers.items[OPD_VALUE(operands[2])].uval) ? 1 : 0; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].uval = (FRAME()->registers.items[OPD_VALUE(operands[1])].uval op FRAME()->registers.items[OPD_VALUE(operands[2])].uval) ? 1 : 0; \
                 break; \
             default: oc_todo("implement types for operations"); break; \
             }
@@ -214,10 +589,10 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             type = ir_get_operand_type(bir, FUNCTION(), operands[0]); \
             switch (type->kind) { \
             case LL_TYPE_INT: \
-                b->registers.items[OPD_VALUE(operands[0])].ival = ll_eval_get_value(cc, b, bir, operands[1]).ival op ll_eval_get_value(cc, b, bir, operands[2]).ival; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].ival = ll_eval_get_value(cc, b, bir, operands[1]).ival op ll_eval_get_value(cc, b, bir, operands[2]).ival; \
                 break; \
             case LL_TYPE_UINT: \
-                b->registers.items[OPD_VALUE(operands[0])].uval = ll_eval_get_value(cc, b, bir, operands[1]).uval op ll_eval_get_value(cc, b, bir, operands[2]).uval; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].uval = ll_eval_get_value(cc, b, bir, operands[1]).uval op ll_eval_get_value(cc, b, bir, operands[2]).uval; \
                 break; \
             default: oc_todo("implement types for operations"); break; \
             }
@@ -237,9 +612,36 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
         case LL_IR_OPCODE_LEA: {
             break;
         }
+        case LL_IR_OPCODE_INVOKEVALUE:
+            invoke_offset = 1;
         case LL_IR_OPCODE_INVOKE: {
+            uint32_t invokee = operands[invoke_offset++];
+            uint32_t count = operands[invoke_offset++];
+            LL_Eval_Value return_value = { 0 };
 
-               break;
+            switch (OPD_TYPE(invokee)) {
+            case LL_IR_OPERAND_FUNCTION_BIT: {
+                LL_Ir_Function* fn = &bir->fns.items[OPD_VALUE(invokee)];
+
+                if (fn->flags & LL_IR_FUNCTION_FLAG_NATIVE) {
+                    int64_t offset = do_native_fn_call(cc, b, bir, invokee, count, operands + invoke_offset);
+                    if (offset == -1) break;
+                    if (!b->native_fn_exe_code) break;
+                    
+                    void (*fn_ptr)() = (void (*)())(b->native_fn_exe_code + offset);
+                    fn_ptr();
+                } else {
+                    return_value = ll_eval_fn(cc, b, bir, fn);
+                }
+            } break;
+            default: oc_todo("handle other op");
+            }
+
+            if (opcode == LL_IR_OPCODE_INVOKEVALUE) {
+                FRAME()->registers.items[OPD_VALUE(operands[0])] = return_value;
+            }
+            
+            break;
         }
         default: oc_todo("handle other op"); break;
         }
@@ -247,6 +649,80 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
         size_t count = ir_get_op_count(cc, bir, (LL_Ir_Opcode*)block->ops.items, i);
         i += count;
     }
+}
+
+LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Function* fn) {
+    oc_array_append(&cc->arena, &b->frames, ((LL_Eval_Frame) { 0 }));
+
+    int32_t last_function = bir->current_function;
+    LL_Ir_Block_Ref last_block = bir->current_block;
+
+    FRAME()->registers.count = 0;
+    oc_array_reserve(&cc->arena, &FRAME()->registers, FUNCTION()->registers.count);
+
+    FRAME()->locals.count = 0;
+    oc_array_reserve(&cc->arena, &FRAME()->locals, FUNCTION()->locals.count);
+
+    LL_Ir_Block_Ref current_block = fn->entry;
+    while (current_block) {
+        FRAME()->next_block = bir->blocks.items[current_block].next;
+        ll_eval_block(cc, b, bir, &bir->blocks.items[current_block]);
+        current_block = FRAME()->next_block;
+    }
+    LL_Eval_Value return_value = FRAME()->return_value;
+
+    bir->current_block = last_block;
+    bir->current_function = last_function;
+
+    return return_value;
+}
+
+void ll_eval_native_stub_append_op_segment_u8(void* w, uint8_t segment) {
+    LL_Eval_Context* b = w - offsetof(LL_Eval_Context, native_fn_stub_writer);
+    segment = AS_LITTLE_ENDIAN_U8(segment);
+    oc_array_append(b->arena, &b->native_fn_stub_section, segment);
+}
+
+void ll_eval_native_stub_append_op_segment_u16(void* w, uint16_t segment) {
+    LL_Eval_Context* b = w - offsetof(LL_Eval_Context, native_fn_stub_writer);
+    segment = AS_LITTLE_ENDIAN_U16(segment);
+    oc_array_append_many(b->arena, &b->native_fn_stub_section, (uint8_t*)&segment, 2);
+}
+
+void ll_eval_native_stub_append_op_segment_u32(void* w, uint32_t segment) {
+    LL_Eval_Context* b = w - offsetof(LL_Eval_Context, native_fn_stub_writer);
+    segment = AS_LITTLE_ENDIAN_U32(segment);
+    oc_array_append_many(b->arena, &b->native_fn_stub_section, (uint8_t*)&segment, 4);
+}
+
+void ll_eval_native_stub_append_op_segment_u64(void* w, uint64_t segment) {
+    LL_Eval_Context* b = w - offsetof(LL_Eval_Context, native_fn_stub_writer);
+    segment = AS_LITTLE_ENDIAN_U64(segment);
+    oc_array_append_many(b->arena, &b->native_fn_stub_section, (uint8_t*)&segment, 8);
+}
+
+void ll_eval_native_stub_append_op_many(void* w, uint8_t* bytes, uint64_t count) {
+    LL_Eval_Context* b = w - offsetof(LL_Eval_Context, native_fn_stub_writer);
+    oc_array_append_many(b->arena, &b->native_fn_stub_section, (uint8_t*)bytes, count);
+}
+
+void ll_eval_native_stub_end_instruction(void* w) {
+    (void)w;
+    // x86_64 *ww = (x86_64*)w;
+    // default_code_writer_append_stride(ww, ww->count);
+    // oc_x86_64_write_nop(w, 1);
+    // oc_array_append_many(b->arena, &b->section_text, (uint8_t*)bytes, count);
+}
+
+void ll_eval_init(Compiler_Context* cc, LL_Eval_Context* b) {
+    b->arena = &cc->arena;
+    
+    b->native_fn_stub_writer.append_u8 = ll_eval_native_stub_append_op_segment_u8;
+    b->native_fn_stub_writer.append_u16 = ll_eval_native_stub_append_op_segment_u16;
+    b->native_fn_stub_writer.append_u32 = ll_eval_native_stub_append_op_segment_u32;
+    b->native_fn_stub_writer.append_u64 = (void (*)(void *, unsigned long long))ll_eval_native_stub_append_op_segment_u64;
+    b->native_fn_stub_writer.append_many = (void (*)(void *, unsigned char *, unsigned long long))ll_eval_native_stub_append_op_many;
+    b->native_fn_stub_writer.end_instruction = ll_eval_native_stub_end_instruction;
 }
 
 
@@ -262,6 +738,26 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
         oc_array_append(&cc->arena, &bir->blocks, entry_block);
     }
 
+
+
+
+    {
+        ll_native_fn_put(cc, &b->native_funcs, lit("write_int"), native_write);
+        ll_native_fn_put(cc, &b->native_funcs, lit("write_float32"), native_write_float32);
+        ll_native_fn_put(cc, &b->native_funcs, lit("write_float64"), native_write_float64);
+        ll_native_fn_put(cc, &b->native_funcs, lit("write_string"), native_write_string);
+        ll_native_fn_put(cc, &b->native_funcs, lit("write_many"), native_write_many);
+        ll_native_fn_put(cc, &b->native_funcs, lit("read_entire_file"), native_read_entire_file);
+        ll_native_fn_put(cc, &b->native_funcs, lit("malloc"), native_malloc);
+        ll_native_fn_put(cc, &b->native_funcs, lit("realloc"), native_realloc);
+        ll_native_fn_put(cc, &b->native_funcs, lit("breakpoint"), native_breakpoint);
+    }
+
+
+
+
+
+
     LL_Ir_Function fn = {
         .entry = entry_block_ref,
         .exit = entry_block_ref,
@@ -271,27 +767,18 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
     };
 
     oc_array_append(&cc->arena, &bir->const_stack, fn);
+    bir->fns.items[0] = fn;
     /* memcpy(&bir->fns.items[0], &fn, sizeof(fn)); */
 
     int32_t last_function = bir->current_function;
     LL_Ir_Block_Ref last_block = bir->current_block;
-    bir->current_function = CURRENT_CONST_STACK | (bir->const_stack.count - 1); // top of stack is current
+    // bir->current_function = CURRENT_CONST_STACK | (bir->const_stack.count - 1); // top of stack is current
+    bir->current_function = (0); // top of stack is current
     bir->current_block = fn.entry;
 
     result_op = ir_generate_expression(cc, bir, expr, false);
 
-    b->registers.count = 0;
-    oc_array_reserve(&cc->arena, &b->registers, FUNCTION()->registers.count);
-
-    b->locals.count = 0;
-    oc_array_reserve(&cc->arena, &b->locals, FUNCTION()->locals.count);
-
-    LL_Ir_Block_Ref current_block = fn.entry;
-    while (current_block) {
-        b->next_block = bir->blocks.items[current_block].next;
-        ll_eval_block(cc, b, bir, &bir->blocks.items[current_block]);
-        current_block = b->next_block;
-    }
+    ll_eval_fn(cc, b, bir, &fn);
 
     bir->current_block = last_block;
     bir->current_function = last_function;
@@ -299,8 +786,8 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 
     switch (OPD_TYPE(result_op)) {
     case LL_IR_OPERAND_IMMEDIATE_BIT: result.ival = OPD_VALUE(result_op); break;
-    case LL_IR_OPERAND_REGISTER_BIT: result = b->registers.items[OPD_VALUE(result_op)]; break;
-    case LL_IR_OPERAND_LOCAL_BIT: result = b->locals.items[OPD_VALUE(result_op)]; break;
+    case LL_IR_OPERAND_REGISTER_BIT: result = FRAME()->registers.items[OPD_VALUE(result_op)]; break;
+    case LL_IR_OPERAND_LOCAL_BIT: result = FRAME()->locals.items[OPD_VALUE(result_op)]; break;
     }
 
     return result;

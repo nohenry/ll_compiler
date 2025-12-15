@@ -194,3 +194,11 @@ void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
 
 void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type);
 LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type);
+
+
+static inline LL_Type* ll_get_base_type(LL_Type* type) {
+    while (type && type->kind == LL_TYPE_NAMED) {
+        type = ((LL_Type_Named*)type)->actual_type;
+    }
+    return type;
+}

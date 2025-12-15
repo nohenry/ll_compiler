@@ -4,18 +4,16 @@
 #include "../src/common.h"
 #include "../src/ast.h"
 #include "../src/typer.h"
+#include "../src/callconv.h"
 
 #include "../core/machine_code.h"
+
+#include "x86_64.h"
 
 typedef struct {
     size_t count, capacity;
     uint8_t* items;
 } X86_64_Ops_List;
-;
-typedef struct {
-    size_t count, capacity;
-    uint8_t* items; // data/instructions
-} X86_64_Section;
 
 typedef struct {
     LL_Ir_Block_Ref branch_from;
@@ -62,24 +60,6 @@ typedef struct {
     X86_64_Register* items;
 } X86_64_Registers_List;
 
-struct ll_native_function_map_entry {
-    struct ll_native_function_map_entry* next;
-    string name;
-    void* ptr;
-};
-
-typedef struct {
-    int64_t immediate_displacement;
-    uint32_t opcode;
-    uint32_t reg0;
-    X86_64_Variant_Kind variant;
-} X86_64_Invoke_Prealloc;
-
-typedef struct {
-    size_t count, capacity;
-    X86_64_Invoke_Prealloc* items;
-} X86_64_Invoke_Prealloc_List;
-
 typedef struct {
     OC_Machine_Code_Writer w;
     LL_Backend_Ir* ir;
@@ -101,42 +81,13 @@ typedef struct {
     uint32_t active_register_top;
     X86_64_Invoke_Prealloc_List invoke_prealloc;
 
-    struct ll_native_function_map_entry* native_funcs[LL_DEFAULT_MAP_ENTRY_COUNT];
+    // struct ll_native_function_map_entry* native_funcs[LL_DEFAULT_MAP_ENTRY_COUNT];
+    LL_Native_Function_Map native_funcs;
 
     uword indirect_return_ptr_offset;
     bool indirect_return_type;
     int entry_index;
 } X86_64_Backend;
-
-typedef struct {
-    bool is_reg;
-    union {
-        X86_64_Operand_Register reg;
-        int32_t stack_offset;
-    };
-} X86_64_Parameter;
-
-typedef struct {
-    const X86_64_Operand_Register* registers;
-    const X86_64_Operand_Register* vector_registers;
-    uint8_t register_count, register_next;
-    uint8_t vector_register_count, vector_register_next;
-    uint32_t stack_offset;
-} X86_64_Call_Convention;
-
-const static X86_64_Operand_Register call_convention_registers_systemv[] = {
-    X86_64_OPERAND_REGISTER_rcx,
-    X86_64_OPERAND_REGISTER_rdx,
-    X86_64_OPERAND_REGISTER_r8,
-    X86_64_OPERAND_REGISTER_r9,
-};
-
-const static X86_64_Operand_Register call_convention_vector_registers_systemv[] = {
-    X86_64_OPERAND_REGISTER_xmm(0),
-    X86_64_OPERAND_REGISTER_xmm(1),
-    X86_64_OPERAND_REGISTER_xmm(2),
-    X86_64_OPERAND_REGISTER_xmm(3),
-};
 
 const static X86_64_Operand_Register x86_64_backend_active_registers[] = {
     X86_64_OPERAND_REGISTER_rax,
@@ -150,64 +101,11 @@ const static X86_64_Operand_Register x86_64_backend_active_registers[] = {
     X86_64_OPERAND_REGISTER_r15,
 };
 
+
 #define x86_64_alloc_tmp_regs(n) (b->active_register_top += (n), b->active_register_top - (n))
 #define x86_64_tmp_regs(rg, i) (x86_64_backend_active_registers[(rg) + (i)])
 #define x86_64_free_tmp_regs(rg) (b->active_register_top = (rg))
 #define push_regs(_name, n) for (uint32_t _name = x86_64_alloc_tmp_regs(n), _name ## _ii = 1; _name ## _ii; (_name ## _ii --, x86_64_free_tmp_regs(_name)))
-
-X86_64_Call_Convention x86_64_call_convention_systemv(X86_64_Backend* b) {
-    (void)b;
-    X86_64_Call_Convention result;
-    result.registers = call_convention_registers_systemv;
-    result.register_count = oc_len(call_convention_registers_systemv);
-    result.register_next = 0;
-    result.vector_registers = call_convention_vector_registers_systemv;
-    result.vector_register_count = oc_len(call_convention_vector_registers_systemv);
-    result.vector_register_next = 0;
-
-    result.stack_offset = 0x20;
-    return result;
-}
-
-X86_64_Operand_Register x86_64_call_convention_next_reg(X86_64_Backend* b, X86_64_Call_Convention* cc, LL_Type* type) {
-    (void)b;
-    if (type->kind == LL_TYPE_FLOAT) {
-        if (cc->vector_register_next >= cc->vector_register_count) {
-            return X86_64_OPERAND_REGISTER_invalid;
-        } else {
-            return cc->vector_registers[cc->vector_register_next++];
-        }
-    } else {
-        if (cc->register_next >= cc->register_count) {
-            return X86_64_OPERAND_REGISTER_invalid;
-        } else {
-            return cc->registers[cc->register_next++];
-        }
-    }
-}
-
-uint32_t x86_64_call_convention_next_mem(X86_64_Backend* b, X86_64_Call_Convention* cc, LL_Type* type) {
-    (void)type;
-    uint32_t stack_offset = cc->stack_offset;
-    cc->stack_offset += 8;
-    if (cc->stack_offset > b->stack_used_for_args) {
-        b->stack_used_for_args = cc->stack_offset;
-    }
-    return stack_offset;
-}
-
-X86_64_Parameter x86_64_call_convention_next(X86_64_Backend* b, X86_64_Call_Convention* cc, LL_Type* type) {
-    X86_64_Parameter result;
-    result.reg = x86_64_call_convention_next_reg(b, cc, type);
-    if (result.reg != X86_64_OPERAND_REGISTER_invalid) {
-        result.is_reg = true;
-    } else {
-        result.is_reg = false;
-        result.stack_offset = x86_64_call_convention_next_mem (b, cc, type);
-    }
-    return result;
-}
-
 
 void x86_64_append_op_segment_u8(void* w, uint8_t segment) {
     X86_64_Backend* b = w;
@@ -266,115 +164,13 @@ void x86_64_assert_abort(void* w, const char* fmt, ...) {
     // abort();
 }
 
-
-
-void ll_native_fn_put(Compiler_Context* cc, X86_64_Backend* b, string name, void* ptr) {
-    size_t hash = stbds_hash_string(name, MAP_DEFAULT_SEED) % oc_len(b->native_funcs);
-    struct ll_native_function_map_entry* current = b->native_funcs[hash];
-    struct ll_native_function_map_entry* new_entry = oc_arena_alloc(&cc->arena, sizeof(*new_entry));
-    new_entry->next = current;
-    new_entry->name = name;
-    new_entry->ptr = ptr;
-    b->native_funcs[hash] = new_entry;
-}
-
-void* ll_native_fn_get(Compiler_Context* cc, X86_64_Backend* b, string name) {
-    (void)cc;
-    size_t hash = stbds_hash_string(name, MAP_DEFAULT_SEED) % oc_len(b->native_funcs);
-    struct ll_native_function_map_entry* current = b->native_funcs[hash];
-
-    while (current) {
-        if (string_eql(current->name, name)) break;
-        current = current->next;
-    }
-
-    if (current) return current->ptr;
-    return NULL;
-}
-
-void native_write(long long int u) {
-    print("{}\n", u);
-}
-
-#include <math.h>
-void native_write_float32(float u) {
-    print("{}\n", round(u * 10.0) / 10.0);
-}
-
-void native_write_float64(double u) {
-    print("{}\n", round(u * 10.0) / 10.0);
-}
-
-struct native_string {
-    char* data;
-    uword length;
-};
-
-void native_write_string(struct native_string str) {
-    string s = {
-        .ptr = str.data,
-        .len = str.length,
-    };
-    print("{}\n", s);
-}
-
-void native_write_many(int a, int b, int c, int d, int e, int f, int g) {
-    print("{} {} {} {} {} {} {}\n", a, b, c, d, e, f, g);
-}
-
-void* native_malloc(uword u) {
-    return malloc(u);
-}
-
-void* native_realloc(void* ptr, uword u) {
-    return realloc(ptr, u);
-}
-
-void native_breakpoint(void) {
-    __asm__ volatile ("int3");
-}
-
-struct native_string native_read_entire_file(struct native_string filepath) {
-    struct native_string result = { 0 };
-    FILE* fptr = NULL;
-    if (fopen_s(&fptr, filepath.data, "rb")) {
-        string s = { .ptr = filepath.data, .len = filepath.length };
-        eprint("unable to open file '{}'\n", s);
-        oc_exit(-1);
-    }
-    if (!fptr) {
-        string s = { .ptr = filepath.data, .len = filepath.length };
-        eprint("unable to open file '{}'\n", s);
-        oc_exit(-1);
-    }
-
-    fseek(fptr, 0, SEEK_END);
-    size_t input_size = ftell(fptr);
-    fseek(fptr, 0, SEEK_SET);
-
-    uint8_t* input_contents = malloc(input_size);
-    if (!input_contents) oc_oom();
-
-    size_t read_amount = fread(input_contents, 1, input_size, fptr);
-    if (read_amount != input_size) {
-        eprint("Unable to read file: ferror() = {}\n", ferror(fptr));
-        oc_assert(false);
-    }
-    fclose(fptr);
-
-    result.data = (char*)input_contents;
-    result.length = input_size;
-
-    return result;
-}
-
 void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     b->arena = &cc->arena;
     b->w.append_u8 = x86_64_append_op_segment_u8;
     b->w.append_u16 = x86_64_append_op_segment_u16;
     b->w.append_u32 = x86_64_append_op_segment_u32;
-    b->w.append_u64 = x86_64_append_op_segment_u64;
-    b->w.append_many = x86_64_append_op_many;
+    b->w.append_u64 = (void (*)(void *, unsigned long long))x86_64_append_op_segment_u64;
+    b->w.append_many = (void (*)(void *, unsigned char *, unsigned long long))x86_64_append_op_many;
     b->w.end_instruction = x86_64_end_instruction;
     b->w.log_error = x86_64_log_error;
     b->w.assert_abort = x86_64_assert_abort;
@@ -383,15 +179,15 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     memset(&b->branch_relocations, 0, sizeof(b->branch_relocations));
 
 
-    ll_native_fn_put(cc, b, lit("write_int"), native_write);
-    ll_native_fn_put(cc, b, lit("write_float32"), native_write_float32);
-    ll_native_fn_put(cc, b, lit("write_float64"), native_write_float64);
-    ll_native_fn_put(cc, b, lit("write_string"), native_write_string);
-    ll_native_fn_put(cc, b, lit("write_many"), native_write_many);
-    ll_native_fn_put(cc, b, lit("read_entire_file"), native_read_entire_file);
-    ll_native_fn_put(cc, b, lit("malloc"), native_malloc);
-    ll_native_fn_put(cc, b, lit("realloc"), native_realloc);
-    ll_native_fn_put(cc, b, lit("breakpoint"), native_breakpoint);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_int"), native_write);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_float32"), native_write_float32);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_float64"), native_write_float64);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_string"), native_write_string);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_many"), native_write_many);
+    ll_native_fn_put(cc, &b->native_funcs, lit("read_entire_file"), native_read_entire_file);
+    ll_native_fn_put(cc, &b->native_funcs, lit("malloc"), native_malloc);
+    ll_native_fn_put(cc, &b->native_funcs, lit("realloc"), native_realloc);
+    ll_native_fn_put(cc, &b->native_funcs, lit("breakpoint"), native_breakpoint);
 }
 
 
@@ -429,13 +225,6 @@ LL_Backend_Layout x86_64_get_layout(LL_Type* ty) {
     }
 }
 
-static inline LL_Type* get_base_type(LL_Type* type) {
-    while (type && type->kind == LL_TYPE_NAMED) {
-        type = ((LL_Type_Named*)type)->actual_type;
-    }
-    return type;
-}
-
 static inline bool is_small_struct(LL_Type* type) {
     assert(type->kind == LL_TYPE_STRUCT);
     LL_Backend_Layout struct_layout = x86_64_get_layout(type);
@@ -459,14 +248,7 @@ static inline bool is_large_aggregate_type(LL_Type* type) {
     }
 }
 
-typedef struct {
-    bool immediate, mem_right, single, large_immediate;
-} X86_64_Get_Variant_Params;
-
-static X86_64_Variant_Kind x86_64_get_variant_raw(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, X86_64_Get_Variant_Params params) {
-    (void)cc;
-    (void)b;
-    (void)bir;
+X86_64_Variant_Kind x86_64_get_variant_raw(LL_Type* type, X86_64_Get_Variant_Params params) {
     oc_assert(!params.immediate || !params.mem_right);
 
     if (type->kind == LL_TYPE_NAMED) {
@@ -542,7 +324,7 @@ static X86_64_Variant_Kind x86_64_get_variant_raw(Compiler_Context* cc, X86_64_B
     return (X86_64_Variant_Kind)-1;
 }
 
-#define x86_64_get_variant(type, ...) x86_64_get_variant_raw(cc, b, bir, (type), (X86_64_Get_Variant_Params) { __VA_ARGS__ })
+#define x86_64_get_variant(type, ...) x86_64_get_variant_raw((type), (X86_64_Get_Variant_Params) { __VA_ARGS__ })
 
 static void x86_64_useup_register(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, X86_64_Register* reg) {
     (void)cc;
@@ -591,14 +373,14 @@ static X86_64_Operand_Register x86_64_load_register(Compiler_Context* cc, X86_64
     default: oc_todo(""); break;
     }
 
-    operand_type = get_base_type(operand_type);
+    operand_type = ll_get_base_type(operand_type);
 
     switch (operand_type->kind) {
     case LL_TYPE_FLOAT:
         if (operand_type->width <= 32)
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(operand_type, get_variant), params);
         else if (operand_type->width <= 64)
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(operand_type, get_variant), params);
         else oc_todo("implement other sizes");
         break;
     case LL_TYPE_BOOL:
@@ -609,7 +391,7 @@ static X86_64_Operand_Register x86_64_load_register(Compiler_Context* cc, X86_64
     case LL_TYPE_STRING:
     case LL_TYPE_STRUCT:
     case LL_TYPE_SLICE:
-        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(operand_type, get_variant), params);
         break;
     default: oc_todo("add types");
     }
@@ -680,14 +462,14 @@ static X86_64_Operand_Register x86_64_load_operand_with_type(Compiler_Context* c
     default: oc_unreachable("unsupported type"); break;
     }
 
-    operand_type = get_base_type(operand_type);
+    operand_type = ll_get_base_type(operand_type);
 
     switch (operand_type->kind) {
     case LL_TYPE_FLOAT:
         if (operand_type->width <= 32)
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(operand_type, get_variant), params);
         else if (operand_type->width <= 64)
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(operand_type, get_variant), params);
         else oc_todo("implement other sizes");
         break;
     case LL_TYPE_BOOL:
@@ -698,7 +480,7 @@ static X86_64_Operand_Register x86_64_load_operand_with_type(Compiler_Context* c
     case LL_TYPE_STRING:
     case LL_TYPE_STRUCT:
     case LL_TYPE_SLICE:
-        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, operand_type, get_variant), params);
+        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(operand_type, get_variant), params);
         break;
     default: oc_todo("add types");
     }
@@ -744,11 +526,11 @@ static void x86_64_generate_mov_to_register(Compiler_Context* cc, X86_64_Backend
         switch (OPD_TYPE(src)) {
         case LL_IR_OPERAND_IMMEDIATE_BIT:
             params.immediate = OPD_VALUE(src);
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(type, (X86_64_Get_Variant_Params) { .immediate = true }), params);
             break;
         case LL_IR_OPERAND_IMMEDIATE64_BIT:
             params.immediate = b->fn->literals.items[OPD_VALUE(src)].as_u64;
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .immediate = true, .large_immediate = true }), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(type, (X86_64_Get_Variant_Params) { .immediate = true, .large_immediate = true }), params);
             break;
         case LL_IR_OPERAND_REGISTER_BIT: {
             X86_64_Register* src_reg = &b->registers.items[OPD_VALUE(src)];
@@ -758,12 +540,12 @@ static void x86_64_generate_mov_to_register(Compiler_Context* cc, X86_64_Backend
             case X86_64_REGISTER_LOCATION_STACK: {
                 params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
                 params.displacement = -(int64_t)(int32_t)src_reg->value;
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
+                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
             } break;
             case X86_64_REGISTER_LOCATION_REGISTER: {
                 if (src_reg->value != (uint32_t)result) {
                     params.reg1 = src_reg->value;
-                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(cc, b, bir, type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
+                    OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode, x86_64_get_variant_raw(type, (X86_64_Get_Variant_Params) { .mem_right = true }), params);
                 }
             } break;
             default: oc_todo(""); break;
@@ -840,7 +622,7 @@ static void x86_64_generate_memcpy(Compiler_Context* cc, X86_64_Backend* b, LL_B
     x86_64_generate_memcpy_assum_rdi_rsi(cc, b, bir, type, byte_size, operand_type);
 }
 
-static uword x86_64_make_struct_copy(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, LL_Ir_Operand reg, bool allocate_only) {
+uword x86_64_make_struct_copy(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, LL_Ir_Operand reg, bool allocate_only) {
     X86_64_Instruction_Parameters params = { 0 };
     oc_assert(type->kind == LL_TYPE_STRUCT || type->kind == LL_TYPE_SLICE || type->kind == LL_TYPE_STRING);
 
@@ -866,6 +648,8 @@ static uword x86_64_make_struct_copy(Compiler_Context* cc, X86_64_Backend* b, LL
 }
 
 static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, X86_64_Operand_Register reg) {
+    (void)cc;
+    (void)bir;
     X86_64_Instruction_Parameters params = { 0 };
     X86_64_Get_Variant_Params get_variant = { 0 };
     LL_Backend_Layout l = x86_64_get_layout(type);
@@ -877,14 +661,14 @@ static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, L
     params.reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
     params.displacement = -(long long int)b->stack_used;
 
-    type = get_base_type(type);
+    type = ll_get_base_type(type);
 
     switch (type->kind) {
     case LL_TYPE_FLOAT:
         if (type->width <= 32)
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(type, get_variant), params);
         else if (type->width <= 64)
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(type, get_variant), params);
         else oc_todo("implement other sizes");
         break;
     case LL_TYPE_BOOL:
@@ -892,7 +676,7 @@ static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, L
     case LL_TYPE_UINT:
     case LL_TYPE_INT:
     case LL_TYPE_POINTER:
-        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(type, get_variant), params);
         break;
     case LL_TYPE_STRING:
     case LL_TYPE_ARRAY:
@@ -907,6 +691,8 @@ static uword x86_64_move_reg_to_stack(Compiler_Context* cc, X86_64_Backend* b, L
 }
 
 static X86_64_Register x86_64_move_reg_alloc(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, X86_64_Operand_Register reg) {
+    (void)cc;
+    (void)bir;
     X86_64_Register result = { 0 };
     X86_64_Instruction_Parameters params = { 0 };
     X86_64_Get_Variant_Params get_variant = { 0 };
@@ -937,14 +723,14 @@ static X86_64_Register x86_64_move_reg_alloc(Compiler_Context* cc, X86_64_Backen
         result.location = X86_64_REGISTER_LOCATION_STACK;
     }
 
-    type = get_base_type(type);
+    type = ll_get_base_type(type);
 
     switch (type->kind) {
     case LL_TYPE_FLOAT:
         if (type->width <= 32)
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSS, x86_64_get_variant_raw(type, get_variant), params);
         else if (type->width <= 64)
-            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+            OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOVSD, x86_64_get_variant_raw(type, get_variant), params);
         else oc_todo("implement other sizes");
         break;
     case LL_TYPE_BOOL:
@@ -952,7 +738,7 @@ static X86_64_Register x86_64_move_reg_alloc(Compiler_Context* cc, X86_64_Backen
     case LL_TYPE_UINT:
     case LL_TYPE_INT:
     case LL_TYPE_POINTER:
-        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+        OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(type, get_variant), params);
         break;
     case LL_TYPE_STRING:
     case LL_TYPE_ARRAY:
@@ -973,16 +759,19 @@ typedef struct {
 } Move_Info;
 
 static Move_Info x86_64_get_move_info(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* dst_type, LL_Type* src_type, bool mem_right) {
+    (void)cc;
+    (void)b;
+    (void)bir;
     Move_Info result = { 0 };
     X86_64_Get_Variant_Params get_variant = { .mem_right = mem_right };
 
-    dst_type = get_base_type(dst_type);
-    src_type = get_base_type(src_type);
+    dst_type = ll_get_base_type(dst_type);
+    src_type = ll_get_base_type(src_type);
 
     if (mem_right) {
-        result.kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+        result.kind = x86_64_get_variant_raw(src_type, get_variant);
     } else {
-        result.kind = x86_64_get_variant_raw(cc, b, bir, dst_type, get_variant);
+        result.kind = x86_64_get_variant_raw(dst_type, get_variant);
     }
     switch (src_type->kind) {
     case LL_TYPE_FLOAT:
@@ -1040,7 +829,7 @@ static Move_Info x86_64_get_move_info(Compiler_Context* cc, X86_64_Backend* b, L
                     }
                 }
                 result.opcode = OPCODE_MOV;
-                result.kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                result.kind = x86_64_get_variant_raw(src_type, get_variant);
                 break;
             case LL_TYPE_FLOAT:
                 if (dst_type->width <= 32) {
@@ -1110,7 +899,7 @@ static Move_Info x86_64_get_move_info(Compiler_Context* cc, X86_64_Backend* b, L
                     }
                 }
                 result.opcode = OPCODE_MOV;
-                result.kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                result.kind = x86_64_get_variant_raw(src_type, get_variant);
                 break;
             case LL_TYPE_FLOAT:
                 if (dst_type->width <= 32) {
@@ -1148,7 +937,7 @@ static Move_Info x86_64_get_move_info(Compiler_Context* cc, X86_64_Backend* b, L
             switch (dst_type->kind) {
             case LL_TYPE_POINTER:
                 result.opcode = OPCODE_MOV;
-                result.kind = x86_64_get_variant_raw(cc, b, bir, src_type, get_variant);
+                result.kind = x86_64_get_variant_raw(src_type, get_variant);
                 break;
             default: ll_print_type(dst_type); oc_todo(""); break;
             }
@@ -1923,7 +1712,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
         case LL_IR_OPCODE_LEA_INDEX: {
             LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)ir_get_operand_type(bir, b->fn, operands[0]);
             assert(ptr_type->base.kind == LL_TYPE_POINTER);
-            LL_Type* type = get_base_type(ptr_type->element_type);
+            LL_Type* type = ll_get_base_type(ptr_type->element_type);
 
             switch (type->kind) {
             case LL_TYPE_POINTER:
@@ -2090,7 +1879,7 @@ DO_OPCODE_ARITHMETIC:
             push_regs(tmp_regs, 0) {
                 params.reg0 = x86_64_load_operand_with_type(cc, b, bir, operands[1], type);
                 params.reg1 = x86_64_load_operand_with_type(cc, b, bir, operands[2], type);
-                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode1, x86_64_get_variant_raw(cc, b, bir, type, get_variant), params);
+                OC_X86_64_WRITE_INSTRUCTION_DYN(b, opcode1, x86_64_get_variant_raw(type, get_variant), params);
             }
 
             X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, type, params.reg0);
@@ -2361,12 +2150,12 @@ DO_OPCODE_ARITHMETIC_PREOP:
         case LL_IR_OPCODE_INVOKE: {
             uint32_t invokee = operands[invoke_offset++];
             uint32_t count = operands[invoke_offset++];
-            X86_64_Call_Convention callconv = x86_64_call_convention_systemv(b);
+            X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
             LL_Ir_Function* invokee_fn = &bir->fns.items[OPD_VALUE(invokee)];
             LL_Type_Function* fn_type = (LL_Type_Function*)invokee_fn->ident->base.type;
             assert(fn_type->base.kind == LL_TYPE_FUNCTION);
 
-            LL_Type* return_type = fn_type->return_type ? get_base_type(fn_type->return_type) : NULL;
+            LL_Type* return_type = fn_type->return_type ? ll_get_base_type(fn_type->return_type) : NULL;
 
             b->invoke_prealloc.count = 0;
             oc_array_reserve(&cc->arena, &b->invoke_prealloc, count);
@@ -2396,7 +2185,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
                         } else {
                             prealloc.immediate_displacement = b->registers.items[OPD_VALUE(arg_operand)].value;
                             prealloc.opcode = opcode;
-                            prealloc.variant = x86_64_get_variant_raw(cc, b, bir, type, get_variant);
+                            prealloc.variant = x86_64_get_variant_raw(type, get_variant);
                         }
                         break;
                     case LL_IR_OPERAND_IMMEDIATE_BIT:
@@ -2418,7 +2207,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
 
             uword return_struct_offset;
             if (return_type && is_large_aggregate_type(return_type)) {
-                X86_64_Parameter param = x86_64_call_convention_next(b, &callconv, return_type);
+                X86_64_Parameter param = x86_64_call_convention_next(&callconv, return_type, &b->stack_used_for_args);
 
                 return_struct_offset = x86_64_make_struct_copy(cc, b, bir, return_type, 0, true);
                 if (param.is_reg) {
@@ -2453,7 +2242,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
                     else oc_todo("add widths");
                 }
 
-                X86_64_Parameter parameter_location = x86_64_call_convention_next(b, &callconv, type);
+                X86_64_Parameter parameter_location = x86_64_call_convention_next(&callconv, type, &b->stack_used_for_args);
                 switch (OPD_TYPE(arg_operand)) {
                     case LL_IR_OPERAND_REGISTER_BIT: 
                         oc_assert(b->registers.items[OPD_VALUE(arg_operand)].location == X86_64_REGISTER_LOCATION_STACK);
@@ -2553,7 +2342,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
             LL_Type_Function* fn_type = (LL_Type_Function*)b->fn->ident->base.type;
 
             if (b->indirect_return_type) {
-                LL_Type* return_type = get_base_type(fn_type->return_type);
+                LL_Type* return_type = ll_get_base_type(fn_type->return_type);
                 oc_assert(is_large_aggregate_type(return_type));
 
                 LL_Backend_Layout l = x86_64_get_layout(return_type);
@@ -2605,7 +2394,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
             size_t function_offset = b->section_text.count;
             fn->generated_offset = (int64_t)function_offset;
 
-            void* native_fn_ptr = ll_native_fn_get(cc, b, fn->ident->str);
+            void* native_fn_ptr = ll_native_fn_get(cc, &b->native_funcs, fn->ident->str);
             if (!native_fn_ptr) {
                 eprint("Unable to find native function: {}\n", fn->ident->str);
                 continue;
@@ -2666,15 +2455,15 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         }
 
         // move registers to stack, if already on stack just use that offset
-        X86_64_Call_Convention callconv = x86_64_call_convention_systemv(b);
+        X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
         LL_Type_Function* fn_type = (LL_Type_Function*)fn->ident->base.type;
         oc_array_reserve(&cc->tmp_arena, &b->parameters, fn_type->parameter_count);
         assert(fn_type->base.kind == LL_TYPE_FUNCTION);
 
-        LL_Type* return_type = fn_type->return_type ? get_base_type(fn_type->return_type) : NULL;
+        LL_Type* return_type = fn_type->return_type ? ll_get_base_type(fn_type->return_type) : NULL;
 
         if (return_type && is_large_aggregate_type(return_type)) {
-            X86_64_Parameter param = x86_64_call_convention_next(b, &callconv, return_type);
+            X86_64_Parameter param = x86_64_call_convention_next(&callconv, return_type, &b->stack_used_for_args);
             if (param.is_reg) {
                 LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, fn_type->return_type);
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, ptr_type, param.reg);
@@ -2689,7 +2478,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         }
 
         for (uint32_t j = 0; j < fn_type->parameter_count; ++j) {
-            X86_64_Parameter param = x86_64_call_convention_next(b, &callconv, fn_type->parameters[j]);
+            X86_64_Parameter param = x86_64_call_convention_next(&callconv, fn_type->parameters[j], &b->stack_used_for_args);
             if (param.is_reg) {
                 uword offset = x86_64_move_reg_to_stack(cc, b, bir, fn_type->parameters[j], param.reg);
                 b->parameters.items[j] = offset;
@@ -2752,6 +2541,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
 void x86_64_run(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
     (void)cc;
 
+#ifdef OC_PLATFORM_WINDOWS
     uint8* data = NULL;
     if (b->section_data.count) {
         data = VirtualAlloc(NULL, b->section_data.count, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
@@ -2789,6 +2579,7 @@ void x86_64_run(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
 
     void (*fn_ptr)() = (void (*)())(code + b->ir->fns.items[b->entry_index].generated_offset);
     fn_ptr();
+#endif
 }
 
 bool x86_64_write_to_file(Compiler_Context* cc, X86_64_Backend* b, char* filepath) {

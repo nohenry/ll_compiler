@@ -125,8 +125,8 @@ int main(int argc, char** argv) {
     // const char* test_dir = nob_temp_dir_name(exe);
     // nob_set_current_dir(test_dir);
 
-    // run_test_suite_dir("./tests/cases", false);
-    // run_test_suite_dir("./tests/aoc/cases", false);
+    run_test_suite_dir("./tests/cases", false);
+    run_test_suite_dir("./tests/aoc/cases", false);
     run_test_suite_dir("./tests/errors/cases", true);
 
 defer:

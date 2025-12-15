@@ -164,6 +164,16 @@ typedef enum {
 #define CURRENT_CONST_STACK (0x80000000u)
 #define CURRENT_INDEX (0x7FFFFFFFu)
 
+struct ll_native_function_map_entry {
+    struct ll_native_function_map_entry* next;
+    string name;
+    void* ptr;
+};
+
+typedef struct {
+    struct ll_native_function_map_entry* native_funcs[LL_DEFAULT_MAP_ENTRY_COUNT];
+} LL_Native_Function_Map;
+
 typedef struct ll_backend_ir {
     LL_Ir_Function_List fns;
     LL_Ir_Function_List const_stack;
@@ -182,6 +192,8 @@ typedef struct ll_backend_ir {
     bool last_op_was_load;
 } LL_Backend_Ir;
 
+
+
 #define OPERAND_FMT "{}{}"
 #define OPERAND_FMT_VALUE(v) ( \
         (v & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_LOCAL_BIT ? "l" : \
@@ -195,6 +207,7 @@ typedef struct ll_backend_ir {
 
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b);
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath);
+void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt);
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt);
 LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, bool ref);
 LL_Type* ir_get_operand_type(LL_Backend_Ir* bir, LL_Ir_Function* fn, LL_Ir_Operand operand);
@@ -203,3 +216,24 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
 void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i, Oc_Writer* w);
 
 void ir_calculate_struct_offsets(LL_Type* type);
+
+
+
+void ll_native_fn_put(Compiler_Context* cc, LL_Native_Function_Map* b, string name, void* ptr);
+void* ll_native_fn_get(Compiler_Context* cc, LL_Native_Function_Map* b, string name);
+
+struct native_string {
+    char* data;
+    uword length;
+};
+
+struct native_string native_read_entire_file(struct native_string filepath);
+void native_write(long long int u);
+void native_write_float32(float u);
+void native_write_float64(double u);
+void native_write_string(struct native_string str);
+void native_write_many(int a, int b, int c, int d, int e, int f, int g);
+void* native_malloc(uword u);
+void* native_realloc(void* ptr, uword u);
+void native_breakpoint(void);
+

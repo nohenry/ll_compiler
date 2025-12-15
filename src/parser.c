@@ -115,9 +115,11 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
 
 Ast_Base* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
     Ast_Block block = { .base.kind = AST_KIND_BLOCK };
+    LL_Token token;
 
     while (parser->lexer.pos < parser->lexer.source.len) {
         oc_array_append(&cc->arena, &block, parser_parse_statement(cc, parser));
+        PEEK(&token);
     }
 
     return oc_arena_dup(&cc->arena, &block, sizeof(block));
@@ -130,6 +132,9 @@ Ast_Base* parser_parse_statement(Compiler_Context* cc, LL_Parser* parser) {
     PEEK(&token);
 
 START_SWITCH:
+    if (!PEEK(&token)) {
+        return NULL;
+    }
     switch (token.kind) {
 
 #pragma GCC diagnostic push

@@ -198,7 +198,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
             case LL_IR_OPCODE_INVOKEVALUE:
             case LL_IR_OPCODE_TEST:
                 if (OPD_TYPE(operands[0]) != LL_IR_OPERAND_IMMEDIATE_BIT) {
-                    ll_print_type_raw(ir_get_operand_type(b, &b->fns.items[b->current_function], operands[0]), w);
+                    // ll_print_type_raw(ir_get_operand_type(b, &b->fns.items[b->current_function], operands[0]), w);
                 }
                 break;
 
@@ -372,6 +372,31 @@ LL_Ir_Operand ir_generate_rhs_load_if_needed(Compiler_Context* cc, LL_Backend_Ir
     }
 }
 
+void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt) {
+    uint32_t current_function = b->current_function;
+    LL_Ir_Block_Ref current_block = b->current_block, return_block = b->return_block;
+    LL_Ir_Block_List blocks = b->blocks;
+
+    LL_Ir_Operand copy_operand = b->copy_operand;
+    uint8_t* initializer_ptr = b->initializer_ptr;
+    bool last_op_was_load = b->last_op_was_load;
+
+
+
+    ir_generate_statement(cc, b, stmt);
+
+
+
+    b->current_function = current_function;
+    b->current_block = current_block;
+    b->return_block = return_block;
+    b->blocks = blocks;
+
+    b->copy_operand = copy_operand;
+    b->initializer_ptr = initializer_ptr;
+    b->last_op_was_load = last_op_was_load;
+}
+
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt) {
     uint32_t i;
     switch (stmt->kind) {
@@ -435,6 +460,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
         };
 
         fn_decl->ir_index = b->fns.count;
+        oc_assert(fn_decl->ir_index != 0);
 
         if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
             fn.flags |= LL_IR_FUNCTION_FLAG_EXTERN;
@@ -537,6 +563,7 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
                 *offset += 8;
                 break;
             }
+        } else if (opr->left->type->kind == LL_TYPE_ARRAY) {
         }
 
         LL_Scope* field_scope = right_ident->resolved_scope;
@@ -704,19 +731,36 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
                 case AST_KIND_FUNCTION_DECLARATION: result = LL_IR_OPERAND_FUNCTION_BIT | AST_AS(decl, Ast_Function_Declaration)->ir_index; break;
                 case AST_KIND_VARIABLE_DECLARATION: {
                     offset_value = 0;
-                    result = ir_generate_member_access(cc, b, expr, &offset_value);
 
-                    LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
-                    result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
+                    LL_Type* base_type = ll_get_base_type(opr->left->type);
+                    if (base_type->kind == LL_TYPE_ARRAY) {
+                        if (lvalue) oc_todo("handle invalid lvalue");
+
+                        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, opr->right->type, base_type->width);
+                        return result;
+                    } else {
+                        result = ir_generate_member_access(cc, b, expr, &offset_value);
+
+                        LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
+                        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
+                    }
                 } break;
                 default: oc_assert(false);
                 }
             } else {
-                offset_value = 0;
-                result = ir_generate_member_access(cc, b, expr, &offset_value);
+                LL_Type* base_type = ll_get_base_type(opr->left->type);
+                if (base_type->kind == LL_TYPE_ARRAY) {
+                    if (lvalue) oc_todo("handle invalid lvalue");
 
-                LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
-                result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
+                    result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, opr->right->type, base_type->width);
+                    return result;
+                } else {
+                    offset_value = 0;
+                    result = ir_generate_member_access(cc, b, expr, &offset_value);
+
+                    LL_Type* base_type = ll_typer_get_ptr_type(cc, cc->typer, opr->base.type);
+                    result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, base_type, result, LL_IR_OPERAND_IMMEDIATE_BIT | offset_value, 1);
+                }
             }
 
 
@@ -1126,7 +1170,12 @@ HANDLE_SLICE_OP:
         Ast_Base* decl = ident->resolved_scope->decl;
         switch (decl->kind) {
         case AST_KIND_VARIABLE_DECLARATION: result = LL_IR_OPERAND_LOCAL_BIT | AST_AS(decl, Ast_Variable_Declaration)->ir_index; break;
-        case AST_KIND_FUNCTION_DECLARATION: result = LL_IR_OPERAND_FUNCTION_BIT | AST_AS(decl, Ast_Function_Declaration)->ir_index; break;
+        case AST_KIND_FUNCTION_DECLARATION:
+            if (AST_AS(decl, Ast_Function_Declaration)->ir_index == 0) {
+                ir_generate_statement_restore_state(cc, b, decl);
+            }
+            result = LL_IR_OPERAND_FUNCTION_BIT | AST_AS(decl, Ast_Function_Declaration)->ir_index;
+            break;
         case AST_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | AST_AS(decl, Ast_Parameter)->ir_index; break;
         default: oc_assert(false);
         }
@@ -1321,5 +1370,102 @@ LL_Type* ir_get_operand_type(LL_Backend_Ir* bir, LL_Ir_Function* fn, LL_Ir_Opera
     }
 
     return result;
+}
+
+void ll_native_fn_put(Compiler_Context* cc, LL_Native_Function_Map* b, string name, void* ptr) {
+    size_t hash = stbds_hash_string(name, MAP_DEFAULT_SEED) % oc_len(b->native_funcs);
+    struct ll_native_function_map_entry* current = b->native_funcs[hash];
+    struct ll_native_function_map_entry* new_entry = oc_arena_alloc(&cc->arena, sizeof(*new_entry));
+    new_entry->next = current;
+    new_entry->name = name;
+    new_entry->ptr = ptr;
+    b->native_funcs[hash] = new_entry;
+}
+
+void* ll_native_fn_get(Compiler_Context* cc, LL_Native_Function_Map* b, string name) {
+    (void)cc;
+    size_t hash = stbds_hash_string(name, MAP_DEFAULT_SEED) % oc_len(b->native_funcs);
+    struct ll_native_function_map_entry* current = b->native_funcs[hash];
+
+    while (current) {
+        if (string_eql(current->name, name)) break;
+        current = current->next;
+    }
+
+    if (current) return current->ptr;
+    return NULL;
+}
+
+
+struct native_string native_read_entire_file(struct native_string filepath) {
+    struct native_string result = { 0 };
+    FILE* fptr = NULL;
+    if (fopen_s(&fptr, filepath.data, "rb")) {
+        string s = { .ptr = filepath.data, .len = filepath.length };
+        eprint("unable to open file '{}'\n", s);
+        oc_exit(-1);
+    }
+    if (!fptr) {
+        string s = { .ptr = filepath.data, .len = filepath.length };
+        eprint("unable to open file '{}'\n", s);
+        oc_exit(-1);
+    }
+
+    fseek(fptr, 0, SEEK_END);
+    size_t input_size = ftell(fptr);
+    fseek(fptr, 0, SEEK_SET);
+
+    uint8_t* input_contents = malloc(input_size);
+    if (!input_contents) oc_oom();
+
+    size_t read_amount = fread(input_contents, 1, input_size, fptr);
+    if (read_amount != input_size) {
+        eprint("Unable to read file: ferror() = {}\n", ferror(fptr));
+        oc_assert(false);
+    }
+    fclose(fptr);
+
+    result.data = (char*)input_contents;
+    result.length = input_size;
+
+    return result;
+}
+
+
+void native_write(long long int u) {
+    print("{}\n", u);
+}
+
+#include <math.h>
+void native_write_float32(float u) {
+    print("{}\n", round(u * 10.0) / 10.0);
+}
+
+void native_write_float64(double u) {
+    print("{}\n", round(u * 10.0) / 10.0);
+}
+
+void native_write_string(struct native_string str) {
+    string s = {
+        .ptr = str.data,
+        .len = str.length,
+    };
+    print("{}\n", s);
+}
+
+void native_write_many(int a, int b, int c, int d, int e, int f, int g) {
+    print("{} {} {} {} {} {} {}\n", a, b, c, d, e, f, g);
+}
+
+void* native_malloc(uword u) {
+    return malloc(u);
+}
+
+void* native_realloc(void* ptr, uword u) {
+    return realloc(ptr, u);
+}
+
+void native_breakpoint(void) {
+    __asm__ volatile ("int3");
 }
 

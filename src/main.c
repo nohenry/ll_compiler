@@ -50,7 +50,8 @@ int main(int argc, char** argv) {
     LL_Parser parser = parser_create_from_file(&cc, filename);
     Ast_Base* root = parser_parse_file(&cc, &parser);
     LL_Typer typer = ll_typer_create(&cc);
-    LL_Eval_Context eval_context = {};
+    LL_Eval_Context eval_context = { 0 };
+    ll_eval_init(&cc, &eval_context);
 
     LL_Backend backend_elf = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_ELF);
     LL_Backend backend_ir = ll_backend_init(&cc, LL_BACKEND_IR);

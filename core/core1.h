@@ -54,6 +54,7 @@ typedef struct {
 
     _Noreturn void WINAPI ExitProcess(uint32 uExitCode);
     void* WINAPI VirtualAlloc(void* lpAddress, sword dwSize, sint32 flAllocationType, sint32 flProtect);
+    uint32_t WINAPI VirtualFree(void* lpAddress, sword dwSize, sint32 dwFreeType);
     void* WINAPI VirtualProtect(void* BaseAddress, sword Size, sint32 flNewProtect, sint32* lpflOldProtect);
 
     HANDLE WINAPI GetStdHandle(sint32 nStdHandle);
@@ -239,8 +240,8 @@ typedef struct {
 
 // Map each argument to a transformation macro
 #define OC_MAP(transform_macro, ...) OC_CONCAT(OC_MAP_, OC_VA_NARGS(__VA_ARGS__))(transform_macro, __VA_ARGS__)
-// #define OC_MAP(transform_macro, ...) OC_VA_NARGS(__VA_ARGS__)
-#define OC_MAP_0(transform_macro, ...)
+
+#define OC_MAP_0(transform_macro)
 #define OC_MAP_1(transform_macro, a1) , transform_macro(a1)
 #define OC_MAP_2(transform_macro, a1, a2) , transform_macro(a1), transform_macro(a2)
 #define OC_MAP_3(transform_macro, a1, a2, a3) , transform_macro(a1), transform_macro(a2), transform_macro(a3)
@@ -259,7 +260,7 @@ typedef struct {
 #define OC_MAP_16(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16) , transform_macro(a1), transform_macro(a2), transform_macro(a3), transform_macro(a4), transform_macro(a5), transform_macro(a6), transform_macro(a7), transform_macro(a8), transform_macro(a9), transform_macro(a10), transform_macro(a11), transform_macro(a12), transform_macro(a13), transform_macro(a14), transform_macro(a15), transform_macro(a16)
 
 #define OC_MAP_SEQ(transform_macro, ...) OC_CONCAT(OC_MAP_SEQ_, OC_VA_NARGS(__VA_ARGS__))(transform_macro, ##__VA_ARGS__)
-#define OC_MAP_SEQ_0(transform_macro)
+#define OC_MAP_SEQ_0(transform_macro, ...)
 #define OC_MAP_SEQ_1(transform_macro, a1)                                                                      OC_MAP_SEQ_0(transform_macro) transform_macro(a1, 1)
 #define OC_MAP_SEQ_2(transform_macro, a1, a2)                                                                  OC_MAP_SEQ_1(transform_macro, a1)  transform_macro(a2, 2)
 #define OC_MAP_SEQ_3(transform_macro, a1, a2, a3)                                                              OC_MAP_SEQ_2(transform_macro, a1, a2)  transform_macro(a3, 3)
@@ -340,6 +341,8 @@ static inline uword oc_align_forward(uword value, uword alignment_in_bytes) {
     return (value + alignment_in_bytes - 1) & ~(alignment_in_bytes - 1);
 }
 
+#include <stdio.h>
+
 /* --------    libc forwards  -------- */
 void *memset(void *s, int c, size_t n);
 void *memcpy(void *dest, const void *src, size_t n);
@@ -349,7 +352,7 @@ int strcmp(const char *a, const char *b);
 size_t strlen(const char *s);
 _Noreturn void exit(int status);
 // typedef void FILE;
-// int fopen_s(FILE**, const char*, const char*);
+int fopen_s(FILE**, const char*, const char*);
 // int fseek(FILE*, int, int);
 // size_t ftell(FILE*);
 // unsigned long long fwrite(const void *, unsigned long long a, unsigned long long b, FILE *);
@@ -420,6 +423,7 @@ static inline string string_slice_count(string s, sword start, sword count) {
 extern Oc_Writer stdout_writer;
 extern Oc_Writer stderr_writer;
 
+#include <errno.h>
 #ifdef OC_CORE_IMPLEMENTATION
     #ifdef OC_PLATFORM_WINDOWS
         void* oc_allocate_pages(uword required_size) {
@@ -487,6 +491,16 @@ extern Oc_Writer stderr_writer;
             return false;
         }
     #else
+        int fopen_s(FILE** f, const char* name, const char* mode) {
+            int ret = 0;
+            oc_assert(f);
+            *f = fopen(name, mode);
+            /* Can't be sure about 1-to-1 mapping of errno and MS' errno_t */
+            if (!*f)
+                ret = errno;
+            return ret;
+        }
+
         void* oc_allocate_pages(uword required_size) {
             return mmap(NULL, required_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_UNINITIALIZED, -1, 0);
         }
@@ -502,6 +516,14 @@ extern Oc_Writer stderr_writer;
         _Noreturn void oc_exit(int status)  {
             exit(status);
         }
+
+        bool oc_fd_supports_color(uint32 fd) {
+            static const sint32 h[] = { STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO };
+            oc_assert(fd < oc_len(h));
+
+            return isatty(h[fd]);
+        }
+
     #endif
 
 

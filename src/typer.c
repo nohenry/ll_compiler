@@ -1257,7 +1257,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                     base_type = ((LL_Type_Named*)base_type)->actual_type;
                 }
 
-                if (base_type->kind == LL_TYPE_SLICE || base_type->kind == LL_TYPE_STRING || base_type->kind == LL_TYPE_ARRAY) {
+                if (base_type->kind == LL_TYPE_SLICE || base_type->kind == LL_TYPE_STRING) {
                     if (string_eql(right_ident->str, lit("data"))) {
                         switch (base_type->kind) {
                         case LL_TYPE_SLICE:
@@ -1272,6 +1272,16 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                         default: oc_unreachable("invalid type"); break;
                         }
                     } else if (string_eql(right_ident->str, lit("length"))) {
+                        right_ident->base.type = typer->ty_uint64;
+                    }
+
+                    (*expr)->type = right_ident->base.type;
+                    return right_ident->base.type;
+                } else if (base_type->kind == LL_TYPE_ARRAY) {
+                    if (string_eql(right_ident->str, lit("length"))) {
+                        (*expr)->has_const = true;
+                        (*expr)->const_value.uval = base_type->width;
+
                         right_ident->base.type = typer->ty_uint64;
                     }
 
@@ -2335,8 +2345,16 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         oc_assert(AST_AS(typename, Ast_Slice)->stop == NULL);
         LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Slice)->ptr);
         ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Slice)->start, NULL, NULL);
-        LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Slice)->start);
-        result = ll_typer_get_array_type(cc, typer, element_type, value.uval);
+
+        uint64_t array_width;
+        if (AST_AS(typename, Ast_Slice)->start->has_const) {
+            array_width = AST_AS(typename, Ast_Slice)->start->const_value.uval;
+        } else {
+            LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Slice)->start);
+            array_width = value.uval;
+        }
+
+        result = ll_typer_get_array_type(cc, typer, element_type, array_width);
         break;
     }
     case AST_KIND_SLICE: {
