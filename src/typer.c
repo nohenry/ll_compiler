@@ -819,13 +819,13 @@ static LL_Eval_Value const_value_cast(LL_Eval_Value from, LL_Type* from_type, LL
     case LL_TYPE_INT:
         switch (to_type->kind) {
         case LL_TYPE_INT:
-            result.ival = from.ival;
+            result.as_i64 = from.as_i64;
             break;
         case LL_TYPE_UINT:
-            result.uval = from.ival;
+            result.as_u64 = from.as_i64;
             break;
         case LL_TYPE_FLOAT:
-            result.fval = from.ival;
+            result.as_f64 = from.as_i64;
             break;
         default: ll_print_type(to_type); oc_todo("implement const cast"); break;
         }
@@ -833,14 +833,14 @@ static LL_Eval_Value const_value_cast(LL_Eval_Value from, LL_Type* from_type, LL
     case LL_TYPE_UINT:
         switch (to_type->kind) {
         case LL_TYPE_UINT:
-            result.uval = from.uval;
+            result.as_u64 = from.as_u64;
             break;
         case LL_TYPE_ANYINT:
         case LL_TYPE_INT:
-            result.ival = from.uval;
+            result.as_i64 = from.as_u64;
             break;
         case LL_TYPE_FLOAT:
-            result.fval = from.ival;
+            result.as_f64 = from.as_i64;
             break;
         default: oc_todo("implement const cast"); break;
         }
@@ -994,11 +994,11 @@ bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* ty
             int64_t high_cmp = cmp & ~(1ull << (dst_type->width - 1));
             int64_t low_cmp = 1ull << (dst_type->width - 1);
 
-            if (src_value->ival <= high_cmp && src_value->ival >= low_cmp) return true;
+            if (src_value->as_i64 <= high_cmp && src_value->as_i64 >= low_cmp) return true;
         } break;
         case LL_TYPE_UINT: {
             uint64_t cmp = (uint64_t)((int64_t)(1ull << 63ull) >> (dst_type->width - 1)) >> (64ull - dst_type->width);
-            if (src_value->ival >= 0 && (uint64_t)src_value->ival <= cmp) return true;
+            if (src_value->as_i64 >= 0 && (uint64_t)src_value->as_i64 <= cmp) return true;
         } break;
         case LL_TYPE_FLOAT:
             return true;
@@ -1010,11 +1010,11 @@ bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* ty
             uint64_t cmp = (uint64_t)((int64_t)(1ull << 63ull) >> (dst_type->width - 1)) >> (64ull - dst_type->width);
             uint64_t high_cmp = cmp & ~(1ull << (dst_type->width - 1));
 
-            if (src_value->uval <= high_cmp) return true;
+            if (src_value->as_u64 <= high_cmp) return true;
         } break;
         case LL_TYPE_UINT: {
             uint64_t cmp = (uint64_t)((int64_t)(1ull << 63ull) >> (dst_type->width - 1)) >> (64ull - dst_type->width);
-            if (src_value->uval <= cmp) return true;
+            if (src_value->as_u64 <= cmp) return true;
         } break;
         case LL_TYPE_FLOAT:
             return true;
@@ -1147,7 +1147,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
     }
     case AST_KIND_LITERAL_INT:
         (*expr)->has_const = 1u;
-        (*expr)->const_value.ival = (int64_t)AST_AS((*expr), Ast_Literal)->u64;
+        (*expr)->const_value.as_i64 = (int64_t)AST_AS((*expr), Ast_Literal)->u64;
 
         if (expected_type) {
             switch (expected_type->kind) {
@@ -1167,7 +1167,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         break;
     case AST_KIND_LITERAL_FLOAT:
         (*expr)->has_const = 1u;
-        (*expr)->const_value.fval = (int64_t)AST_AS((*expr), Ast_Literal)->f64;
+        (*expr)->const_value.as_f64 = (int64_t)AST_AS((*expr), Ast_Literal)->f64;
 
         if (expected_type) {
             switch (expected_type->kind) {
@@ -1200,7 +1200,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 if (init->items[i]->kind == AST_KIND_KEY_VALUE) {
                     Ast_Key_Value* kv = AST_AS((*expr), Ast_Key_Value);
                     LL_Eval_Value key = ll_eval_node(cc, cc->eval_context, cc->bir, kv->key);
-                    element_index = (uint32_t)key.uval;
+                    element_index = (uint32_t)key.as_u64;
                     provided_type = ll_typer_type_expression(cc, typer, &kv->value, arr_type->element_type, NULL);
                 } else {
                     provided_type = ll_typer_type_expression(cc, typer, &init->items[i], arr_type->element_type, NULL);
@@ -1280,7 +1280,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 } else if (base_type->kind == LL_TYPE_ARRAY) {
                     if (string_eql(right_ident->str, lit("length"))) {
                         (*expr)->has_const = true;
-                        (*expr)->const_value.uval = base_type->width;
+                        (*expr)->const_value.as_u64 = base_type->width;
 
                         right_ident->base.type = typer->ty_uint64;
                     }
@@ -1577,17 +1577,17 @@ TRY_MEMBER_FUNCTION_CALL:
                 switch (opr->op.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
-                case '+':                   (*expr)->const_value.ival = opr->left->const_value.ival + opr->right->const_value.ival; break;
-                case '-':                   (*expr)->const_value.ival = opr->left->const_value.ival = opr->right->const_value.ival; break;
-                case '*':                   (*expr)->const_value.ival = opr->left->const_value.ival * opr->right->const_value.ival; break;
-                case '/':                   (*expr)->const_value.ival = opr->left->const_value.ival / opr->right->const_value.ival; break;
-                case '>': 					(*expr)->const_value.uval = opr->left->const_value.ival > opr->right->const_value.ival; break;
-                case '<': 					(*expr)->const_value.uval = opr->left->const_value.ival < opr->right->const_value.ival; break;
+                case '+':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 + opr->right->const_value.as_i64; break;
+                case '-':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 = opr->right->const_value.as_i64; break;
+                case '*':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 * opr->right->const_value.as_i64; break;
+                case '/':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 / opr->right->const_value.as_i64; break;
+                case '>': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_i64 > opr->right->const_value.as_i64; break;
+                case '<': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_i64 < opr->right->const_value.as_i64; break;
 #pragma GCC diagnostic pop
-                case LL_TOKEN_KIND_GTE: 	(*expr)->const_value.uval = opr->left->const_value.ival >= opr->right->const_value.ival; break;
-                case LL_TOKEN_KIND_LTE: 	(*expr)->const_value.uval = opr->left->const_value.ival <= opr->right->const_value.ival; break;
-                case LL_TOKEN_KIND_EQUALS:  (*expr)->const_value.uval = opr->left->const_value.ival == opr->right->const_value.ival; break;
-                case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.uval = opr->left->const_value.ival != opr->right->const_value.ival; break;
+                case LL_TOKEN_KIND_GTE: 	(*expr)->const_value.as_u64 = opr->left->const_value.as_i64 >= opr->right->const_value.as_i64; break;
+                case LL_TOKEN_KIND_LTE: 	(*expr)->const_value.as_u64 = opr->left->const_value.as_i64 <= opr->right->const_value.as_i64; break;
+                case LL_TOKEN_KIND_EQUALS:  (*expr)->const_value.as_u64 = opr->left->const_value.as_i64 == opr->right->const_value.as_i64; break;
+                case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.as_u64 = opr->left->const_value.as_i64 != opr->right->const_value.as_i64; break;
                 default: oc_assert(false); break;
                 }
                 break;
@@ -1595,17 +1595,17 @@ TRY_MEMBER_FUNCTION_CALL:
                 switch (opr->op.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
-                case '+':                   (*expr)->const_value.uval = opr->left->const_value.uval + opr->right->const_value.uval; break;
-                case '-':                   (*expr)->const_value.uval = opr->left->const_value.uval = opr->right->const_value.uval; break;
-                case '*':                   (*expr)->const_value.uval = opr->left->const_value.uval * opr->right->const_value.uval; break;
-                case '/':                   (*expr)->const_value.uval = opr->left->const_value.uval / opr->right->const_value.uval; break;
-                case '>': 					(*expr)->const_value.uval = opr->left->const_value.uval > opr->right->const_value.uval; break;
-                case '<': 					(*expr)->const_value.uval = opr->left->const_value.uval < opr->right->const_value.uval; break;
+                case '+':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 + opr->right->const_value.as_u64; break;
+                case '-':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 = opr->right->const_value.as_u64; break;
+                case '*':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 * opr->right->const_value.as_u64; break;
+                case '/':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 / opr->right->const_value.as_u64; break;
+                case '>': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_u64 > opr->right->const_value.as_u64; break;
+                case '<': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_u64 < opr->right->const_value.as_u64; break;
 #pragma GCC diagnostic pop
-                case LL_TOKEN_KIND_GTE: 	(*expr)->const_value.uval = opr->left->const_value.uval >= opr->right->const_value.uval; break;
-                case LL_TOKEN_KIND_LTE: 	(*expr)->const_value.uval = opr->left->const_value.uval <= opr->right->const_value.uval; break;
-                case LL_TOKEN_KIND_EQUALS:  (*expr)->const_value.uval = opr->left->const_value.uval == opr->right->const_value.uval; break;
-                case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.uval = opr->left->const_value.uval != opr->right->const_value.uval; break;
+                case LL_TOKEN_KIND_GTE: 	(*expr)->const_value.as_u64 = opr->left->const_value.as_u64 >= opr->right->const_value.as_u64; break;
+                case LL_TOKEN_KIND_LTE: 	(*expr)->const_value.as_u64 = opr->left->const_value.as_u64 <= opr->right->const_value.as_u64; break;
+                case LL_TOKEN_KIND_EQUALS:  (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 == opr->right->const_value.as_u64; break;
+                case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 != opr->right->const_value.as_u64; break;
                 default: oc_assert(false); break;
                 }
                 break;
@@ -1613,17 +1613,17 @@ TRY_MEMBER_FUNCTION_CALL:
                 switch (opr->op.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
-                case '+':                   (*expr)->const_value.fval = opr->left->const_value.fval + opr->right->const_value.fval; break;
-                case '-':                   (*expr)->const_value.fval = opr->left->const_value.fval = opr->right->const_value.fval; break;
-                case '*':                   (*expr)->const_value.fval = opr->left->const_value.fval * opr->right->const_value.fval; break;
-                case '/':                   (*expr)->const_value.fval = opr->left->const_value.fval / opr->right->const_value.fval; break;
-                case '>': 					(*expr)->const_value.uval = opr->left->const_value.fval > opr->right->const_value.fval; break;
-                case '<': 					(*expr)->const_value.uval = opr->left->const_value.fval < opr->right->const_value.fval; break;
+                case '+':                   (*expr)->const_value.as_f64 = opr->left->const_value.as_f64 + opr->right->const_value.as_f64; break;
+                case '-':                   (*expr)->const_value.as_f64 = opr->left->const_value.as_f64 = opr->right->const_value.as_f64; break;
+                case '*':                   (*expr)->const_value.as_f64 = opr->left->const_value.as_f64 * opr->right->const_value.as_f64; break;
+                case '/':                   (*expr)->const_value.as_f64 = opr->left->const_value.as_f64 / opr->right->const_value.as_f64; break;
+                case '>': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_f64 > opr->right->const_value.as_f64; break;
+                case '<': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_f64 < opr->right->const_value.as_f64; break;
 #pragma GCC diagnostic pop
-                case LL_TOKEN_KIND_GTE: 	(*expr)->const_value.uval = opr->left->const_value.fval >= opr->right->const_value.fval; break;
-                case LL_TOKEN_KIND_LTE: 	(*expr)->const_value.uval = opr->left->const_value.fval <= opr->right->const_value.fval; break;
-                case LL_TOKEN_KIND_EQUALS:  (*expr)->const_value.uval = opr->left->const_value.fval == opr->right->const_value.fval; break;
-                case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.uval = opr->left->const_value.fval != opr->right->const_value.fval; break;
+                case LL_TOKEN_KIND_GTE: 	(*expr)->const_value.as_u64 = opr->left->const_value.as_f64 >= opr->right->const_value.as_f64; break;
+                case LL_TOKEN_KIND_LTE: 	(*expr)->const_value.as_u64 = opr->left->const_value.as_f64 <= opr->right->const_value.as_f64; break;
+                case LL_TOKEN_KIND_EQUALS:  (*expr)->const_value.as_u64 = opr->left->const_value.as_f64 == opr->right->const_value.as_f64; break;
+                case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.as_u64 = opr->left->const_value.as_f64 != opr->right->const_value.as_f64; break;
                 default: oc_assert(false); break;
                 }
             default: oc_todo("implement bvinary op const fold types or error"); break;
@@ -2348,10 +2348,10 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 
         uint64_t array_width;
         if (AST_AS(typename, Ast_Slice)->start->has_const) {
-            array_width = AST_AS(typename, Ast_Slice)->start->const_value.uval;
+            array_width = AST_AS(typename, Ast_Slice)->start->const_value.as_u64;
         } else {
             LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Slice)->start);
-            array_width = value.uval;
+            array_width = value.as_u64;
         }
 
         result = ll_typer_get_array_type(cc, typer, element_type, array_width);

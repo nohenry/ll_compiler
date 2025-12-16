@@ -951,7 +951,7 @@ void print_node_value(Ast_Base* node, Oc_Writer* w) {
     }
 
     if (node->has_const) {
-        wprint(w, " {}", node->const_value.uval);
+        wprint(w, " {}", node->const_value.as_u64);
     }
 }
 

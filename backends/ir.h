@@ -36,7 +36,7 @@ typedef struct {
     LL_Ir_Register* items;
 } LL_Ir_Register_List;
 
-enum {
+typedef enum {
     LL_IR_OPCODE_RET,       // x
     LL_IR_OPCODE_RETVALUE,  // x
     LL_IR_OPCODE_STORE,     // x
@@ -74,8 +74,8 @@ enum {
     LL_IR_OPCODE_AND, // x
     LL_IR_OPCODE_OR,  // x
     LL_IR_OPCODE_XOR, // x
-};
-typedef uint32 LL_Ir_Opcode;
+} LL_Ir_Opcode;
+// typedef uint32 LL_Ir_Opcode;
 
 typedef struct {
     LL_Ir_Opcode opcode;

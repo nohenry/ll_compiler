@@ -23,10 +23,28 @@ static inline bool is_large_aggregate_type(LL_Type* type) {
     }
 }
 
+static inline LL_Eval_Registers* get_storage_location(
+    Compiler_Context* cc,
+    LL_Eval_Context* b,
+    LL_Ir_Operand op
+) {
+    (void)cc;
+    switch (OPD_TYPE(op)) {
+    case LL_IR_OPERAND_LOCAL_BIT:
+        return &FRAME()->locals;
+    case LL_IR_OPERAND_REGISTER_BIT:
+        return &FRAME()->registers;
+    case LL_IR_OPERAND_PARMAETER_BIT:
+        return &FRAME()->parameters;
+    default: return NULL;
+    }
+}
+
 void copy_native_code(
     Compiler_Context* cc,
     LL_Eval_Context* b
 ) {
+    (void)cc;
     if (b->native_fn_stub_section.count > b->native_fn_exe_code_size) {
         if (b->native_fn_exe_code) {
             VirtualFree(b->native_fn_exe_code, b->native_fn_exe_code_size, MEM_COMMIT|MEM_RESERVE);
@@ -120,7 +138,7 @@ int64_t do_native_fn_call(
                     // prealloc.opcode = OPCODE_LEA;
                     // prealloc.variant = X86_64_VARIANT_KIND_r64_rm64;
                 } else {
-                    prealloc.immediate_displacement = FRAME()->registers.items[OPD_VALUE(arg_operand)].ival;
+                    prealloc.immediate_displacement = FRAME()->registers.items[OPD_VALUE(arg_operand)].as_i64;
                     prealloc.opcode = opcode;
                     prealloc.variant = X86_64_VARIANT_KIND_r64_i64;
                 }
@@ -292,43 +310,28 @@ static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backe
     LL_Type* type;
     type = ir_get_operand_type(bir, FUNCTION(), lvalue);
 
-    switch (OPD_TYPE(lvalue)) {
-    case LL_IR_OPERAND_LOCAL_BIT: {
-        switch (type->kind) {
-        case LL_TYPE_UINT:
-        case LL_TYPE_INT:
-        case LL_TYPE_FLOAT:
-            FRAME()->locals.items[OPD_VALUE(lvalue)] = rvalue;
-            break;
-        default: oc_assert(false); break;
-        }
+    LL_Eval_Registers* storage = get_storage_location(cc, b, lvalue);
 
+    switch (OPD_TYPE(lvalue)) {
+    case LL_IR_OPERAND_LOCAL_BIT:
+    case LL_IR_OPERAND_REGISTER_BIT:
+    case LL_IR_OPERAND_PARMAETER_BIT:
         break;
+    default: oc_assert("invalid lvalue"); break;
     }
-    case LL_IR_OPERAND_REGISTER_BIT: {
-        switch (type->kind) {
-        case LL_TYPE_UINT:
-        case LL_TYPE_INT:
-        case LL_TYPE_FLOAT:
-            FRAME()->registers.items[OPD_VALUE(lvalue)] = rvalue;
-            break;
-        default: oc_assert(false);
-        }
+
+    switch (type->kind) {
+    case LL_TYPE_ANYBOOL:
+    case LL_TYPE_BOOL:
+    case LL_TYPE_CHAR:
+    case LL_TYPE_UINT:
+    case LL_TYPE_INT:
+    case LL_TYPE_FLOAT:
+        storage->items[OPD_VALUE(lvalue)] = rvalue;
         break;
+    default: oc_assert(false); break;
     }
-    case LL_IR_OPERAND_PARMAETER_BIT: {
-        switch (type->kind) {
-        case LL_TYPE_UINT:
-        case LL_TYPE_INT:
-        case LL_TYPE_FLOAT:
-            FRAME()->parameters.items[OPD_VALUE(lvalue)] = rvalue;
-            break;
-        default: oc_assert(false);
-        }
-        break;
-    }
-    default: oc_todo("implementn set value operand type\n"); break;
-    }
+
 }
 
 static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand lvalue) {
@@ -336,41 +339,31 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
     LL_Eval_Value result;
     LL_Type* type;
 
+    LL_Eval_Registers* storage = get_storage_location(cc, b, lvalue);
+
     switch (OPD_TYPE(lvalue)) {
     case LL_IR_OPERAND_IMMEDIATE_BIT:
-        result.uval = OPD_VALUE(lvalue);
+        result.as_u64 = (uint64_t)OPD_VALUE(lvalue);
         break;
-    case LL_IR_OPERAND_LOCAL_BIT: {
+    case LL_IR_OPERAND_IMMEDIATE64_BIT:
+        result.as_u64 = FUNCTION()->literals.items[OPD_VALUE(lvalue)].as_u64;
+        break;
+    case LL_IR_OPERAND_LOCAL_BIT:
+    case LL_IR_OPERAND_REGISTER_BIT:
+    case LL_IR_OPERAND_PARMAETER_BIT: {
         type = ir_get_operand_type(bir, FUNCTION(), lvalue);
         switch (type->kind) {
         case LL_TYPE_ANYBOOL:
         case LL_TYPE_BOOL:
+        case LL_TYPE_CHAR:
         case LL_TYPE_UINT:
-            result.uval = FRAME()->locals.items[OPD_VALUE(lvalue)].uval;
-            break;
         case LL_TYPE_INT:
-            result.ival = FRAME()->locals.items[OPD_VALUE(lvalue)].ival;
+        case LL_TYPE_FLOAT:
+            result = storage->items[OPD_VALUE(lvalue)];
             break;
-        default: result.uval = 0; oc_assert(false); break;
+        default: result.as_u64 = 0; oc_todo("add error"); break;
         }
-
-        break;
-    }
-    case LL_IR_OPERAND_REGISTER_BIT: {
-        type = ir_get_operand_type(bir, FUNCTION(), lvalue);
-        switch (type->kind) {
-        case LL_TYPE_ANYBOOL:
-        case LL_TYPE_BOOL:
-        case LL_TYPE_UINT:
-            result.uval = FRAME()->registers.items[OPD_VALUE(lvalue)].uval;
-            break;
-        case LL_TYPE_INT:
-            result.ival = FRAME()->registers.items[OPD_VALUE(lvalue)].ival;
-            break;
-        default: result.uval = 0; oc_assert(false); break;
-        }
-        break;
-    }
+    } break;
     default: oc_todo("implementn get value operand type\n"); break;
     }
 
@@ -401,83 +394,71 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     // }
 
     switch (OPD_TYPE(src)) {
-    case LL_IR_OPERAND_LOCAL_BIT: {
-        switch (to_type->kind) {
-        case LL_TYPE_UINT:
-        case LL_TYPE_INT:
-        case LL_TYPE_FLOAT:
-            FRAME()->registers.items[OPD_VALUE(result)] = FRAME()->locals.items[OPD_VALUE(src)];
-            break;
-        default: oc_todo("unhandled type"); break;
-        }
+    case LL_IR_OPERAND_LOCAL_BIT:
+    case LL_IR_OPERAND_REGISTER_BIT:
+    case LL_IR_OPERAND_PARMAETER_BIT:
         break;
-    }
-    case LL_IR_OPERAND_REGISTER_BIT: {
-        if (load) {
-            oc_todo("pointer");
-        } else {
-            switch (to_type->kind) {
-            case LL_TYPE_UINT:
-            case LL_TYPE_INT:
-            case LL_TYPE_FLOAT:
-                FRAME()->registers.items[OPD_VALUE(result)] = FRAME()->registers.items[OPD_VALUE(src)];
-                break;
-            default: oc_todo("unhandled type"); break;
-            }
-        }
-
-        break;
-    }
-    case LL_IR_OPERAND_PARMAETER_BIT: {
-        if (load) {
-            oc_todo("pointer");
-        } else {
-            switch (to_type->kind) {
-            case LL_TYPE_UINT:
-            case LL_TYPE_INT:
-            case LL_TYPE_FLOAT:
-                FRAME()->registers.items[OPD_VALUE(result)] = FRAME()->registers.items[OPD_VALUE(src)];
-                break;
-            default: oc_todo("unhandled type"); break;
-            }
-        }
-
-        break;
-    }
     case LL_IR_OPERAND_IMMEDIATE_BIT: {
         switch (to_type->kind) {
+        case LL_TYPE_ANYBOOL:
+        case LL_TYPE_BOOL:
+        case LL_TYPE_CHAR:
         case LL_TYPE_UINT:
-            FRAME()->registers.items[OPD_VALUE(result)].uval = OPD_VALUE(src);
+            FRAME()->registers.items[OPD_VALUE(result)].as_u64 = OPD_VALUE(src);
             break;
+        case LL_TYPE_ANYINT:
         case LL_TYPE_INT:
-            FRAME()->registers.items[OPD_VALUE(result)].ival = OPD_VALUE(src);
+            FRAME()->registers.items[OPD_VALUE(result)].as_i64 = OPD_VALUE(src);
             break;
         default: oc_todo("unhandled type"); break;
         }
-        break;
+
+        return;
     }
     case LL_IR_OPERAND_IMMEDIATE64_BIT: {
         LL_Ir_Literal literal = FUNCTION()->literals.items[OPD_VALUE(src)];
 
         switch (to_type->kind) {
+        case LL_TYPE_ANYBOOL:
+        case LL_TYPE_BOOL:
+        case LL_TYPE_CHAR:
         case LL_TYPE_UINT:
-            FRAME()->registers.items[OPD_VALUE(result)].uval = literal.as_u64;
+            FRAME()->registers.items[OPD_VALUE(result)].as_u64 = literal.as_u64;
             break;
+        case LL_TYPE_ANYINT:
         case LL_TYPE_INT:
-            FRAME()->registers.items[OPD_VALUE(result)].ival = (int64_t)literal.as_u64;
+            FRAME()->registers.items[OPD_VALUE(result)].as_i64 = (int64_t)literal.as_u64;
             break;
+        case LL_TYPE_ANYFLOAT:
         case LL_TYPE_FLOAT:
             if (to_type->width <= 32) {
-                FRAME()->registers.items[OPD_VALUE(result)].fval = literal.as_f32;
+                FRAME()->registers.items[OPD_VALUE(result)].as_f64 = literal.as_f32;
             } else if (to_type->width <= 64) {
-                FRAME()->registers.items[OPD_VALUE(result)].fval = literal.as_f64;
+                FRAME()->registers.items[OPD_VALUE(result)].as_f64 = literal.as_f64;
             } else oc_unreachable("invalid type");
             break;
         default: break;
         }
-        break;
+
+        return;
     }
     default: oc_todo("add load operands"); break;
+    }
+
+    LL_Eval_Registers* storage = get_storage_location(cc, b, src);
+
+    switch (to_type->kind) {
+    case LL_TYPE_ANYBOOL:
+    case LL_TYPE_BOOL:
+    case LL_TYPE_CHAR:
+    case LL_TYPE_ANYINT:
+    case LL_TYPE_UINT:
+    case LL_TYPE_INT:
+    case LL_TYPE_ANYFLOAT:
+    case LL_TYPE_FLOAT:
+        FRAME()->registers.items[OPD_VALUE(result)] = storage->items[OPD_VALUE(src)];
+        break;
+    default: oc_todo("unhandled type"); break;
     }
 }
 
@@ -499,7 +480,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             FRAME()->next_block = operands[0];
             return;
         case LL_IR_OPCODE_BRANCH_COND:
-            if (ll_eval_get_value(cc, b, bir, operands[0]).uval) {
+            if (ll_eval_get_value(cc, b, bir, operands[0]).as_u64) {
                 FRAME()->next_block = operands[1];
             } else {
                 FRAME()->next_block = operands[2];
@@ -510,71 +491,31 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
         case LL_IR_OPCODE_RETVALUE: {
             LL_Type_Function* fn_type = (LL_Type_Function*)FUNCTION()->ident->base.type;
             oc_assert(fn_type->base.kind == LL_TYPE_FUNCTION);
-            LL_Type* to_type = fn_type->return_type;
-            switch (OPD_TYPE(operands[0])) {
-            case LL_IR_OPERAND_LOCAL_BIT:
-                FRAME()->return_value = FRAME()->locals.items[OPD_VALUE(operands[0])];
-                break;
-            case LL_IR_OPERAND_REGISTER_BIT:
-                FRAME()->return_value = FRAME()->registers.items[OPD_VALUE(operands[0])];
-                break;
-
-            case LL_IR_OPERAND_IMMEDIATE_BIT: {
-                switch (to_type->kind) {
-                case LL_TYPE_UINT:
-                    FRAME()->return_value.uval = OPD_VALUE(operands[0]);
-                    break;
-                case LL_TYPE_INT:
-                    FRAME()->return_value.ival = OPD_VALUE(operands[0]);
-                    break;
-                default: oc_todo("unhandled type"); break;
-                }
-                break;
-            }
-            case LL_IR_OPERAND_IMMEDIATE64_BIT: {
-                LL_Ir_Literal literal = FUNCTION()->literals.items[OPD_VALUE(operands[0])];
-
-                switch (to_type->kind) {
-                case LL_TYPE_UINT:
-                    FRAME()->return_value.uval = literal.as_u64;
-                    break;
-                case LL_TYPE_INT:
-                    FRAME()->return_value.ival = (int64_t)literal.as_u64;
-                    break;
-                case LL_TYPE_FLOAT:
-                    if (to_type->width <= 32) {
-                        FRAME()->return_value.fval = literal.as_f32;
-                    } else if (to_type->width <= 64) {
-                        FRAME()->return_value.fval = literal.as_f64;
-                    } else oc_unreachable("invalid type");
-                    break;
-                default: break;
-                }
-                break;
-            }
-            default: oc_todo("unhandled op"); break;
-            }
-
-            break;
-        }
+            FRAME()->return_value = ll_eval_get_value(cc, b, bir, operands[0]);
+        } break;
         case LL_IR_OPCODE_STORE: {
             LL_Eval_Value value = ll_eval_get_value(cc, b, bir, operands[1]);
             ll_eval_set_value(cc, b, bir, operands[0], value);
-               break;
-        }
+        } break;
 
 #define DO_OP(op) \
             type = ir_get_operand_type(bir, FUNCTION(), operands[0]); \
             switch (type->kind) { \
+            case LL_TYPE_ANYINT: \
             case LL_TYPE_INT: \
-                FRAME()->registers.items[OPD_VALUE(operands[0])].uval = (FRAME()->registers.items[OPD_VALUE(operands[1])].ival op FRAME()->registers.items[OPD_VALUE(operands[2])].ival) ? 1 : 0; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_u64 = (FRAME()->registers.items[OPD_VALUE(operands[1])].as_i64 op FRAME()->registers.items[OPD_VALUE(operands[2])].as_i64) ? 1 : 0; \
                 break; \
+            case LL_TYPE_CHAR: \
             case LL_TYPE_UINT: \
-                FRAME()->registers.items[OPD_VALUE(operands[0])].uval = (FRAME()->registers.items[OPD_VALUE(operands[1])].uval op FRAME()->registers.items[OPD_VALUE(operands[2])].uval) ? 1 : 0; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_u64 = (FRAME()->registers.items[OPD_VALUE(operands[1])].as_u64 op FRAME()->registers.items[OPD_VALUE(operands[2])].as_u64) ? 1 : 0; \
                 break; \
             case LL_TYPE_ANYBOOL: \
             case LL_TYPE_BOOL: \
-                FRAME()->registers.items[OPD_VALUE(operands[0])].uval = (FRAME()->registers.items[OPD_VALUE(operands[1])].uval op FRAME()->registers.items[OPD_VALUE(operands[2])].uval) ? 1 : 0; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_u64 = (FRAME()->registers.items[OPD_VALUE(operands[1])].as_u64 op FRAME()->registers.items[OPD_VALUE(operands[2])].as_u64) ? 1 : 0; \
+                break; \
+            case LL_TYPE_ANYFLOAT: \
+            case LL_TYPE_FLOAT: \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_f64 = (FRAME()->registers.items[OPD_VALUE(operands[1])].as_f64 op FRAME()->registers.items[OPD_VALUE(operands[2])].as_f64) ? 1 : 0; \
                 break; \
             default: oc_todo("implement types for operations"); break; \
             }
@@ -588,11 +529,17 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 #define DO_OP(op) \
             type = ir_get_operand_type(bir, FUNCTION(), operands[0]); \
             switch (type->kind) { \
+            case LL_TYPE_ANYINT: \
             case LL_TYPE_INT: \
-                FRAME()->registers.items[OPD_VALUE(operands[0])].ival = ll_eval_get_value(cc, b, bir, operands[1]).ival op ll_eval_get_value(cc, b, bir, operands[2]).ival; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_i64 = ll_eval_get_value(cc, b, bir, operands[1]).as_i64 op ll_eval_get_value(cc, b, bir, operands[2]).as_i64; \
                 break; \
+            case LL_TYPE_CHAR: \
             case LL_TYPE_UINT: \
-                FRAME()->registers.items[OPD_VALUE(operands[0])].uval = ll_eval_get_value(cc, b, bir, operands[1]).uval op ll_eval_get_value(cc, b, bir, operands[2]).uval; \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_u64 = ll_eval_get_value(cc, b, bir, operands[1]).as_u64 op ll_eval_get_value(cc, b, bir, operands[2]).as_u64; \
+                break; \
+            case LL_TYPE_ANYFLOAT: \
+            case LL_TYPE_FLOAT: \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_f64 = ll_eval_get_value(cc, b, bir, operands[1]).as_f64 op ll_eval_get_value(cc, b, bir, operands[2]).as_f64; \
                 break; \
             default: oc_todo("implement types for operations"); break; \
             }
@@ -601,17 +548,127 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
         case LL_IR_OPCODE_MUL: DO_OP(*) break;
         case LL_IR_OPCODE_DIV: DO_OP(/) break;
 #undef DO_OP
+        case LL_IR_OPCODE_MOD:
+            type = ir_get_operand_type(bir, FUNCTION(), operands[0]);
+            switch (type->kind) {
+            case LL_TYPE_INT:
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_i64 = ll_eval_get_value(cc, b, bir, operands[1]).as_i64 % ll_eval_get_value(cc, b, bir, operands[2]).as_i64;
+                break;
+            case LL_TYPE_CHAR: \
+            case LL_TYPE_UINT:
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_u64 = ll_eval_get_value(cc, b, bir, operands[1]).as_u64 % ll_eval_get_value(cc, b, bir, operands[2]).as_u64;
+                break;
+            case LL_TYPE_ANYFLOAT: \
+            case LL_TYPE_FLOAT:
+                extern double fmod(double, double);
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_f64 = fmod(ll_eval_get_value(cc, b, bir, operands[1]).as_f64, ll_eval_get_value(cc, b, bir, operands[2]).as_f64);
+                break;
+            default: oc_todo("implement types for operations"); break;
+            }
+            break;
+        
+#define DO_OP(op) \
+            type = ir_get_operand_type(bir, FUNCTION(), operands[0]); \
+            switch (type->kind) { \
+            case LL_TYPE_ANYINT: \
+            case LL_TYPE_INT: \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_i64 = ll_eval_get_value(cc, b, bir, operands[1]).as_i64 op ll_eval_get_value(cc, b, bir, operands[2]).as_i64; \
+                break; \
+            case LL_TYPE_ANYBOOL: \
+            case LL_TYPE_BOOL: \
+            case LL_TYPE_CHAR: \
+            case LL_TYPE_UINT: \
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_u64 = ll_eval_get_value(cc, b, bir, operands[1]).as_u64 op ll_eval_get_value(cc, b, bir, operands[2]).as_u64; \
+                break; \
+            default: oc_todo("implement types for operations"); break; \
+            }
+        case LL_IR_OPCODE_AND: DO_OP(&) break; 
+        case LL_IR_OPCODE_OR: DO_OP(|) break; 
+        case LL_IR_OPCODE_XOR: DO_OP(^) break;
+#undef DO_OP
+        case LL_IR_OPCODE_NEG: {
+            type = ir_get_operand_type(bir, FUNCTION(), operands[0]);
+            LL_Eval_Value value = ll_eval_get_value(cc, b, bir, operands[1]);
+
+            switch (type->kind) {
+            case LL_TYPE_INT:
+                value.as_i64 = -value.as_i64;
+                break;
+            case LL_TYPE_FLOAT:
+                value.as_f64 = -value.as_f64;
+                break;
+            default: oc_todo("implement types for operations"); break;
+            }
+
+            FRAME()->registers.items[OPD_VALUE(operands[0])] = value;
+        } break;
+
+        case LL_IR_OPCODE_NOT: {
+            type = ir_get_operand_type(bir, FUNCTION(), operands[0]);
+            LL_Eval_Value value = ll_eval_get_value(cc, b, bir, operands[1]);
+
+            switch (type->kind) {
+            case LL_TYPE_ANYINT:
+            case LL_TYPE_INT:
+                value.as_i64 = ~value.as_i64;
+                break;
+            case LL_TYPE_UINT:
+                value.as_u64 = ~value.as_u64;
+                break;
+            case LL_TYPE_BOOL:
+                value.as_u64 = ~value.as_u64;
+                break;
+            default: oc_todo("implement types for operations"); break;
+            }
+
+            FRAME()->registers.items[OPD_VALUE(operands[0])] = value;
+        } break;
+
+        case LL_IR_OPCODE_TEST: {
+            type = ir_get_operand_type(bir, FUNCTION(), operands[0]);
+            LL_Eval_Value value = ll_eval_get_value(cc, b, bir, operands[1]);
+
+            switch (type->kind) {
+            case LL_TYPE_CHAR:
+                value.as_u64 = value.as_u64 ? (uint64_t)(-1LL) : 0uLL;
+                break;
+            case LL_TYPE_ANYINT:
+            case LL_TYPE_INT:
+                value.as_u64 = value.as_i64 ? (uint64_t)(-1LL) : 0uLL;
+                break;
+            case LL_TYPE_UINT:
+                value.as_u64 = value.as_u64 ? (uint64_t)(-1LL) : 0uLL;
+                break;
+            case LL_TYPE_BOOL:
+                value.as_u64 = value.as_u64;
+                break;
+            default: oc_todo("implement types for operations"); break;
+            }
+
+            FRAME()->registers.items[OPD_VALUE(operands[0])] = value;
+        } break;
+        
         case LL_IR_OPCODE_CAST: {
             ll_eval_load(cc, b, bir, operands[0], operands[1], false);
-            break;
-        }
+        } break;
         case LL_IR_OPCODE_LOAD: {
             ll_eval_load(cc, b, bir, operands[0], operands[1], true);
-            break;
-        }
+        } break;
+        case LL_IR_OPCODE_CLONE: {
+            ll_eval_load(cc, b, bir, operands[0], operands[1], false);
+        } break;
+        case LL_IR_OPCODE_ALIAS: {
+            ll_eval_load(cc, b, bir, operands[0], operands[1], false);
+        } break;
+        case LL_IR_OPCODE_MEMCOPY: {
+            oc_todo("memcopy");
+        } break;
         case LL_IR_OPCODE_LEA: {
-            break;
-        }
+            oc_todo("lea");
+        } break;
+        case LL_IR_OPCODE_LEA_INDEX: {
+            oc_todo("lea index");
+        } break;
         case LL_IR_OPCODE_INVOKEVALUE:
             invoke_offset = 1;
         case LL_IR_OPCODE_INVOKE: {
@@ -631,7 +688,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
                     void (*fn_ptr)() = (void (*)())(b->native_fn_exe_code + offset);
                     fn_ptr();
                 } else {
-                    return_value = ll_eval_fn(cc, b, bir, fn);
+                    return_value = ll_eval_fn(cc, b, bir, OPD_VALUE(invokee));
                 }
             } break;
             default: oc_todo("handle other op");
@@ -643,7 +700,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             
             break;
         }
-        default: oc_todo("handle other op"); break;
+        // default: oc_todo("handle other op"); break;
         }
 
         size_t count = ir_get_op_count(cc, bir, (LL_Ir_Opcode*)block->ops.items, i);
@@ -651,11 +708,13 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
     }
 }
 
-LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Function* fn) {
+LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, uint32_t fn_index) {
+    LL_Ir_Function* fn = &bir->fns.items[fn_index];
     oc_array_append(&cc->arena, &b->frames, ((LL_Eval_Frame) { 0 }));
 
     int32_t last_function = bir->current_function;
     LL_Ir_Block_Ref last_block = bir->current_block;
+    bir->current_function = fn_index;
 
     FRAME()->registers.count = 0;
     oc_array_reserve(&cc->arena, &FRAME()->registers, FUNCTION()->registers.count);
@@ -665,6 +724,7 @@ LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
 
     LL_Ir_Block_Ref current_block = fn->entry;
     while (current_block) {
+        bir->current_block = current_block;
         FRAME()->next_block = bir->blocks.items[current_block].next;
         ll_eval_block(cc, b, bir, &bir->blocks.items[current_block]);
         current_block = FRAME()->next_block;
@@ -733,6 +793,7 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
     LL_Ir_Block entry_block = { 0 };
     entry_block.generated_offset = -1;
     if (bir->free_block) {
+        bir->free_block = bir->blocks.items[bir->free_block].next;
         memcpy(&bir->blocks.items[entry_block_ref], &entry_block, sizeof(entry_block));
     } else {
         oc_array_append(&cc->arena, &bir->blocks, entry_block);
@@ -777,15 +838,17 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
     bir->current_block = fn.entry;
 
     result_op = ir_generate_expression(cc, bir, expr, false);
+// LL_Backend backend_ir = { .backend = bir };
+// ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
 
-    ll_eval_fn(cc, b, bir, &fn);
+    ll_eval_fn(cc, b, bir, 0);
 
     bir->current_block = last_block;
     bir->current_function = last_function;
     bir->free_block = fn.entry;
 
     switch (OPD_TYPE(result_op)) {
-    case LL_IR_OPERAND_IMMEDIATE_BIT: result.ival = OPD_VALUE(result_op); break;
+    case LL_IR_OPERAND_IMMEDIATE_BIT: result.as_i64 = OPD_VALUE(result_op); break;
     case LL_IR_OPERAND_REGISTER_BIT: result = FRAME()->registers.items[OPD_VALUE(result_op)]; break;
     case LL_IR_OPERAND_LOCAL_BIT: result = FRAME()->locals.items[OPD_VALUE(result_op)]; break;
     }

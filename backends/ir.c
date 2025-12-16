@@ -70,6 +70,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
     case LL_IR_OPCODE_XOR:
     case LL_IR_OPCODE_ADD: return 4;
     case LL_IR_OPCODE_TEST:
+    case LL_IR_OPCODE_NOT:
     case LL_IR_OPCODE_NEG: return 3;
 
     case LL_IR_OPCODE_BRANCH: return 2;
@@ -198,7 +199,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
             case LL_IR_OPCODE_INVOKEVALUE:
             case LL_IR_OPCODE_TEST:
                 if (OPD_TYPE(operands[0]) != LL_IR_OPERAND_IMMEDIATE_BIT) {
-                    // ll_print_type_raw(ir_get_operand_type(b, &b->fns.items[b->current_function], operands[0]), w);
+                    ll_print_type_raw(ir_get_operand_type(b, &b->fns.items[b->current_function], operands[0]), w);
                 }
                 break;
 
@@ -318,7 +319,7 @@ LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool app
 
     if (b->free_block) {
         b->free_block = b->blocks.items[b->free_block].next;
-        memcpy(&b->blocks.items[b->free_block], &block, sizeof(block));
+        memcpy(&b->blocks.items[result], &block, sizeof(block));
     } else {
         oc_array_append(&cc->arena, &b->blocks, block);
     }
@@ -375,7 +376,6 @@ LL_Ir_Operand ir_generate_rhs_load_if_needed(Compiler_Context* cc, LL_Backend_Ir
 void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt) {
     uint32_t current_function = b->current_function;
     LL_Ir_Block_Ref current_block = b->current_block, return_block = b->return_block;
-    LL_Ir_Block_List blocks = b->blocks;
 
     LL_Ir_Operand copy_operand = b->copy_operand;
     uint8_t* initializer_ptr = b->initializer_ptr;
@@ -390,7 +390,6 @@ void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b,
     b->current_function = current_function;
     b->current_block = current_block;
     b->return_block = return_block;
-    b->blocks = blocks;
 
     b->copy_operand = copy_operand;
     b->initializer_ptr = initializer_ptr;
@@ -444,6 +443,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
         Ast_Function_Declaration* fn_decl = AST_AS(stmt, Ast_Function_Declaration);
         // we do not generate macros
         if (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) return;
+        if (fn_decl->ir_index != 0) return;
 
         LL_Ir_Block_Ref entry_block_ref = b->blocks.count;
         LL_Ir_Block entry_block = { 0 };
@@ -483,11 +483,11 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
                 IR_APPEND_OP(LL_IR_OPCODE_RET);
             }
 
-            LL_Ir_Block_Ref next_block = FUNCTION()->exit;
-            while (next_block) {
-                ir_gen_reverse_ops(cc, b, next_block);
-                next_block = b->blocks.items[next_block].prev;
-            }
+            // LL_Ir_Block_Ref next_block = FUNCTION()->exit;
+            // while (next_block) {
+            //     ir_gen_reverse_ops(cc, b, next_block);
+            //     next_block = b->blocks.items[next_block].prev;
+            // }
 
             b->current_block = last_block;
             b->current_function = last_function;
@@ -972,18 +972,18 @@ DO_BIN_OP_ASSIGN_OP:
                 if (kv->key->has_const && kv->value->has_const) {
 
                     if (layout.size <= 8) {
-                        b->initializer_ptr[kv->key->const_value.uval] = (uint8_t)kv->value->const_value.uval;
+                        b->initializer_ptr[kv->key->const_value.as_u64] = (uint8_t)kv->value->const_value.as_u64;
                     } else if (layout.size <= 16) {
-                        ((uint16_t*)b->initializer_ptr)[kv->key->const_value.uval] = (uint16_t)kv->value->const_value.uval;
+                        ((uint16_t*)b->initializer_ptr)[kv->key->const_value.as_u64] = (uint16_t)kv->value->const_value.as_u64;
                     } else if (layout.size <= 32) {
-                        ((uint32_t*)b->initializer_ptr)[kv->key->const_value.uval] = (uint32_t)kv->value->const_value.uval;
+                        ((uint32_t*)b->initializer_ptr)[kv->key->const_value.as_u64] = (uint32_t)kv->value->const_value.as_u64;
                     } else if (layout.size <= 64) {
-                        ((uint64_t*)b->initializer_ptr)[kv->key->const_value.uval] = (uint64_t)kv->value->const_value.uval;
+                        ((uint64_t*)b->initializer_ptr)[kv->key->const_value.as_u64] = (uint64_t)kv->value->const_value.as_u64;
                     } else {
                         oc_todo("implement other const size");
                         /* memcpy(&b->initializer_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
                     }
-                    k = kv->key->const_value.uval;
+                    k = kv->key->const_value.as_u64;
                 } else {
                     LL_Ir_Operand kvalue = ir_generate_expression(cc, b, kv->key, false);
                     LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, element_type);
@@ -999,13 +999,13 @@ DO_BIN_OP_ASSIGN_OP:
                 default:
                     if (lit->items[i]->has_const) {
                         if (layout.size <= 1) {
-                            b->initializer_ptr[k] = (uint8_t)lit->items[i]->const_value.uval;
+                            b->initializer_ptr[k] = (uint8_t)lit->items[i]->const_value.as_u64;
                         } else if (layout.size <= 2) {
-                            ((uint16_t*)b->initializer_ptr)[k] = (uint16_t)lit->items[i]->const_value.uval;
+                            ((uint16_t*)b->initializer_ptr)[k] = (uint16_t)lit->items[i]->const_value.as_u64;
                         } else if (layout.size <= 4) {
-                            ((uint32_t*)b->initializer_ptr)[k] = (uint32_t)lit->items[i]->const_value.uval;
+                            ((uint32_t*)b->initializer_ptr)[k] = (uint32_t)lit->items[i]->const_value.as_u64;
                         } else if (layout.size <= 8) {
-                            ((uint64_t*)b->initializer_ptr)[k] = (uint64_t)lit->items[i]->const_value.uval;
+                            ((uint64_t*)b->initializer_ptr)[k] = (uint64_t)lit->items[i]->const_value.as_u64;
                         } else {
                             oc_todo("implement other const size");
                             /* memcpy(&b->initializer_ptr[kv->key->const_value.uval * layout.size], &kv->value->const_value.uval, sizeof(kv->value->const_value.uval)); */
@@ -1189,7 +1189,7 @@ HANDLE_SLICE_OP:
     case AST_KIND_CONST: {
         Ast_Marker* cf = AST_AS(expr, Ast_Marker);
         LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, b, cf->expr);
-        result = value.uval;
+        result = value.as_u64;
         break;
     }
     case AST_KIND_RETURN: {
