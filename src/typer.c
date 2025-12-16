@@ -1573,6 +1573,7 @@ TRY_MEMBER_FUNCTION_CALL:
             // @const
             (*expr)->has_const = 1u;
             switch (result->kind) {
+            case LL_TYPE_ANYINT:
             case LL_TYPE_INT:
                 switch (opr->op.kind) {
 #pragma GCC diagnostic push
@@ -1626,7 +1627,7 @@ TRY_MEMBER_FUNCTION_CALL:
                 case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.as_u64 = opr->left->const_value.as_f64 != opr->right->const_value.as_f64; break;
                 default: oc_assert(false); break;
                 }
-            default: oc_todo("implement bvinary op const fold types or error"); break;
+            default: ll_print_type(result); oc_todo("implement bvinary op const fold types or error"); break;
             }
         }
 
@@ -1652,6 +1653,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
             switch (expr_type->kind) {
             case LL_TYPE_FLOAT:
+            case LL_TYPE_ANYINT:
             case LL_TYPE_INT:
                 break;
             default:

@@ -6,6 +6,7 @@
 
 #define FUNCTION() (&bir->fns.items[bir->current_function & CURRENT_INDEX])
 #define FRAME() (&b->frames.items[b->frames.count - 1])
+#define FRAMEN(n) (&b->frames.items[b->frames.count - 1 - (n)])
 
 static inline bool is_large_aggregate_type(LL_Type* type) {
     switch (type->kind) {
@@ -339,7 +340,6 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
     LL_Eval_Value result;
     LL_Type* type;
 
-    LL_Eval_Registers* storage = get_storage_location(cc, b, lvalue);
 
     switch (OPD_TYPE(lvalue)) {
     case LL_IR_OPERAND_IMMEDIATE_BIT:
@@ -351,6 +351,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
     case LL_IR_OPERAND_LOCAL_BIT:
     case LL_IR_OPERAND_REGISTER_BIT:
     case LL_IR_OPERAND_PARMAETER_BIT: {
+        LL_Eval_Registers* storage = get_storage_location(cc, b, lvalue);
         type = ir_get_operand_type(bir, FUNCTION(), lvalue);
         switch (type->kind) {
         case LL_TYPE_ANYBOOL:
@@ -688,7 +689,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
                     void (*fn_ptr)() = (void (*)())(b->native_fn_exe_code + offset);
                     fn_ptr();
                 } else {
-                    return_value = ll_eval_fn(cc, b, bir, OPD_VALUE(invokee));
+                    return_value = ll_eval_fn(cc, b, bir, OPD_VALUE(invokee), count, operands + invoke_offset);
                 }
             } break;
             default: oc_todo("handle other op");
@@ -708,7 +709,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
     }
 }
 
-LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, uint32_t fn_index) {
+LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, uint32_t fn_index, uint32_t argument_count, LL_Ir_Operand* arguments) {
     LL_Ir_Function* fn = &bir->fns.items[fn_index];
     oc_array_append(&cc->arena, &b->frames, ((LL_Eval_Frame) { 0 }));
 
@@ -716,11 +717,22 @@ LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     LL_Ir_Block_Ref last_block = bir->current_block;
     bir->current_function = fn_index;
 
+    // @NOTE: these storage locations should be stable so we can take references to them.
+
     FRAME()->registers.count = 0;
     oc_array_reserve(&cc->arena, &FRAME()->registers, FUNCTION()->registers.count);
 
     FRAME()->locals.count = 0;
     oc_array_reserve(&cc->arena, &FRAME()->locals, FUNCTION()->locals.count);
+
+    FRAME()->parameters.count = 0;
+    oc_array_reserve(&cc->arena, &FRAME()->parameters, argument_count);
+    b->frames.count--;
+    for (uint32_t ai = 0; ai < argument_count; ai++) {
+        LL_Eval_Value argument_value = ll_eval_get_value(cc, b, bir, arguments[ai]);
+        FRAMEN(-1)->parameters.items[ai] = argument_value;
+    }
+    b->frames.count++;
 
     LL_Ir_Block_Ref current_block = fn->entry;
     while (current_block) {
@@ -841,7 +853,7 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 // LL_Backend backend_ir = { .backend = bir };
 // ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
 
-    ll_eval_fn(cc, b, bir, 0);
+    ll_eval_fn(cc, b, bir, 0, 0, NULL);
 
     bir->current_block = last_block;
     bir->current_function = last_function;
