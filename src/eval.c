@@ -328,6 +328,7 @@ static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backe
     case LL_TYPE_UINT:
     case LL_TYPE_INT:
     case LL_TYPE_FLOAT:
+    case LL_TYPE_POINTER:
         storage->items[OPD_VALUE(lvalue)] = rvalue;
         break;
     default: oc_assert(false); break;
@@ -360,6 +361,7 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         case LL_TYPE_UINT:
         case LL_TYPE_INT:
         case LL_TYPE_FLOAT:
+        case LL_TYPE_POINTER:
             result = storage->items[OPD_VALUE(lvalue)];
             break;
         default: result.as_u64 = 0; oc_todo("add error"); break;
@@ -394,10 +396,18 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     // default: oc_todo("add load operands"); break;
     // }
 
+    LL_Eval_Registers* storage = get_storage_location(cc, b, src);
+    LL_Eval_Value value;
     switch (OPD_TYPE(src)) {
     case LL_IR_OPERAND_LOCAL_BIT:
-    case LL_IR_OPERAND_REGISTER_BIT:
     case LL_IR_OPERAND_PARMAETER_BIT:
+        value = storage->items[OPD_VALUE(src)];
+        break;
+    case LL_IR_OPERAND_REGISTER_BIT:
+        value = storage->items[OPD_VALUE(src)];
+        if (load) {
+            value = *value.as_ptr;
+        }
         break;
     case LL_IR_OPERAND_IMMEDIATE_BIT: {
         switch (to_type->kind) {
@@ -446,8 +456,6 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     default: oc_todo("add load operands"); break;
     }
 
-    LL_Eval_Registers* storage = get_storage_location(cc, b, src);
-
     switch (to_type->kind) {
     case LL_TYPE_ANYBOOL:
     case LL_TYPE_BOOL:
@@ -457,7 +465,8 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     case LL_TYPE_INT:
     case LL_TYPE_ANYFLOAT:
     case LL_TYPE_FLOAT:
-        FRAME()->registers.items[OPD_VALUE(result)] = storage->items[OPD_VALUE(src)];
+    case LL_TYPE_POINTER:
+        FRAME()->registers.items[OPD_VALUE(result)] = value;
         break;
     default: oc_todo("unhandled type"); break;
     }
@@ -665,7 +674,19 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             oc_todo("memcopy");
         } break;
         case LL_IR_OPCODE_LEA: {
-            oc_todo("lea");
+            oc_assert(OPD_TYPE(operands[0]) == LL_IR_OPERAND_REGISTER_BIT);
+            switch (OPD_TYPE(operands[1])) {
+            case LL_IR_OPERAND_LOCAL_BIT:
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_ptr = &FRAME()->locals.items[OPD_VALUE(operands[1])];
+                break;
+            case LL_IR_OPERAND_PARMAETER_BIT:
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_ptr = &FRAME()->parameters.items[OPD_VALUE(operands[1])];
+                break;
+            case LL_IR_OPERAND_DATA_BIT:
+                oc_todo("handle this");
+                break;
+            default: oc_assert(false && "invalid operand"); break;
+            }
         } break;
         case LL_IR_OPCODE_LEA_INDEX: {
             oc_todo("lea index");
@@ -850,8 +871,8 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
     bir->current_block = fn.entry;
 
     result_op = ir_generate_expression(cc, bir, expr, false);
-// LL_Backend backend_ir = { .backend = bir };
-// ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
+LL_Backend backend_ir = { .backend = bir };
+ll_backend_write_to_file(cc, &backend_ir, "out.ir");
 
     ll_eval_fn(cc, b, bir, 0, 0, NULL);
 
