@@ -871,8 +871,8 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
     bir->current_block = fn.entry;
 
     result_op = ir_generate_expression(cc, bir, expr, false);
-LL_Backend backend_ir = { .backend = bir };
-ll_backend_write_to_file(cc, &backend_ir, "out.ir");
+// LL_Backend backend_ir = { .backend = bir };
+// ll_backend_write_to_file(cc, &backend_ir, "out.ir");
 
     ll_eval_fn(cc, b, bir, 0, 0, NULL);
 
