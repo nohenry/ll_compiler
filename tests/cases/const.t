@@ -9,6 +9,9 @@ int64 get_array_size(int64 a) {
 }
 
 void main() {
+    const int64 value = const get_array_size(123);
+    write_int(value);
+
     int[get_array_size(80)] array;
     int[array.length] array1;
     write_int(cast(int64)array.length);

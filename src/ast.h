@@ -45,6 +45,7 @@ typedef enum {
     LL_STORAGE_CLASS_STATIC = (1 << 1),
     LL_STORAGE_CLASS_NATIVE = (1 << 2),
     LL_STORAGE_CLASS_MACRO  = (1 << 3),
+    LL_STORAGE_CLASS_CONST  = (1 << 4),
 } LL_Storage_Class;
 
 typedef enum {

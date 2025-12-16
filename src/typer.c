@@ -654,6 +654,19 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                 ll_typer_report_error_done(cc, typer);
             }
 
+            if (var_decl->storage_class & LL_STORAGE_CLASS_CONST) {
+                if (!var_decl->initializer->has_const) {
+                    ll_typer_report_error(((LL_Error){ .main_token = var_decl->initializer->token_info }), "Can't assign runtime value to constant variable.");
+                    ll_typer_report_error_no_src("    try wrapping initializer with `const` keyword\n");
+                    ll_typer_report_error_done(cc, typer);
+                }
+
+                var_decl->ident->base.has_const = true;
+                var_decl->ident->base.const_value = var_decl->initializer->const_value;
+                var_decl->base.has_const = true;
+                var_decl->base.const_value = var_decl->initializer->const_value;
+            }
+
             ll_typer_add_implicit_cast(cc, typer, &var_decl->initializer, declared_type);
         }
 
@@ -1117,32 +1130,61 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             ll_typer_report_error_done(cc, typer);
             return NULL;
         }
+
+        Ast_Base* possible_const = (Ast_Base*)scope->ident;
+
         if (scope->kind == LL_SCOPE_KIND_MACRO_PARAMETER) {
             LL_Scope_Macro_Parameter* macro_param = (LL_Scope_Macro_Parameter*)scope;
             *expr = ast_clone_node_deep(cc, macro_param->value, (LL_Ast_Clone_Params) { .convert_all_idents_to_expansion = true });
+            possible_const = *expr;
+
             result = ll_typer_type_expression(cc, typer, expr, expected_type, resolve_result);
             if (macro_param->decl->type && macro_param->decl->type->kind != LL_TYPE_VOID) {
                 // e.g if we pass a type int[5] into int[:], we need to handle that implicit cast every time we substitute
                 ll_typer_add_implicit_cast(cc, typer, expr, macro_param->decl->type);
             }
             result = (*expr)->type;
-            return result;
-        }
-        AST_AS((*expr), Ast_Ident)->resolved_scope = scope;
+        } else {
+            AST_AS((*expr), Ast_Ident)->resolved_scope = scope;
 
-        if (resolve_result) {
-            resolve_result->scope = scope;
-        }
+            if (resolve_result) {
+                resolve_result->scope = scope;
+            }
 
-        if (expected_type) {
-            if (ll_typer_can_implicitly_cast(cc, typer, scope->ident->base.type, expected_type)) {
-                result = expected_type;
+            if (expected_type) {
+                if (ll_typer_can_implicitly_cast(cc, typer, scope->ident->base.type, expected_type)) {
+                    result = expected_type;
+                } else {
+                    result = scope->ident->base.type;
+                }
             } else {
                 result = scope->ident->base.type;
             }
-        } else {
-            result = scope->ident->base.type;
         }
+
+        if (possible_const->has_const) {
+            Ast_Literal lit = {
+                .base.type = result,
+            };
+            switch (result->kind) {
+            case LL_TYPE_INT: {
+                lit.base.kind = AST_KIND_LITERAL_INT;
+                lit.u64 = (uint64_t)possible_const->const_value.as_i64;
+            } break;
+            case LL_TYPE_UINT: {
+                lit.base.kind = AST_KIND_LITERAL_INT;
+                lit.u64 = possible_const->const_value.as_u64;
+            } break;
+            case LL_TYPE_FLOAT: {
+                lit.base.kind = AST_KIND_LITERAL_FLOAT;
+                lit.f64 = possible_const->const_value.as_f64;
+            } break;
+            default: oc_assert(false); break;
+            }
+            Ast_Base* new_node = oc_arena_dup(&cc->arena, &lit, sizeof(lit));
+            *expr = new_node;
+        }
+
         break;
     }
     case AST_KIND_LITERAL_INT:
@@ -2053,6 +2095,9 @@ TRY_MEMBER_FUNCTION_CALL:
     case AST_KIND_CONST: {
         Ast_Marker* cf = AST_AS((*expr), Ast_Marker);
         result = ll_typer_type_expression(cc, typer, &cf->expr, expected_type, NULL);
+        LL_Eval_Value const_value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr);
+        (*expr)->has_const = true;
+        (*expr)->const_value = const_value;
     } break;
     case AST_KIND_RETURN: {
         Ast_Control_Flow* cf = AST_AS((*expr), Ast_Control_Flow);
@@ -2333,7 +2378,6 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
             ll_typer_report_error(((LL_Error){ .main_token = AST_AS(typename, Ast_Ident)->base.token_info }), "Type '{}' not found", AST_AS(typename, Ast_Ident)->str);
             ll_typer_report_error_done(cc, typer);
         }
-        AST_AS(typename, Ast_Ident)->resolved_scope = scope;
 
         result = scope->decl->type;
 

@@ -407,6 +407,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
     case AST_KIND_VARIABLE_DECLARATION: {
         Ast_Variable_Declaration* var_decl = AST_AS(stmt, Ast_Variable_Declaration);
         if (var_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break;
+        if (var_decl->storage_class & LL_STORAGE_CLASS_CONST) break;
         oc_assert(b->current_function != IR_INVALID_FUNCTION);
 
         LL_Ir_Local var = {

@@ -149,6 +149,19 @@ START_SWITCH:
                     storage_class |= LL_STORAGE_CLASS_EXTERN;
                 } else if (token.str.ptr == LL_KEYWORD_NATIVE.ptr) {
                     storage_class |= LL_STORAGE_CLASS_NATIVE;
+                } else if (token.str.ptr == LL_KEYWORD_CONST.ptr) {
+                    LL_Token_Info kw = TOKEN_INFO(token);
+                    CONSUME();
+                    PEEK(&token);
+                    if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
+                        result = parser_parse_expression(cc, parser, NULL, 0, false);
+                        result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
+                        result->token_info = kw;
+                        goto HANDLE_TRY_DECL;
+                    } else {
+                        storage_class |= LL_STORAGE_CLASS_CONST;
+                        goto START_SWITCH;
+                    }
                 } else {
                     goto HANDLE_IDENT;
                 }
@@ -169,7 +182,7 @@ HANDLE_IDENT:
 
             result = parser_parse_expression(cc, parser, NULL, 0, true);
             if (result && (result->kind == AST_KIND_IF || result->kind == AST_KIND_FOR  || result->kind == AST_KIND_WHILE)) break;
-
+HANDLE_TRY_DECL:
             PEEK(&token);
             if (token.kind == LL_TOKEN_KIND_IDENT) // this includes macro keyword
                 result = parser_parse_declaration(cc, parser, result, storage_class);
@@ -878,6 +891,7 @@ void print_storage_class(LL_Storage_Class storage_class, Oc_Writer* w) {
     if (storage_class & LL_STORAGE_CLASS_EXTERN) wprint(w, "extern ");
     if (storage_class & LL_STORAGE_CLASS_STATIC) wprint(w, "static ");
     if (storage_class & LL_STORAGE_CLASS_NATIVE) wprint(w, "native ");
+    if (storage_class & LL_STORAGE_CLASS_CONST) wprint(w, "const ");
 }
 
 const char* ast_get_node_kind(Ast_Base* node) {
