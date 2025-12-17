@@ -378,6 +378,7 @@ Oc_Arena_Chunk* oc_arena_new_chunk(Oc_Arena* arena, uword size_in_bytes);
 Oc_Arena_Save oc_arena_save(Oc_Arena* arena);
 void oc_arena_restore(Oc_Arena* arena, Oc_Arena_Save restore_point);
 void oc_arena_reset(Oc_Arena* arena);
+void* oc_arena_alloc_aligned(Oc_Arena* arena, uint64 size, uint64 alignment);
 void* oc_arena_alloc(Oc_Arena* arena, uint64 size);
 void* oc_arena_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 size);
 void* oc_arena_dup(Oc_Arena* arena, void* data, uword size);
@@ -565,6 +566,32 @@ void oc_arena_restore(Oc_Arena* arena, Oc_Arena_Save restore_point) {
 void oc_arena_reset(Oc_Arena* arena) {
     arena->current = arena->head;
     arena->current->used = sizeof(Oc_Arena_Chunk) / sizeof(uword);
+}
+
+void* oc_arena_alloc_aligned(Oc_Arena* arena, uint64 size, uint64 alignment) {
+    if (size == 0) return NULL;
+    alignment = max(8, alignment);
+    // 1 -> 0 -> 0 -> 1
+    // 2 -> 1 -> 0 -> 1
+    // 7 -> 6 -> 0 -> 1
+    // 8 -> 7 -> 0 -> 1
+    // 9 -> 8 -> 1 -> 2
+    uword words = (size - 1) / sizeof(uword) + 1;
+
+    if (!arena->current) {
+        arena->head = arena->current = oc_arena_new_chunk(arena, max(size, alignment));
+        if (!arena->head) oc_oom();
+    }
+
+    void *result, *aligned_result;
+    do {
+        result = arena->current->data + arena->current->used;
+        aligned_result = (void*)oc_align_forward((uword)result, (uword)alignment);
+    } while ((arena->current->used + words + ((aligned_result - result) / sizeof(uword))) > arena->current->size);
+
+    arena->current->used += words + (aligned_result - result) / sizeof(uword);
+
+    return aligned_result;
 }
 
 void* oc_arena_alloc(Oc_Arena* arena, uint64 size) {

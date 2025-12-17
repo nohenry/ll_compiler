@@ -86,7 +86,6 @@ int64_t do_native_fn_call(
 ) {
     uint32_t active_register_top = 0;
     uint32_t stack_used = 0;
-    X86_64_Get_Variant_Params get_variant = { 0 };
     X86_64_Instruction_Parameters params = { 0 };
 
     X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
@@ -306,7 +305,23 @@ int64_t do_native_fn_call(
     return result;
 }
 
-static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand lvalue, LL_Eval_Value rvalue) {
+LL_Eval_Value ll_eval_allocate_object(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Type* type) {
+    (void)bir;
+    LL_Backend_Layout layout = cc->native_target->get_layout(type);
+    LL_Eval_Value result;
+    switch (type->kind) {
+    case LL_TYPE_ARRAY:
+        result.as_object = oc_arena_alloc_aligned(&b->object_arena, layout.size, layout.alignment);
+        break;
+    case LL_TYPE_STRUCT:
+        result.as_object = oc_arena_alloc_aligned(&b->object_arena, layout.size, layout.alignment);
+        break;
+    default: ll_print_type(type); oc_assert(false && "unsupported type"); break;
+    }
+    return result;
+}
+
+static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Operand lvalue, LL_Eval_Value rvalue, bool store) {
     (void)cc;
     LL_Type* type;
     type = ir_get_operand_type(bir, FUNCTION(), lvalue);
@@ -328,9 +343,22 @@ static void ll_eval_set_value(Compiler_Context* cc, LL_Eval_Context* b, LL_Backe
     case LL_TYPE_UINT:
     case LL_TYPE_INT:
     case LL_TYPE_FLOAT:
-    case LL_TYPE_POINTER:
         storage->items[OPD_VALUE(lvalue)] = rvalue;
         break;
+    case LL_TYPE_POINTER:
+        if (store && OPD_TYPE(lvalue) == LL_IR_OPERAND_REGISTER_BIT) {
+            *storage->items[OPD_VALUE(lvalue)].as_ptr = rvalue;
+        }
+        storage->items[OPD_VALUE(lvalue)] = rvalue;
+        break;
+    case LL_TYPE_STRUCT:
+    case LL_TYPE_ARRAY: {
+        LL_Backend_Layout layout = cc->native_target->get_layout(type);
+        if (!storage->items[OPD_VALUE(lvalue)].as_object) {
+            storage->items[OPD_VALUE(lvalue)] = ll_eval_allocate_object(cc, b, bir, type);
+        }
+        memcpy(storage->items[OPD_VALUE(lvalue)].as_object, rvalue.as_object, layout.size);
+    } break;
     default: oc_assert(false); break;
     }
 
@@ -363,6 +391,14 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         case LL_TYPE_FLOAT:
         case LL_TYPE_POINTER:
             result = storage->items[OPD_VALUE(lvalue)];
+            break;
+        case LL_TYPE_ARRAY:
+        case LL_TYPE_STRUCT:
+            result = storage->items[OPD_VALUE(lvalue)];
+            if (!result.as_object) {
+                storage->items[OPD_VALUE(lvalue)] = ll_eval_allocate_object(cc, b, bir, type);
+                result = storage->items[OPD_VALUE(lvalue)];
+            }
             break;
         default: result.as_u64 = 0; oc_todo("add error"); break;
         }
@@ -466,6 +502,8 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     case LL_TYPE_ANYFLOAT:
     case LL_TYPE_FLOAT:
     case LL_TYPE_POINTER:
+    case LL_TYPE_ARRAY:
+    case LL_TYPE_STRUCT:
         FRAME()->registers.items[OPD_VALUE(result)] = value;
         break;
     default: oc_todo("unhandled type"); break;
@@ -505,7 +543,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
         } break;
         case LL_IR_OPCODE_STORE: {
             LL_Eval_Value value = ll_eval_get_value(cc, b, bir, operands[1]);
-            ll_eval_set_value(cc, b, bir, operands[0], value);
+            ll_eval_set_value(cc, b, bir, operands[0], value, true);
         } break;
 
 #define DO_OP(op) \
@@ -671,7 +709,32 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             ll_eval_load(cc, b, bir, operands[0], operands[1], false);
         } break;
         case LL_IR_OPCODE_MEMCOPY: {
-            oc_todo("memcopy");
+            LL_Eval_Registers* storage = get_storage_location(cc, b, operands[0]);
+            LL_Eval_Value value;
+
+            switch (OPD_TYPE(operands[0])) {
+            case LL_IR_OPERAND_LOCAL_BIT:
+            case LL_IR_OPERAND_PARMAETER_BIT:
+                if (!storage->items[OPD_VALUE(operands[0])].as_object) {
+                    storage->items[OPD_VALUE(operands[0])] = ll_eval_allocate_object(cc, b, bir, ir_get_operand_type(bir, FUNCTION(), operands[0]));
+                }
+                value = storage->items[OPD_VALUE(operands[0])];
+                break;
+            case LL_IR_OPERAND_REGISTER_BIT:
+                value = storage->items[OPD_VALUE(operands[0])];
+                value = *value.as_ptr;
+                if (!value.as_object) {
+                    *value.as_ptr = ll_eval_allocate_object(cc, b, bir, ir_get_operand_type(bir, FUNCTION(), operands[0]));
+                    value = *value.as_ptr;
+                }
+                break;
+            default: oc_assert(false); break;
+            }
+
+            LL_Eval_Value rvalue = ll_eval_get_value(cc, b, bir, operands[1]);
+            LL_Eval_Value size = ll_eval_get_value(cc, b, bir, operands[2]);
+
+            memcpy(value.as_object, rvalue.as_object, size.as_u64);
         } break;
         case LL_IR_OPCODE_LEA: {
             oc_assert(OPD_TYPE(operands[0]) == LL_IR_OPERAND_REGISTER_BIT);
@@ -689,7 +752,16 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             }
         } break;
         case LL_IR_OPCODE_LEA_INDEX: {
-            oc_todo("lea index");
+            LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)ir_get_operand_type(bir, FUNCTION(), operands[0]);
+            assert(ptr_type->base.kind == LL_TYPE_POINTER);
+
+            LL_Eval_Value base = ll_eval_get_value(cc, b, bir, operands[1]);
+            LL_Eval_Value index = ll_eval_get_value(cc, b, bir, operands[2]);
+            LL_Eval_Value scale = ll_eval_get_value(cc, b, bir, operands[3]);
+
+            base.as_object += index.as_i64 * scale.as_i64;
+
+            ll_eval_set_value(cc, b, bir, operands[0], base, false);
         } break;
         case LL_IR_OPCODE_INVOKEVALUE:
             invoke_offset = 1;
@@ -888,5 +960,4 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 
     return result;
 }
-
 

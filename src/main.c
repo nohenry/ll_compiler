@@ -61,6 +61,7 @@ int main(int argc, char** argv) {
     cc.eval_context = &eval_context;
     cc.bir = backend_ir.backend;
     cc.target = &backend_elf;
+    cc.native_target = &backend_elf;
     cc.lexer = &parser.lexer;
 
     if (!cc.quiet) print_node(root, 0, &stdout_writer);

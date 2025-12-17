@@ -3,7 +3,10 @@ native void write_float32(float32 d);
 native void write_float64(float64 d);
 
 int64 get_array_size(int64 a) {
-    int64 b = 50;
+    int64[100] aa;
+    aa[1] = 50;
+
+    int64 b = aa[1];
     int64* pb = &b;
     return 3 + 4 + a + *pb;
 }

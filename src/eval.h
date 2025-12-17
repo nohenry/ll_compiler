@@ -26,6 +26,8 @@ typedef struct {
 
 typedef struct ll_eval_context {
     Oc_Arena* arena;
+    Oc_Arena object_arena;
+
     LL_Eval_Frame_List frames;
     LL_Native_Function_Map native_funcs;
 
