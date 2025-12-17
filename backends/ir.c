@@ -614,17 +614,19 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
     case AST_KIND_BLOCK: {
         Ast_Block* blk = AST_AS(expr, Ast_Block);
 
-        LL_Ir_Block_Ref break_block = ir_create_block(cc, b, true);
-
-        Ast_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Ast_Ident));
-        block_ident->base.type = expr->type;
-        block_ident->str = oc_sprintf(&cc->arena, "block_result\n");
-        LL_Ir_Local var = {
-            .ident = block_ident,
-        };
-        uint32_t index = FUNCTION()->locals.count;
-        oc_array_append(&cc->arena, &FUNCTION()->locals, var);
-        blk->scope->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
+        LL_Ir_Block_Ref break_block;
+        if (blk->flags & AST_BLOCK_FLAG_EXPR) {
+            Ast_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Ast_Ident));
+            block_ident->base.type = expr->type;
+            block_ident->str = oc_sprintf(&cc->arena, "block_result\n");
+            LL_Ir_Local var = {
+                .ident = block_ident,
+            };
+            uint32_t index = FUNCTION()->locals.count;
+            oc_array_append(&cc->arena, &FUNCTION()->locals, var);
+            blk->scope->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
+        }
+        break_block = ir_create_block(cc, b, true);
         blk->scope->break_block_ref = break_block;
 
         for (i = 0; i < AST_AS(expr, Ast_Block)->count; ++i) {
@@ -633,7 +635,9 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
 
         b->current_block = break_block;
 
-        result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, blk->scope->break_value);
+        if (blk->flags & AST_BLOCK_FLAG_EXPR) {
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, blk->scope->break_value);
+        }
         break;
     }
     case AST_KIND_LITERAL_INT:
@@ -1176,8 +1180,8 @@ HANDLE_SLICE_OP:
     }
     case AST_KIND_CONST: {
         Ast_Marker* cf = AST_AS(expr, Ast_Marker);
-        LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, b, cf->expr);
-        result = value.as_u64;
+        oc_assert(cf->base.has_const);
+        result = cf->base.const_value.as_u64;
         break;
     }
     case AST_KIND_RETURN: {

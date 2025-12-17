@@ -153,7 +153,12 @@ START_SWITCH:
                     LL_Token_Info kw = TOKEN_INFO(token);
                     CONSUME();
                     PEEK(&token);
-                    if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
+                    if (token.kind == '{') {
+                        result = parser_parse_block(cc, parser);
+                        result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
+                        result->token_info = kw;
+                        return result;
+                    } else if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
                         result = parser_parse_expression(cc, parser, NULL, 0, false);
                         result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
                         result->token_info = kw;

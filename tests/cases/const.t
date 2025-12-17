@@ -31,4 +31,8 @@ void main() {
     int[array.length] array1;
     write_int(cast(int64)array.length);
     write_int(cast(int64)array1.length);
+
+    const {
+        write_int(880);
+    }
 }
