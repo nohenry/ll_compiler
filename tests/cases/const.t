@@ -32,7 +32,13 @@ void main() {
     write_int(cast(int64)array.length);
     write_int(cast(int64)array1.length);
 
+    int64 value1 = const get_array_size(123);
+    write_int(value1);
+
     const {
+        const int64 value = const get_array_size(123);
+        write_int(value);
+
         write_int(880);
     }
 }

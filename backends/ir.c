@@ -630,7 +630,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast
         blk->scope->break_block_ref = break_block;
 
         for (i = 0; i < AST_AS(expr, Ast_Block)->count; ++i) {
-            ir_generate_expression(cc, b, AST_AS(expr, Ast_Block)->items[i], false);
+            ir_generate_statement(cc, b, AST_AS(expr, Ast_Block)->items[i]);
         }
 
         b->current_block = break_block;
@@ -1326,7 +1326,7 @@ HANDLE_SLICE_OP:
     }
     case AST_KIND_STRUCT: break;
     default:
-        eprint("oc_todo: implement generate expr {}\n", ast_get_node_kind(expr));
+        oc_todo("implement generate expr {}\n", ast_get_node_kind(expr));
         break;
     }
     return result;

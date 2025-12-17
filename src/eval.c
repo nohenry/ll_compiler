@@ -94,11 +94,7 @@ int64_t do_native_fn_call(
     switch (OPD_TYPE(invokee)) {
     case LL_IR_OPERAND_FUNCTION_BIT: {
         LL_Ir_Function* fn = &bir->fns.items[OPD_VALUE(invokee)];
-        if (fn->generated_offset != -1) {
-            return fn->generated_offset;
-        } else {
-            fn->generated_offset = (int64_t)b->native_fn_stub_section.count;
-        }
+        fn->generated_offset = (int64_t)b->native_fn_stub_section.count;
     } break;
     default: oc_todo("fn type"); break;
     }
@@ -513,13 +509,13 @@ static void ll_eval_load(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
 static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, LL_Ir_Block* block) {
     size_t i;
     int32_t opcode1, opcode2;
-    uint32_t invoke_offset = 0;
     LL_Type* type;
 
     (void)opcode1;
     (void)opcode2;
 
     for (i = 0; i < block->ops.count; ) {
+        uint32_t invoke_offset = 0;
         LL_Ir_Opcode opcode = (LL_Ir_Opcode)block->ops.items[i];
         LL_Ir_Operand* operands = (LL_Ir_Operand*)&block->ops.items[i + 1];
 
@@ -775,12 +771,16 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
                 LL_Ir_Function* fn = &bir->fns.items[OPD_VALUE(invokee)];
 
                 if (fn->flags & LL_IR_FUNCTION_FLAG_NATIVE) {
+                    size_t old_section_size = b->native_fn_stub_section.count;
+
                     int64_t offset = do_native_fn_call(cc, b, bir, invokee, count, operands + invoke_offset);
                     if (offset == -1) break;
                     if (!b->native_fn_exe_code) break;
                     
                     void (*fn_ptr)() = (void (*)())(b->native_fn_exe_code + offset);
                     fn_ptr();
+
+                    b->native_fn_stub_section.count = old_section_size;
                 } else {
                     return_value = ll_eval_fn(cc, b, bir, OPD_VALUE(invokee), count, operands + invoke_offset);
                 }
@@ -794,7 +794,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             
             break;
         }
-        // default: oc_todo("handle other op"); break;
+        default: oc_todo("handle other op"); break;
         }
 
         size_t count = ir_get_op_count(cc, bir, (LL_Ir_Opcode*)block->ops.items, i);
@@ -932,17 +932,23 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
         .block_count = 1,
     };
 
-    oc_array_append(&cc->arena, &bir->const_stack, fn);
-    bir->fns.items[0] = fn;
-    /* memcpy(&bir->fns.items[0], &fn, sizeof(fn)); */
-
     int32_t last_function = bir->current_function;
     LL_Ir_Block_Ref last_block = bir->current_block;
+
+    if (bir->const_stack.count) {
+        bir->current_function = (uint32_t)bir->fns.count; // top of stack is current
+        oc_array_append(&cc->arena, &bir->fns, fn);
+    } else {
+        bir->current_function = 0; // top of stack is current
+        bir->fns.items[0] = fn;
+    }
+    oc_array_append(&cc->arena, &bir->const_stack, fn);
+
     // bir->current_function = CURRENT_CONST_STACK | (bir->const_stack.count - 1); // top of stack is current
-    bir->current_function = (0); // top of stack is current
     bir->current_block = fn.entry;
 
     result_op = ir_generate_expression(cc, bir, expr, false);
+
 // LL_Backend backend_ir = { .backend = bir };
 // ll_backend_write_to_file(cc, &backend_ir, "out.ir");
 
@@ -951,6 +957,8 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
     bir->current_block = last_block;
     bir->current_function = last_function;
     bir->free_block = fn.entry;
+
+    bir->const_stack.count--;
 
     switch (OPD_TYPE(result_op)) {
     case LL_IR_OPERAND_IMMEDIATE_BIT: result.as_i64 = OPD_VALUE(result_op); break;
