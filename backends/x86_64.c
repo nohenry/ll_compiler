@@ -260,11 +260,11 @@ X86_64_Variant_Kind x86_64_get_variant_raw(LL_Type* type, X86_64_Get_Variant_Par
         if (params.immediate) return X86_64_VARIANT_KIND_rm64_i32;
         else if (params.mem_right) return X86_64_VARIANT_KIND_r64_rm64;
         else return X86_64_VARIANT_KIND_rm64_r64;
-    case LL_TYPE_ARRAY:
     case LL_TYPE_STRING:
     case LL_TYPE_SLICE:
         // slice is like struct, but it's always > 64bits
         return X86_64_VARIANT_KIND_r64_rm64;
+    case LL_TYPE_ARRAY:
     case LL_TYPE_STRUCT: {
         LL_Backend_Layout layout = x86_64_get_layout(type);
         size_t size = max(layout.size, layout.alignment);
@@ -389,6 +389,7 @@ static X86_64_Operand_Register x86_64_load_register(Compiler_Context* cc, X86_64
     case LL_TYPE_INT:
     case LL_TYPE_POINTER:
     case LL_TYPE_STRING:
+    case LL_TYPE_ARRAY:
     case LL_TYPE_STRUCT:
     case LL_TYPE_SLICE:
         OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(operand_type, get_variant), params);
@@ -478,6 +479,7 @@ static X86_64_Operand_Register x86_64_load_operand_with_type(Compiler_Context* c
     case LL_TYPE_INT:
     case LL_TYPE_POINTER:
     case LL_TYPE_STRING:
+    case LL_TYPE_ARRAY:
     case LL_TYPE_STRUCT:
     case LL_TYPE_SLICE:
         OC_X86_64_WRITE_INSTRUCTION_DYN(b, OPCODE_MOV, x86_64_get_variant_raw(operand_type, get_variant), params);
@@ -624,7 +626,7 @@ static void x86_64_generate_memcpy(Compiler_Context* cc, X86_64_Backend* b, LL_B
 
 uword x86_64_make_struct_copy(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir, LL_Type* type, LL_Ir_Operand reg, bool allocate_only) {
     X86_64_Instruction_Parameters params = { 0 };
-    oc_assert(type->kind == LL_TYPE_STRUCT || type->kind == LL_TYPE_SLICE || type->kind == LL_TYPE_STRING);
+    oc_assert(type->kind == LL_TYPE_ARRAY || type->kind == LL_TYPE_STRUCT || type->kind == LL_TYPE_SLICE || type->kind == LL_TYPE_STRING);
 
     LL_Backend_Layout l = x86_64_get_layout(type);
     uword stride = max(l.size, l.alignment);
@@ -1030,10 +1032,10 @@ static void x86_64_generate_clone_cast(Compiler_Context* cc, X86_64_Backend* b, 
     }
 
     switch (src_type->kind) {
-    case LL_TYPE_ARRAY:
     case LL_TYPE_STRING:
     case LL_TYPE_SLICE:
         goto HANDLE_CLONE_STRUCT;
+    case LL_TYPE_ARRAY:
     case LL_TYPE_STRUCT: {
         if (actual_size <= 8) goto HANDLE_CLONE_LOCAL_INTEGRAL;
 
@@ -1120,6 +1122,7 @@ static void x86_64_generate_load_cast(Compiler_Context* cc, X86_64_Backend* b, L
 
         switch (element_type->kind)  {
         case LL_TYPE_STRING:
+        case LL_TYPE_ARRAY:
         case LL_TYPE_STRUCT: {
             LL_Backend_Layout struct_layout = x86_64_get_layout(element_type);
             size_t actual_size = max(struct_layout.size, struct_layout.alignment);
@@ -1495,6 +1498,7 @@ static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backe
         default: ll_print_type(src_type); oc_todo("unkown type"); break;
         }
     } break;
+    case LL_TYPE_ARRAY:
     case LL_TYPE_STRUCT: {
         assert(dst_type == src_type);
 HANDLE_STRUCT_MEMCPY:
@@ -1670,6 +1674,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
             case LL_TYPE_BOOL:
             case LL_TYPE_ANYBOOL:
             case LL_TYPE_POINTER:
+            case LL_TYPE_ARRAY:
             case LL_TYPE_STRUCT:
             case LL_TYPE_STRING: {
                 /* oc_todo: max immeidiate is 28 bits */
@@ -1786,6 +1791,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                         params.displacement = displacement;
                         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                     } break;
+                    case LL_TYPE_ARRAY:
                     case LL_TYPE_STRUCT: {
                         LL_Backend_Layout struct_layout = x86_64_get_layout(src_type);
                         size_t actual_size = max(struct_layout.size, struct_layout.alignment);

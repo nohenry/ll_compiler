@@ -422,20 +422,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
             LL_Ir_Operand op = ir_generate_expression(cc, b, var_decl->initializer, false);
             b->copy_operand = last_copy_operand;
 
-            switch (var_decl->ident->base.type->kind) {
-            case LL_TYPE_ARRAY:
-                if (op != (uint32_t)-1) {
-                    LL_Backend_Layout layout = cc->target->get_layout(var_decl->ident->base.type);
-                    IR_APPEND_OP(LL_IR_OPCODE_MEMCOPY, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op, layout.size);
-                }
-                break;
-            default:
-                // if (var_decl->initializer->type != var_decl->type->type) {
-                //     op = IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, var_decl->type->type, op);
-                // }
-                IR_APPEND_OP(LL_IR_OPCODE_STORE, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op);
-                break;
-            }
+            IR_APPEND_OP(LL_IR_OPCODE_STORE, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op);
         }
 
         break;
@@ -962,7 +949,7 @@ DO_BIN_OP_ASSIGN_OP:
             b->initializer_ptr = initializer_ptr;
 
             result = LL_IR_OPERAND_DATA_BIT | (uint32_t)b->data_items.count;
-            IR_APPEND_OP(LL_IR_OPCODE_MEMCOPY, b->copy_operand, result, (uint32_t)(lit->base.type->width * size));
+            // IR_APPEND_OP(LL_IR_OPCODE_MEMCOPY, b->copy_operand, result, (uint32_t)(lit->base.type->width * size));
         }
 
         uint64_t k;
@@ -1024,11 +1011,11 @@ DO_BIN_OP_ASSIGN_OP:
         /* void* data_ptr = oc_arena_alloc(&cc->arena, layout.size); */
 
         if (!last_initializer_ptr) {
-            oc_array_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = initializer_ptr, .len = lit->base.type->width * size }));
+            oc_array_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = initializer_ptr, .len = lit->base.type->width * size, .type = lit->base.type }));
             b->initializer_ptr = last_initializer_ptr;
         }
 
-        result = (uint32_t)-1;
+        // result = (uint32_t)-1;
         /* result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result); */
         break;
     }
@@ -1363,7 +1350,7 @@ LL_Type* ir_get_operand_type(LL_Backend_Ir* bir, LL_Ir_Function* fn, LL_Ir_Opera
     case LL_IR_OPERAND_DATA_BIT:
         result = bir->data_items.items[OPD_VALUE(operand)].type;
         break;
-    default: oc_assert(false);
+    default: print("{x}\n", operand); oc_assert(false);
     }
 
     if (result && result->kind == LL_TYPE_NAMED) {
