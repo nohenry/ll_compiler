@@ -1,5 +1,10 @@
 native void write_int(int64 d);
 
+void pass_array_to_function(int64[6] array) {
+    write_int(array[0]);
+    write_int(array[4]);
+}
+
 void main() {
     int[4] a;
     a[0] = 123;
@@ -33,4 +38,7 @@ void main() {
 
     int[:] new_slice = slice[1:3];
     write_int(new_slice[0]);
+
+    int64[6] to_fn = [8, 10, 12, 14, 16, 18];
+    pass_array_to_function(to_fn);
 }

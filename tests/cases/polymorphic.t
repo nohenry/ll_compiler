@@ -9,4 +9,9 @@ void main() {
     int a = 123;
     write_int(69);
     polymorphic(a);
+    polymorphic(a);
+    polymorphic(a);
+    polymorphic(a);
+    polymorphic(a);
+    polymorphic(a);
 }

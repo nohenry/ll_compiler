@@ -1744,6 +1744,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 uint32_t tmp_regs = x86_64_alloc_tmp_regs(1);
                 params.reg0 = x86_64_tmp_regs(tmp_regs, 0);
                 int64_t displacement = 0;
+                uint8_t use_sib = 0;
 
                 switch (OPD_TYPE(operands[2])) {
                 case LL_IR_OPERAND_IMMEDIATE_BIT: {
@@ -1755,7 +1756,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                     displacement = (b->fn->literals.items[OPD_VALUE(operands[2])].as_u64 * OPD_VALUE(operands[3]));
                 } break;
                 case LL_IR_OPERAND_REGISTER_BIT: {
-                    params.use_sib = 1 | X86_64_SIB_INDEX | X86_64_SIB_SCALE;
+                    use_sib = 1 | X86_64_SIB_INDEX | X86_64_SIB_SCALE;
                     params.index = x86_64_load_register(cc, b, bir, -1, &b->registers.items[OPD_VALUE(operands[2])], cc->typer->ty_uint64);
                     // oc_todo("i don't think this is right");
 
@@ -1773,16 +1774,19 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 switch (OPD_TYPE(operands[1])) {
                 case LL_IR_OPERAND_REGISTER_BIT: {
                     params.reg1 = x86_64_load_operand(cc, b, bir, operands[1]) | X86_64_REG_BASE;
+                    params.use_sib = use_sib;
                     params.displacement = displacement;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                 } break;
                 case LL_IR_OPERAND_LOCAL_BIT: {
                     params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                    params.use_sib = use_sib;
                     params.displacement = displacement - b->locals.items[OPD_VALUE(operands[1])];
                     // params.displacement = displacement - b->locals.items[OPD_VALUE(operands[1])];
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                 } break;
                 case LL_IR_OPERAND_DATA_BIT: {
+                    params.use_sib = use_sib;
                     params.immediate = displacement;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_i64, params);
                     oc_array_append(&cc->tmp_arena, &b->internal_relocations, ((X86_64_Internal_Relocation) {
@@ -1800,6 +1804,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_rm64, params);
 
                         params.reg1 = params.reg0 | X86_64_REG_BASE;
+                        params.use_sib = use_sib;
                         params.displacement = displacement;
                         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                     } break;
@@ -1815,6 +1820,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_rm64, params);
 
                         params.reg1 = params.reg0 | X86_64_REG_BASE;
+                        params.use_sib = use_sib;
                         params.displacement = displacement;
                         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                     } break;
@@ -1827,6 +1833,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                     case LL_TYPE_INT: {
                 HANDLE_LEA_INTEGRAL_TYPE:
                         params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
+                        params.use_sib = use_sib;
                         params.displacement = displacement - (int64_t)b->parameters.items[OPD_VALUE(operands[1])];
                         OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LEA, r64_rm64, params);
                     } break;
