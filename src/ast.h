@@ -46,6 +46,7 @@ typedef enum {
     LL_STORAGE_CLASS_NATIVE = (1 << 2),
     LL_STORAGE_CLASS_MACRO  = (1 << 3),
     LL_STORAGE_CLASS_CONST  = (1 << 4),
+    LL_STORAGE_CLASS_POLYMORPHIC = (1 << 5),
 } LL_Storage_Class;
 
 typedef enum {
@@ -61,6 +62,13 @@ typedef struct {
     uint8_t has_const;
     LL_Token_Info token_info;
 } Ast_Base;
+
+typedef struct ll_function_instantiation {
+    struct ll_function_instantiation* next;
+    struct ll_type_function* fn_type;
+    Ast_Base* body optional;
+    uint32_t ir_index;
+} LL_Function_Instantiation;
 
 #define AST_IDENT_SYMBOL_INVALID ((int32_t)-1)
 
@@ -143,6 +151,7 @@ typedef struct {
     Ast_Base* expr;
     Ast_List arguments;
 	Ast_List ordered_arguments;
+    LL_Function_Instantiation* resolved_fn_inst;
     bool has_this_arg;
     LL_Token_Info p_close;
 } Ast_Invoke;
@@ -219,6 +228,8 @@ typedef struct {
     LL_Storage_Class storage_class;
     uint32_t ir_index;
     LL_Token_Info p_open, p_close;
+
+    LL_Function_Instantiation* (*instantiations)[LL_DEFAULT_MAP_ENTRY_COUNT];
 } Ast_Function_Declaration;
 
 typedef struct {

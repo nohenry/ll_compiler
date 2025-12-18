@@ -98,7 +98,7 @@ typedef struct {
     LL_Type* element_type;
 } LL_Type_Slice;
 
-typedef struct {
+typedef struct ll_type_function {
     LL_Type base;
     LL_Type* return_type;
     size_t parameter_count;
@@ -167,6 +167,10 @@ typedef struct ll_typer {
     LL_Typer_Record_Values* current_record_values;
 } LL_Typer;
 
+typedef struct {
+    Ast_Ident* ident;
+    LL_Type* type;
+} LL_Typer_Matched_Polymorph;
 
 LL_Type* ll_intern_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 size_t ll_type_hash(LL_Type* type, size_t seed);
@@ -195,6 +199,10 @@ void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
 void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type);
 LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type);
 
+
+LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Ast_Function_Declaration* fn_decl, LL_Function_Instantiation inst);
+LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Ast_Function_Declaration* fn_decl, LL_Type_Function* fn_type);
+bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base* type_decl, LL_Type* provided_type);
 
 static inline LL_Type* ll_get_base_type(LL_Type* type) {
     while (type && type->kind == LL_TYPE_NAMED) {

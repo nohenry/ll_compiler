@@ -154,7 +154,7 @@ START_SWITCH:
                     CONSUME();
                     PEEK(&token);
                     if (token.kind == '{') {
-                        result = parser_parse_block(cc, parser);
+                        result = (Ast_Base*)parser_parse_block(cc, parser);
                         result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
                         result->token_info = kw;
                         return result;
@@ -244,6 +244,7 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         ident->base.token_info = TOKEN_INFO(token);
 
         type = CREATE_NODE(AST_KIND_GENERIC, ((Ast_Generic) { .ident = ident }));
+        type = parser_parse_expression(cc, parser, type, 0, true);
     } else {
         type = parser_parse_expression(cc, parser, NULL, 0, true);
     }
@@ -1188,6 +1189,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
         Ast_Parameter_List newargs = { 0 };
         for (i = 0; i < AST_AS(node, Ast_Function_Declaration)->parameters.count; ++i) {
             oc_array_append(&cc->arena, &newargs, ((Ast_Parameter){
+                .base.kind = AST_KIND_PARAMETER,
                 .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->parameters.items[i].type, params),
                 .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Function_Declaration)->parameters.items[i].ident, params),
                 .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->parameters.items[i].initializer, params),

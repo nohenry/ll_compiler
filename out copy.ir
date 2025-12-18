@@ -1,0 +1,19 @@
+function(0):
+
+function write_int(1):
+b0(abs1):
+
+function main(2):
+b0(abs2):
+    store l0, 123		int32
+    r0 = lea l0		int32*
+    call f3 r0		
+    ret
+
+function(3):
+b0(abs3):
+    r0 = load p0		int32*
+    r1 = load r0		int64
+    call f1 r1		
+    ret
+

@@ -431,6 +431,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
         Ast_Function_Declaration* fn_decl = AST_AS(stmt, Ast_Function_Declaration);
         // we do not generate macros
         if (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) return;
+        if (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) return;
         if (fn_decl->ir_index != 0) return;
 
         LL_Ir_Block_Ref entry_block_ref = b->blocks.count;
@@ -440,6 +441,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
 
         LL_Ir_Function fn = {
             .ident = fn_decl->ident,
+            .fn_type = (LL_Type_Function*)fn_decl->ident->base.type,
             .entry = entry_block_ref,
             .exit = entry_block_ref,
             .flags = 0,
@@ -883,7 +885,49 @@ DO_BIN_OP_ASSIGN_OP:
         oc_assert(!lvalue);
         Ast_Invoke* inv = AST_AS(expr, Ast_Invoke);
 
-        LL_Ir_Operand invokee = ir_generate_expression(cc, b, inv->expr, true);
+        LL_Ir_Operand invokee;
+        if (inv->resolved_fn_inst) {
+            if (inv->resolved_fn_inst->ir_index == 0) {
+                LL_Ir_Block_Ref entry_block_ref = b->blocks.count;
+                LL_Ir_Block entry_block = { 0 };
+                entry_block.generated_offset = -1;
+                oc_array_append(&cc->arena, &b->blocks, entry_block);
+
+                LL_Ir_Function fn = {
+                    .fn_type = inv->resolved_fn_inst->fn_type,
+                    .entry = entry_block_ref,
+                    .exit = entry_block_ref,
+                    .flags = 0,
+                    .generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
+                    .block_count = 1,
+                };
+
+                inv->resolved_fn_inst->ir_index = b->fns.count;
+                oc_assert(inv->resolved_fn_inst->ir_index != 0);
+                oc_array_append(&cc->arena, &b->fns, fn);
+
+                if (inv->resolved_fn_inst->body) {
+                    int32_t last_function = b->current_function;
+                    LL_Ir_Block_Ref last_block = b->current_block;
+                    b->current_function = inv->resolved_fn_inst->ir_index;
+                    b->current_block = fn.entry;
+
+                    ir_generate_statement(cc, b, inv->resolved_fn_inst->body);
+
+                    if (!b->blocks.items[b->current_block].did_branch) {
+                        IR_APPEND_OP(LL_IR_OPCODE_RET);
+                    }
+
+                    b->current_block = last_block;
+                    b->current_function = last_function;
+                }
+            }
+
+            invokee = LL_IR_OPERAND_FUNCTION_BIT | inv->resolved_fn_inst->ir_index;
+        } else {
+            invokee = ir_generate_expression(cc, b, inv->expr, true);
+        }
+
         LL_Type_Function* fn_type = (LL_Type_Function*)inv->expr->type;
 
         LL_Ir_Operand ops[3 + inv->ordered_arguments.count];
@@ -1345,7 +1389,7 @@ LL_Type* ir_get_operand_type(LL_Backend_Ir* bir, LL_Ir_Function* fn, LL_Ir_Opera
         result = fn->locals.items[operand & LL_IR_OPERAND_VALUE_MASK].ident->base.type;
         break;
     case LL_IR_OPERAND_PARMAETER_BIT: {
-        LL_Type_Function* fn_type = (LL_Type_Function*)fn->ident->base.type;
+        LL_Type_Function* fn_type = (LL_Type_Function*)fn->fn_type;
         result = fn_type->parameters[operand & LL_IR_OPERAND_VALUE_MASK];
     } break;
     case LL_IR_OPERAND_FUNCTION_BIT:

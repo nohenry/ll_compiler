@@ -714,6 +714,9 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                 } else {
                     if (parameter->type) {
                         types[i] = ll_typer_get_type_from_typename(cc, typer, parameter->type);
+                        if (!types[i]) {
+                            fn_decl->storage_class |= LL_STORAGE_CLASS_POLYMORPHIC;
+                        }
                     }
                 }
 
@@ -769,7 +772,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                 ll_typer_report_error(((LL_Error) { .main_token = blk->c_open, .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Extern function shouldn't have a body");
                 ll_typer_report_error_done(cc, typer);
             }
-            if ((fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) == 0) {
+            if ((fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) == 0 && (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) == 0) {
                 ll_typer_type_statement(cc, typer, &fn_decl->body);
             }
         }
@@ -1784,6 +1787,7 @@ TRY_MEMBER_FUNCTION_CALL:
         Ast_Function_Declaration* fn_decl = NULL;
         LL_Scope* fn_scope = NULL;
         LL_Typer_Resolve_Result resolve = { 0 };
+        LL_Type** polymorphic_types = NULL;
 
         LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, &inv->expr, NULL, &resolve);
         if (fn_type->base.kind != LL_TYPE_FUNCTION) {
@@ -1800,7 +1804,13 @@ TRY_MEMBER_FUNCTION_CALL:
             fn_decl = (Ast_Function_Declaration*)resolve.scope->decl;
             fn_scope = resolve.scope;
         }
+
+        bool fn_is_polymorphic = fn_decl && (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC);
         bool fn_is_macro = fn_decl && (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO);
+
+        if (fn_is_polymorphic) {
+            polymorphic_types = alloca(sizeof(*polymorphic_types) * fn_decl->parameters.count);
+        }
         // if (!fn_decl && inv->expr->kind == AST_KIND_IDENT) {
         //     Ast_Ident* ident = AST_AS(inv->expr, Ast_Ident);
         //     if (ident->resolved_scope->kind == LL_SCOPE_KIND_FUNCTION) {
@@ -1810,6 +1820,7 @@ TRY_MEMBER_FUNCTION_CALL:
         // }
 
         Ast_Base** ordered_args = oc_arena_alloc(&cc->arena, sizeof(ordered_args[0]) * (fn_type->parameter_count + inv->arguments.count));
+        uint32_t*  arg_indices = oc_arena_alloc(&cc->arena, sizeof(arg_indices[0]) * (fn_type->parameter_count + inv->arguments.count));
         int ordered_arg_count = 0;
         int variadic_arg_count = 0;
 
@@ -1830,7 +1841,7 @@ TRY_MEMBER_FUNCTION_CALL:
         }
 
         uword arg_count = inv->arguments.count;
-        for (pi = 0 /* , di = 0 */; pi < arg_count; ++pi, ++di) {
+        for (pi = 0; pi < arg_count; ++pi, ++di) {
             LL_Type *declared_type = NULL, *provided_type = NULL;
             Ast_Base** value;
             Ast_Base** current_arg = &inv->arguments.items[pi];
@@ -1865,18 +1876,6 @@ TRY_MEMBER_FUNCTION_CALL:
                 }
 
                 di = AST_AS(parameter_scope->decl, Ast_Parameter)->ir_index;
-                declared_type = fn_type->parameters[di];
-                
-                // code ref and void are only typed checked when the parameter is expanded in macro body
-                if (declared_type && declared_type->kind != LL_TYPE_CODE_REF && declared_type->kind != LL_TYPE_VOID) {
-                    provided_type = ll_typer_type_expression(cc, typer, &kv->value, declared_type, NULL);
-                } else if (!fn_is_macro) {
-                    provided_type = ll_typer_type_expression(cc, typer, &kv->value, declared_type, NULL);
-                }
-                if (!declared_type) {
-                    declared_type = provided_type;
-                }
-
                 value = &kv->value;
             } else {
                 if (fn_type->is_variadic) {
@@ -1891,17 +1890,23 @@ TRY_MEMBER_FUNCTION_CALL:
                     break;
                 }
 
-                declared_type = fn_type->parameters[di];
-                // code ref and void are only typed checked when the parameter is expanded in macro body
-                if (declared_type && declared_type->kind != LL_TYPE_CODE_REF && declared_type->kind != LL_TYPE_VOID) {
-                    provided_type = ll_typer_type_expression(cc, typer, current_arg, declared_type, NULL);
-                } else if (!fn_is_macro) {
-                    provided_type = ll_typer_type_expression(cc, typer, current_arg, declared_type, NULL);
-                }
-                if (!declared_type) {
-                    declared_type = provided_type;
-                }
                 value = current_arg;
+            }
+
+            declared_type = fn_type->parameters[di];
+            
+            // code ref and void are only typed checked when the parameter is expanded in macro body
+            if (declared_type && declared_type->kind != LL_TYPE_CODE_REF && declared_type->kind != LL_TYPE_VOID) {
+                provided_type = ll_typer_type_expression(cc, typer, value, declared_type, NULL);
+            } else if (!fn_is_macro) {
+                provided_type = ll_typer_type_expression(cc, typer, value, declared_type, NULL);
+            }
+            if (!declared_type) {
+                declared_type = provided_type;
+            }
+
+            if (fn_is_polymorphic) {
+                polymorphic_types[di] = declared_type;
             }
 
             if (provided_type && declared_type) {
@@ -1925,8 +1930,10 @@ TRY_MEMBER_FUNCTION_CALL:
 
                 ll_typer_add_implicit_cast(cc, typer, value, declared_type);
             }
+
             ordered_arg_count++;
             ordered_args[di] = *value;
+            arg_indices[di] = (uint32_t)pi;
             if (!ordered_args[di]->type) {
                 ordered_args[di]->type = declared_type;
             }
@@ -2007,21 +2014,23 @@ TRY_MEMBER_FUNCTION_CALL:
 
             typer->current_scope = param_scope;
             for (int arg_i = 0; arg_i < ordered_arg_count; arg_i++) {
-                if (fn_decl->parameters.items[arg_i].type->kind == AST_KIND_GENERIC) {
-                    // get type of argument, and insert typedef for the generic ident to this type (using SCOPE_KIND_STRUCT for now)
-                    Ast_Base* cloned_generic = ast_clone_node_deep(cc, fn_decl->parameters.items[arg_i].type, (LL_Ast_Clone_Params) { 0 });
-                    cloned_generic->type = ll_typer_type_expression(cc, typer, &ordered_args[arg_i], NULL, NULL);
+                Ast_Parameter* parameter = &fn_decl->parameters.items[arg_i];
 
-                    LL_Scope_Simple* scope = create_scope_simple(LL_SCOPE_KIND_STRUCT, cloned_generic);
-                    scope->ident = AST_AS(cloned_generic, Ast_Generic)->ident;
-
-                    ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
+                if (!fn_type->parameters[arg_i]) {
+                    LL_Type* provided_type = ll_typer_type_expression(cc, typer, &ordered_args[arg_i], NULL, NULL);
+                    if (ll_typer_match_polymorphic(cc, typer, parameter->type, provided_type)) {
+                        parameter->ident->base.type = provided_type;
+                    } else {
+                        Ast_Base* original_argument = inv->arguments.items[arg_indices[arg_i]];
+                        ll_typer_report_error(((LL_Error){ .main_token = original_argument->token_info }), "invalid arg");
+                        ll_typer_report_error_done(cc, typer);
+                    }
                 }
 
-                fn_decl->parameters.items[arg_i].base.type = ll_typer_get_type_from_typename(cc, typer, fn_decl->parameters.items[arg_i].type);
+                parameter->base.type = ll_typer_get_type_from_typename(cc, typer, parameter->type);
 
-                LL_Scope_Macro_Parameter* scope = create_scope_macro_parameter(&fn_decl->parameters.items[arg_i]);
-                scope->ident = fn_decl->parameters.items[arg_i].ident;
+                LL_Scope_Macro_Parameter* scope = create_scope_macro_parameter(parameter);
+                scope->ident = parameter->ident;
                 scope->value = ordered_args[arg_i];
 
                 ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
@@ -2031,6 +2040,84 @@ TRY_MEMBER_FUNCTION_CALL:
             *expr = new_body;
 
             typer->current_scope = old_scope;
+        } else if (fn_is_polymorphic) {
+            fn_type = (LL_Type_Function*)ll_typer_get_fn_type(cc, typer, fn_type->return_type, polymorphic_types, fn_decl->parameters.count, fn_type->is_variadic);
+
+            LL_Function_Instantiation* this_inst = NULL;
+            if ((this_inst = ll_typer_function_instance_get(cc, typer, fn_decl, fn_type))) {
+            } else {
+                if (fn_decl->body) {
+
+
+                    LL_Scope* old_scope = typer->current_scope;
+
+
+
+                    Ast_Function_Declaration* new_fn_decl = (Ast_Function_Declaration*)ast_clone_node_deep(cc, (Ast_Base*)fn_decl, (LL_Ast_Clone_Params) { 0 });
+                    oc_assert(new_fn_decl->base.kind == AST_KIND_FUNCTION_DECLARATION);
+
+                    /*
+                        scope
+                            scope FUNCTION : original function
+                            scope FUNCTION : function instances
+                    */
+
+                    typer->current_scope = fn_scope->parent;
+                    LL_Scope* new_fn_scope = create_scope(LL_SCOPE_KIND_FUNCTION, new_fn_decl);
+                    ll_typer_scope_put(cc, typer, new_fn_scope, false);
+                    typer->current_scope = new_fn_scope;
+
+
+                    bool did_variadic = false;
+                    bool did_default = false;
+                    for (int arg_i = 0; arg_i < ordered_arg_count; arg_i++) {
+                        Ast_Parameter* parameter = &new_fn_decl->parameters.items[arg_i];
+
+                        if (did_variadic) {
+                            break;
+                        }
+                        if (parameter->flags & LL_PARAMETER_FLAG_VARIADIC) {
+                            did_variadic = true;
+                        }
+
+                        if (ll_typer_match_polymorphic(cc, typer, parameter->type, polymorphic_types[arg_i])) {
+                            parameter->ident->base.type = polymorphic_types[arg_i];
+                            parameter->base.type = polymorphic_types[arg_i];
+                        } else {
+                            Ast_Base* original_argument = inv->arguments.items[arg_indices[arg_i]];
+                            ll_typer_report_error(((LL_Error){ .main_token = original_argument->token_info }), "invalid arg");
+                            ll_typer_report_error_done(cc, typer);
+                        }
+
+                        parameter->ir_index = arg_i;
+
+                        LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, parameter);
+                        param_scope->ident = parameter->ident;
+
+                        ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope, false);
+                    }
+
+                    LL_Type_Function* last_fn = typer->current_fn;
+                    typer->current_fn = (LL_Type_Function*)fn_type;
+
+                    // type body
+                    ll_typer_type_statement(cc, typer, &new_fn_decl->body);
+
+
+                    LL_Function_Instantiation inst = {
+                        .body = new_fn_decl->body,
+                        .fn_type = fn_type,
+                        .ir_index = 0,
+                    };
+                    this_inst = ll_typer_function_instance_put(cc, typer, fn_decl, inst);
+
+
+                    typer->current_scope = old_scope;
+                    typer->current_fn = last_fn;
+                }
+            }
+
+            inv->resolved_fn_inst = this_inst;
         }
 
         result = fn_type->return_type;
@@ -2384,12 +2471,15 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         // oc_todo: search identifier in symbol table
         break;
     case AST_KIND_TYPE_POINTER: {
-        result = ll_typer_get_ptr_type(cc, typer, ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Type_Pointer)->element));
+        result = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Type_Pointer)->element);
+        if (!result) return NULL;
+        result = ll_typer_get_ptr_type(cc, typer, result);
         break;
     }
     case AST_KIND_INDEX: {
         oc_assert(AST_AS(typename, Ast_Slice)->stop == NULL);
         LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Slice)->ptr);
+        if (!element_type) return NULL;
         ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Slice)->start, NULL, NULL);
 
         uint64_t array_width;
@@ -2405,6 +2495,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
     }
     case AST_KIND_SLICE: {
         LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Slice)->ptr);
+        if (!element_type) return NULL;
         // ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Slice)->start, NULL, NULL);
         // LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Slice)->right);
         result = ll_typer_get_slice_type(cc, typer, element_type);
@@ -2416,6 +2507,36 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 
     typename->type = result;
     return result;
+}
+
+bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base* type_decl, LL_Type* provided_type) {
+    LL_Type* expected_type = ll_typer_get_type_from_typename(cc, typer, type_decl);
+    if (expected_type == provided_type) return true;
+
+    switch (type_decl->kind) {
+    case AST_KIND_GENERIC: {
+        Ast_Base* cloned_generic = ast_clone_node_deep(cc, type_decl, (LL_Ast_Clone_Params) { 0 });
+        cloned_generic->type = provided_type;
+
+        LL_Scope_Simple* scope = create_scope_simple(LL_SCOPE_KIND_STRUCT, cloned_generic);
+        scope->ident = AST_AS(cloned_generic, Ast_Generic)->ident;
+
+        ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
+        return true;
+    }
+
+    case AST_KIND_TYPE_POINTER: {
+        if (provided_type->kind != LL_TYPE_POINTER) {
+            return false;
+        }
+
+        return ll_typer_match_polymorphic(cc, typer,
+            AST_AS(type_decl, Ast_Type_Pointer)->element,
+            ((LL_Type_Pointer*)provided_type)->element_type
+        );
+    } break;
+    default: oc_todo("flskdfj"); break;
+    }
 }
 
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
@@ -2490,6 +2611,47 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
 void ll_print_type(LL_Type* type) {
     ll_print_type_raw(type, &stdout_writer);
     print("\n");
+}
+
+LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Ast_Function_Declaration* fn_decl, LL_Function_Instantiation inst) {
+    (void)cc;
+    (void)typer;
+    size_t hash;
+    hash = ll_type_hash((LL_Type*)inst.fn_type, MAP_DEFAULT_SEED);
+
+    if (!fn_decl->instantiations) {
+        fn_decl->instantiations = oc_arena_alloc(&cc->arena, sizeof(*fn_decl->instantiations));
+    }
+
+    hash = hash % oc_len(*fn_decl->instantiations);
+    LL_Function_Instantiation *current = (*fn_decl->instantiations)[hash];
+
+    LL_Function_Instantiation* new_entry = oc_arena_dup(&cc->arena, &inst, sizeof(inst));
+    new_entry->next = current;
+
+    (*fn_decl->instantiations)[hash] = new_entry;
+    return new_entry;
+}
+
+LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Ast_Function_Declaration* fn_decl, LL_Type_Function* fn_type) {
+    (void)cc;
+    (void)typer;
+    size_t hash;
+    hash = ll_type_hash((LL_Type*)fn_type, MAP_DEFAULT_SEED);
+    hash = hash % oc_len(*fn_decl->instantiations);
+
+    if (!fn_decl->instantiations) {
+        fn_decl->instantiations = oc_arena_alloc(&cc->arena, sizeof(*fn_decl->instantiations));
+    }
+    LL_Function_Instantiation* current = (*fn_decl->instantiations)[hash];
+
+    while (current) {
+        if (current->fn_type == fn_type) return current;
+        current = current->next;
+    }
+
+    if (current) return current;
+    return NULL;
 }
 
 void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist) {

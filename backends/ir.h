@@ -128,6 +128,7 @@ typedef struct {
 
 typedef struct {
     Ast_Ident* ident;
+    LL_Type_Function* fn_type;
     LL_Ir_Block_Ref entry;
     LL_Ir_Block_Ref exit;
     LL_Ir_Local_List locals;

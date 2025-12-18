@@ -27,6 +27,10 @@ void macro foreach(int[:] array, void code) {
     }
 }
 
+void macro test_ptr_arg(%T* a) {
+    write_int(*a);
+}
+
 void main() {
     int add_amount = 2;
     int a;
@@ -55,4 +59,7 @@ void main() {
     foreach(a, do {
         write_int(element);
     });
+
+    int64 aa = 123;
+    test_ptr_arg(&aa);
 }

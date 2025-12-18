@@ -36,6 +36,16 @@ typedef struct {
 } X86_64_Internal_Relocation_List;
 
 typedef struct {
+    size_t text_rel_byte_offset;
+    uint32_t fn_index;
+} X86_64_Function_Relocation;
+
+typedef struct {
+    size_t count, capacity;
+    X86_64_Function_Relocation* items;
+} X86_64_Function_Relocation_List;
+
+typedef struct {
     size_t count, capacity;
     uint64_t* items;
 } X86_64_Locals_List;
@@ -76,6 +86,7 @@ typedef struct {
 
     X86_64_Branch_Relocation_List branch_relocations;
     X86_64_Internal_Relocation_List internal_relocations;
+    X86_64_Function_Relocation_List fn_relocations;
     uint32_t stack_used, stack_used_for_args;
 
     uint32_t active_register_top;
@@ -177,6 +188,7 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     memset(&b->ops, 0, sizeof(b->ops));
     memset(&b->internal_relocations, 0, sizeof(b->internal_relocations));
     memset(&b->branch_relocations, 0, sizeof(b->branch_relocations));
+    memset(&b->fn_relocations, 0, sizeof(b->fn_relocations));
 
 
     ll_native_fn_put(cc, &b->native_funcs, lit("write_int"), native_write);
@@ -1775,7 +1787,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_MOV, r64_i64, params);
                     oc_array_append(&cc->tmp_arena, &b->internal_relocations, ((X86_64_Internal_Relocation) {
                         .data_item = OPD_VALUE(operands[1]),
-                        .text_rel_byte_offset = b->section_text.count - 4 /* sizeof displacement */
+                        .text_rel_byte_offset = b->section_text.count - 8 /* sizeof displacement */
                     }));
                 } break;
                 case LL_IR_OPERAND_PARMAETER_BIT: {
@@ -2158,7 +2170,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
             uint32_t count = operands[invoke_offset++];
             X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
             LL_Ir_Function* invokee_fn = &bir->fns.items[OPD_VALUE(invokee)];
-            LL_Type_Function* fn_type = (LL_Type_Function*)invokee_fn->ident->base.type;
+            LL_Type_Function* fn_type = invokee_fn->fn_type;
             assert(fn_type->base.kind == LL_TYPE_FUNCTION);
 
             LL_Type* return_type = fn_type->return_type ? ll_get_base_type(fn_type->return_type) : NULL;
@@ -2310,11 +2322,18 @@ DO_OPCODE_ARITHMETIC_PREOP:
             case LL_IR_OPERAND_FUNCTION_BIT: {
                 LL_Ir_Function* fn = &bir->fns.items[OPD_VALUE(invokee)];
 
-                if (fn->flags & LL_IR_FUNCTION_FLAG_EXTERN || fn->generated_offset == LL_IR_FUNCTION_OFFSET_INVALID) {
+                if (fn->flags & LL_IR_FUNCTION_FLAG_EXTERN) {
                     params.relative = 0;
-
                     // OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_CALL, rel32, params);
                     oc_todo("implement extern");
+                } else if (fn->generated_offset == LL_IR_FUNCTION_OFFSET_INVALID) {
+                    params.relative = -(int64_t)b->section_text.count - 5;
+                    OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_CALL, rel32, params);
+
+                    oc_array_append(&cc->tmp_arena, &b->fn_relocations, ((X86_64_Function_Relocation) {
+                        .fn_index = OPD_VALUE(invokee),
+                        .text_rel_byte_offset = b->section_text.count - 4 /* sizeof displacement */
+                    }));
                 } else {
                     params.relative = (int32_t)(fn->generated_offset - (int64_t)b->section_text.count) - 5;
                     OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_CALL, rel32, params);
@@ -2450,7 +2469,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         fn->generated_offset = (int64_t)function_offset;
 
         int64_t mxcsr_offset = -1;
-        if (string_eql(b->fn->ident->str, lit("main"))) {
+        if (b->fn->ident && string_eql(b->fn->ident->str, lit("main"))) {
             b->stack_used += 4;
             mxcsr_offset = b->stack_used;
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_STMXCSR, rm32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE, .displacement = -(int64_t)b->stack_used }));
@@ -2458,11 +2477,13 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_LDMXCSR, rm32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE, .displacement = -(int64_t)b->stack_used }));
             b->stack_used += 4;
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_STMXCSR, rm32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE, .displacement = -(int64_t)b->stack_used }));
+
+            b->entry_index = fi;
         }
 
         // move registers to stack, if already on stack just use that offset
         X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
-        LL_Type_Function* fn_type = (LL_Type_Function*)fn->ident->base.type;
+        LL_Type_Function* fn_type = fn->fn_type;
         oc_array_reserve(&cc->tmp_arena, &b->parameters, fn_type->parameter_count);
         assert(fn_type->base.kind == LL_TYPE_FUNCTION);
 
@@ -2541,7 +2562,14 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
 
     }
 
-    b->entry_index = fi - 1;
+    for (size_t fi = 0; fi < b->fn_relocations.count; ++fi) {
+        X86_64_Function_Relocation relocation = b->fn_relocations.items[fi];
+        LL_Ir_Function* data_item = &bir->fns.items[relocation.fn_index];
+
+        int32_t* dst_offset = (int32_t*)&b->section_text.items[relocation.text_rel_byte_offset];
+        *dst_offset += data_item->generated_offset;
+    }
+
 }
 
 void x86_64_run(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
