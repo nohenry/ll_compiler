@@ -1,1 +1,1 @@
-invalid arg
+Expected a pointer type

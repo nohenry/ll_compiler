@@ -206,7 +206,7 @@ void ll_typer_report_error_note_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
 
     if (error.highlight_start.kind || error.highlight_end.kind || error.main_token.kind) {
         if (do_color) {
-            eprint("{}:{}:{}: \x1b[31;1mnote\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
+            eprint("{}:{}:{}: \x1b[34;1mnote\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
         } else {
             eprint("{}:{}:{}: note: ", cc->lexer->filename, line_info.line, line_info.column);
         }
@@ -2018,7 +2018,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
                 if (!fn_type->parameters[arg_i]) {
                     LL_Type* provided_type = ll_typer_type_expression(cc, typer, &ordered_args[arg_i], NULL, NULL);
-                    if (ll_typer_match_polymorphic(cc, typer, parameter->type, provided_type)) {
+                    if (ll_typer_match_polymorphic(cc, typer, parameter->type, provided_type, ordered_args[arg_i])) {
                         parameter->ident->base.type = provided_type;
                     } else {
                         Ast_Base* original_argument = inv->arguments.items[arg_indices[arg_i]];
@@ -2080,7 +2080,7 @@ TRY_MEMBER_FUNCTION_CALL:
                             did_variadic = true;
                         }
 
-                        if (ll_typer_match_polymorphic(cc, typer, parameter->type, polymorphic_types[arg_i])) {
+                        if (ll_typer_match_polymorphic(cc, typer, parameter->type, polymorphic_types[arg_i], ordered_args[arg_i])) {
                             parameter->ident->base.type = polymorphic_types[arg_i];
                             parameter->base.type = polymorphic_types[arg_i];
                         } else {
@@ -2509,7 +2509,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
     return result;
 }
 
-bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base* type_decl, LL_Type* provided_type) {
+bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base* type_decl, LL_Type* provided_type, Ast_Base* site) {
     LL_Type* expected_type = ll_typer_get_type_from_typename(cc, typer, type_decl);
     if (expected_type == provided_type) return true;
 
@@ -2527,13 +2527,75 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
 
     case AST_KIND_TYPE_POINTER: {
         if (provided_type->kind != LL_TYPE_POINTER) {
+            ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected a pointer type");
+            ll_typer_report_error_no_src("    you provided the type ");
+            ll_typer_report_error_type(cc, typer, provided_type);
+            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error_note(((LL_Error){ .main_token = type_decl->token_info }), "Parameter type defined here");
+            ll_typer_report_error_done(cc, typer);
             return false;
         }
 
         return ll_typer_match_polymorphic(cc, typer,
             AST_AS(type_decl, Ast_Type_Pointer)->element,
-            ((LL_Type_Pointer*)provided_type)->element_type
+            ((LL_Type_Pointer*)provided_type)->element_type,
+            site
         );
+    } break;
+    case AST_KIND_INDEX: {
+        Ast_Slice* slice = AST_AS(type_decl, Ast_Slice);
+        if (provided_type->kind != LL_TYPE_ARRAY) {
+            ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected an array type");
+            ll_typer_report_error_no_src("    you provided the type ");
+            ll_typer_report_error_type(cc, typer, provided_type);
+            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error_note(((LL_Error){ .main_token = slice->base.token_info }), "Parameter type defined here");
+            ll_typer_report_error_done(cc, typer);
+            return false;
+        }
+
+        ll_typer_type_expression(cc, typer, &slice->start, NULL, NULL);
+        uint64_t array_width;
+        if (slice->start->has_const) {
+            array_width = slice->start->const_value.as_u64;
+        } else {
+            LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, slice->start);
+            array_width = value.as_u64;
+        }
+
+        if (provided_type->width != array_width) {
+            ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected array to have {} elements but got one of {} elements", array_width, provided_type->width);
+            ll_typer_report_error_done(cc, typer);
+            return false;
+        }
+
+        bool result = true;
+        result |= ll_typer_match_polymorphic(cc, typer,
+            slice->ptr,
+            ((LL_Type_Slice*)provided_type)->element_type,
+            site
+        );
+        return result;
+    } break;
+    case AST_KIND_SLICE: {
+        Ast_Slice* slice = AST_AS(type_decl, Ast_Slice);
+        if (provided_type->kind != LL_TYPE_SLICE) {
+            ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected a slice type");
+            ll_typer_report_error_no_src("    you provided the type ");
+            ll_typer_report_error_type(cc, typer, provided_type);
+            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error_note(((LL_Error){ .main_token = slice->base.token_info}), "Parameter type defined here");
+            ll_typer_report_error_done(cc, typer);
+            return false;
+        }
+
+        bool result = true;
+        result |= ll_typer_match_polymorphic(cc, typer,
+            slice->ptr,
+            ((LL_Type_Slice*)provided_type)->element_type,
+            site
+        );
+        return result;
     } break;
     default: oc_todo("flskdfj"); break;
     }

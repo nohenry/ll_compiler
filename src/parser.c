@@ -653,7 +653,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
 #pragma GCC diagnostic pop
                 default: oc_assert(false); break;
             }
-            from_statement = false;
+            // from_statement = false;
         } else break;
     }
 
@@ -1122,6 +1122,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
     switch (node->kind) {
     case AST_KIND_BINARY_OP:
         result = CREATE_NODE(node->kind, ((Ast_Operation) {
+            .base.token_info = node->token_info,
             .left = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->left, params),
             .op = AST_AS(node, Ast_Operation)->op,
             .right = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->right, params),
@@ -1129,6 +1130,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
         break;
     case AST_KIND_PRE_OP: 
         result = CREATE_NODE(node->kind, ((Ast_Operation) {
+            .base.token_info = node->token_info,
             .op = AST_AS(node, Ast_Operation)->op,
             .right = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->right, params),
         }));
@@ -1140,6 +1142,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
             oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Invoke)->arguments.items[i], params));
         }
         result = CREATE_NODE(node->kind, ((Ast_Invoke) {
+            .base.token_info = node->token_info,
             .expr = AST_AS(node, Ast_Invoke)->expr,
             .arguments = newargs,
         }));
@@ -1155,6 +1158,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
             oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Initializer)->items[i], params));
         }
         result = CREATE_NODE(node->kind, ((Ast_Initializer) {
+            .base.token_info = node->token_info,
             .items = newargs.items,
             .count = newargs.count,
             .capacity = newargs.capacity,
@@ -1166,6 +1170,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
 
     case AST_KIND_KEY_VALUE: 
         result = CREATE_NODE(node->kind, ((Ast_Key_Value) {
+            .base.token_info = node->token_info,
             .key = ast_clone_node_deep(cc, AST_AS(node, Ast_Key_Value)->key, params),
             .value = ast_clone_node_deep(cc, AST_AS(node, Ast_Key_Value)->value, params),
         }));
@@ -1173,11 +1178,13 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
 
     case AST_KIND_CONST:
         result = CREATE_NODE(node->kind, ((Ast_Marker) {
+            .base.token_info = node->token_info,
             .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Marker)->expr, params),
         }));
         break;
     case AST_KIND_VARIABLE_DECLARATION:
         result = CREATE_NODE(node->kind, ((Ast_Variable_Declaration) {
+            .base.token_info = node->token_info,
             .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Variable_Declaration)->type, params),
             .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, params),
             .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Variable_Declaration)->initializer, params),
@@ -1190,6 +1197,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
         for (i = 0; i < AST_AS(node, Ast_Function_Declaration)->parameters.count; ++i) {
             oc_array_append(&cc->arena, &newargs, ((Ast_Parameter){
                 .base.kind = AST_KIND_PARAMETER,
+                .base.token_info = AST_AS(node, Ast_Function_Declaration)->parameters.items[i].base.token_info,
                 .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->parameters.items[i].type, params),
                 .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Function_Declaration)->parameters.items[i].ident, params),
                 .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->parameters.items[i].initializer, params),
@@ -1198,6 +1206,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
         }
 
         result = CREATE_NODE(node->kind, ((Ast_Function_Declaration) {
+            .base.token_info = node->token_info,
             .return_type = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->return_type, params),
             .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Function_Declaration)->ident, params),
             .body = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->body, params),
@@ -1208,6 +1217,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
 
     case AST_KIND_PARAMETER:
         result = CREATE_NODE(node->kind, ((Ast_Parameter){
+            .base.token_info = node->token_info,
             .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Parameter)->type, params),
             .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Parameter)->ident, params),
             .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Parameter)->initializer, params),
@@ -1218,11 +1228,13 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
     case AST_KIND_BREAK:
     case AST_KIND_RETURN:
         result = CREATE_NODE(node->kind, ((Ast_Control_Flow){
+            .base.token_info = node->token_info,
             .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Control_Flow)->expr, params),
         }));
         break;
     case AST_KIND_IF:
         result = CREATE_NODE(node->kind, ((Ast_If){
+            .base.token_info = node->token_info,
             .cond = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->cond, params),
             .body = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->body, params),
             .else_clause = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->else_clause, params),
@@ -1231,6 +1243,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
     case AST_KIND_WHILE:
     case AST_KIND_FOR:
         result = CREATE_NODE(node->kind, ((Ast_Loop){
+            .base.token_info = node->token_info,
             .init = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->init, params),
             .cond = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->cond, params),
             .update = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->update, params),
@@ -1241,6 +1254,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
     case AST_KIND_INDEX:
     case AST_KIND_SLICE:
         result = CREATE_NODE(node->kind, ((Ast_Slice){
+            .base.token_info = node->token_info,
             .ptr = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->ptr, params),
             .start = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->start, params),
             .stop = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->stop, params),
@@ -1249,6 +1263,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
 
     case AST_KIND_CAST:
         result = CREATE_NODE(node->kind, ((Ast_Cast){
+            .base.token_info = node->token_info,
             .cast_type = ast_clone_node_deep(cc, AST_AS(node, Ast_Cast)->cast_type, params),
             .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Cast)->expr, params),
         }));
@@ -1260,6 +1275,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
             oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Struct)->body.items[i], params));
         }
         result = CREATE_NODE(node->kind, ((Ast_Struct){
+            .base.token_info = node->token_info,
             .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Struct)->ident, params),
             .body = newargs,
         }));
@@ -1267,12 +1283,14 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
 
     case AST_KIND_GENERIC:
         result = CREATE_NODE(node->kind, ((Ast_Generic){
+            .base.token_info = node->token_info,
             .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Generic)->ident, params),
         }));
         break;
 
     case AST_KIND_TYPE_POINTER:
         result = CREATE_NODE(node->kind, ((Ast_Type_Pointer){
+            .base.token_info = node->token_info,
             .element = ast_clone_node_deep(cc, AST_AS(node, Ast_Type_Pointer)->element, params),
         }));
         break;
@@ -1288,6 +1306,7 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
             oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Block)->items[i], params));
         }
         result = CREATE_NODE(AST_KIND_BLOCK, ((Ast_Block){
+            .base.token_info = node->token_info,
             .flags = flags,
             .items = newargs.items,
             .count = newargs.count,
@@ -1297,21 +1316,25 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
 
     case AST_KIND_LITERAL_INT: {
         result = CREATE_NODE(node->kind, ((Ast_Literal){
+            .base.token_info = node->token_info,
             .u64 = AST_AS(node, Ast_Literal)->u64,
         }));
     } break;
     case AST_KIND_LITERAL_FLOAT: {
         result = CREATE_NODE(node->kind, ((Ast_Literal){
+            .base.token_info = node->token_info,
             .f64 = AST_AS(node, Ast_Literal)->f64,
         }));
     } break;
     case AST_KIND_LITERAL_STRING: {
         result = CREATE_NODE(node->kind, ((Ast_Literal){
+            .base.token_info = node->token_info,
             .str = AST_AS(node, Ast_Literal)->str,
         }));
     } break;
     case AST_KIND_IDENT: {
         result = CREATE_NODE(node->kind, ((Ast_Ident){
+            .base.token_info = node->token_info,
             .str = AST_AS(node, Ast_Ident)->str,
             .flags = AST_AS(node, Ast_Ident)->flags | (params.convert_all_idents_to_expansion ? AST_IDENT_FLAG_EXPAND : 0),
         }));
