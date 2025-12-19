@@ -1203,6 +1203,47 @@ HANDLE_SLICE_OP:
             break;
         }
 
+        if (ident->base.has_const) {
+            switch (ident->base.type->kind) {
+            case LL_TYPE_FLOAT: {
+                uint32_t literal_index = FUNCTION()->literals.count;
+                if (expr->type->width <= 32) {
+                    oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f32 = (float)AST_AS(expr, Ast_Literal)->f64 }));
+                } else if (expr->type->width <= 64) {
+                    oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f64 = AST_AS(expr, Ast_Literal)->f64 }));
+                } else {
+                    oc_assert(false);
+                }
+                result = LL_IR_OPERAND_IMMEDIATE64_BIT | literal_index;
+            } break;
+            case LL_TYPE_INT:
+                if (ident->base.const_value.as_i64 <= 0x7FFFFFFLL && ident->base.const_value.as_i64 > -0x7FFFFFFLL) {
+                    result = LL_IR_OPERAND_IMMEDIATE_BIT | (int32_t)ident->base.const_value.as_i64;
+                } else {
+                    uint32_t literal_index = FUNCTION()->literals.count;
+                    oc_assert(literal_index <= 0xFFFFFFF);
+                    oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = ident->base.const_value.as_i64 }));
+
+                    result = LL_IR_OPERAND_IMMEDIATE64_BIT | (int32_t)literal_index;
+                }
+                break;
+            case LL_TYPE_UINT:
+                if (ident->base.const_value.as_u64 <= 0xFFFFFFFULL) {
+                    result = LL_IR_OPERAND_IMMEDIATE_BIT | (uint32_t)ident->base.const_value.as_u64;
+                } else {
+                    uint32_t literal_index = FUNCTION()->literals.count;
+                    oc_assert(literal_index <= 0xFFFFFFF);
+                    oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = ident->base.const_value.as_u64 }));
+
+                    result = LL_IR_OPERAND_IMMEDIATE64_BIT | (uint32_t)literal_index;
+                }
+                break;
+            default: ll_print_type(ident->base.type); oc_todo("implement type"); break;
+            }
+
+            break; // break outer switch
+        }
+
         Ast_Base* decl = ident->resolved_scope->decl;
         switch (decl->kind) {
         case AST_KIND_VARIABLE_DECLARATION: result = LL_IR_OPERAND_LOCAL_BIT | AST_AS(decl, Ast_Variable_Declaration)->ir_index; break;

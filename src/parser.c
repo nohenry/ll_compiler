@@ -691,6 +691,15 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
         CONSUME();
         result = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = token, .right = parser_parse_expression(cc, parser, NULL, 140, false) }));
         break;
+    case '%':
+        CONSUME();
+        if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return NULL;
+        Ast_Ident* ident = create_ident(cc, token.str);
+        ident->base.token_info = TOKEN_INFO(token);
+
+        result = CREATE_NODE(AST_KIND_GENERIC, ((Ast_Generic) { .ident = ident }));
+        result = parser_parse_expression(cc, parser, result, 0, true);
+        break;
 #pragma GCC diagnostic pop
     
     case LL_TOKEN_KIND_INT:

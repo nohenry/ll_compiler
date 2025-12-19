@@ -18,6 +18,11 @@ void polymorphic_ptr_to_array(%T[7]* foo) {
     write_int(cast(int64)(*foo)[6]);
 }
 
+void polymorphic_array_count(%T[%N] foo) {
+    write_int(cast(int64)foo[2]);
+    write_int(cast(int64)N);
+}
+
 void main() {
     int a = 123;
     write_int(69);
@@ -31,4 +36,6 @@ void main() {
     polymorphic_array(ba);
 
     polymorphic_ptr_to_array(&ba);
+
+    polymorphic_array_count(ba);
 }

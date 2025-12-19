@@ -1166,26 +1166,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         }
 
         if (possible_const->has_const) {
-            Ast_Literal lit = {
-                .base.type = result,
-            };
-            switch (result->kind) {
-            case LL_TYPE_INT: {
-                lit.base.kind = AST_KIND_LITERAL_INT;
-                lit.u64 = (uint64_t)possible_const->const_value.as_i64;
-            } break;
-            case LL_TYPE_UINT: {
-                lit.base.kind = AST_KIND_LITERAL_INT;
-                lit.u64 = possible_const->const_value.as_u64;
-            } break;
-            case LL_TYPE_FLOAT: {
-                lit.base.kind = AST_KIND_LITERAL_FLOAT;
-                lit.f64 = possible_const->const_value.as_f64;
-            } break;
-            default: oc_assert(false); break;
-            }
-            Ast_Base* new_node = oc_arena_dup(&cc->arena, &lit, sizeof(lit));
-            *expr = new_node;
+            (*expr)->has_const = 1;
+            (*expr)->const_value = possible_const->const_value;
         }
 
         break;
@@ -2554,20 +2536,35 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
             return false;
         }
 
-        ll_typer_type_expression(cc, typer, &slice->start, NULL, NULL);
-        uint64_t array_width;
-        if (slice->start->has_const) {
-            array_width = slice->start->const_value.as_u64;
-        } else {
-            LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, slice->start);
-            array_width = value.as_u64;
-        }
+        if (slice->start->kind == AST_KIND_GENERIC) {
+            Ast_Base* cloned_generic = ast_clone_node_deep(cc, slice->start, (LL_Ast_Clone_Params) { 0 });
+            cloned_generic->has_const = 1;
 
-        if (provided_type->width != array_width) {
-            ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected array to have {} elements but got one of {} elements", array_width, provided_type->width);
-            ll_typer_report_error_done(cc, typer);
-            return false;
+            // is it fine if SCOPE LOCAL doesn't use an Ast_Variable_Decl?
+            LL_Scope_Simple* scope = create_scope_simple(LL_SCOPE_KIND_LOCAL, cloned_generic);
+            scope->ident = AST_AS(cloned_generic, Ast_Generic)->ident;
+            scope->ident->base.has_const = 1;
+            scope->ident->base.const_value.as_u64 = provided_type->width;
+            scope->ident->base.type = typer->ty_uint64;
+
+            ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
+        } else {
+            ll_typer_type_expression(cc, typer, &slice->start, NULL, NULL);
+            uint64_t array_width;
+            if (slice->start->has_const) {
+                array_width = slice->start->const_value.as_u64;
+            } else {
+                LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, slice->start);
+                array_width = value.as_u64;
+            }
+
+            if (provided_type->width != array_width) {
+                ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected array to have {} elements but got one of {} elements", array_width, provided_type->width);
+                ll_typer_report_error_done(cc, typer);
+                return false;
+            }
         }
+        
 
         bool result = true;
         result |= ll_typer_match_polymorphic(cc, typer,
