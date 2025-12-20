@@ -249,9 +249,14 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         type = parser_parse_expression(cc, parser, NULL, 0, true);
     }
 
-    if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
-    Ast_Ident* ident = create_ident(cc, token.str);
-    ident->base.token_info = TOKEN_INFO(token);
+    // if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
+    PEEK(&token);
+    Ast_Ident* ident = NULL;
+    if (token.kind == LL_TOKEN_KIND_IDENT) {
+        CONSUME();
+        ident = create_ident(cc, token.str);
+        ident->base.token_info = TOKEN_INFO(token);
+    }
 
     PEEK(&token);
     LL_Token_Info eql_info = { 0 };
@@ -1077,7 +1082,8 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
         case AST_KIND_PARAMETER:
             if (AST_AS(node, Ast_Variable_Declaration)->type)
                 print_node(AST_AS(node, Ast_Variable_Declaration)->type, indent + 1, w);
-            print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1, w);
+            if (AST_AS(node, Ast_Variable_Declaration)->ident)
+                print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1, w);
             break;
         case AST_KIND_RETURN:
             if (AST_AS(node, Ast_Control_Flow)->expr)

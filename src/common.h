@@ -50,6 +50,7 @@ extern string LL_KEYWORD_BREAK;
 extern string LL_KEYWORD_CONTINUE;
 extern string LL_KEYWORD_MACRO;
 extern string LL_KEYWORD_LET;
+extern string LL_KEYWORD_SIZEOF;
 
 extern string LL_KEYWORD_BOOL;
 extern string LL_KEYWORD_BOOL8;

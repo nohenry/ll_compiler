@@ -100,6 +100,7 @@ string LL_KEYWORD_BREAK;
 string LL_KEYWORD_CONTINUE;
 string LL_KEYWORD_MACRO;
 string LL_KEYWORD_LET;
+string LL_KEYWORD_SIZEOF;
 
 string LL_KEYWORD_BOOL;
 string LL_KEYWORD_BOOL8;
@@ -146,6 +147,7 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_CONTINUE = ll_intern_string(&result, lit("continue"));
     LL_KEYWORD_MACRO = ll_intern_string(&result, lit("macro"));
     LL_KEYWORD_LET = ll_intern_string(&result, lit("let"));
+    LL_KEYWORD_SIZEOF = ll_intern_string(&result, lit("sizeof"));
 
     LL_KEYWORD_BOOL = ll_intern_string(&result, lit("bool"));
     LL_KEYWORD_BOOL8 = ll_intern_string(&result, lit("bool8"));

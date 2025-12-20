@@ -148,16 +148,6 @@ typedef struct {
 
 typedef struct {
     Ast_Base base;
-    Ast_Base* expr;
-    Ast_List arguments;
-	Ast_List ordered_arguments;
-    LL_Function_Instantiation* resolved_fn_inst;
-    bool has_this_arg;
-    LL_Token_Info p_close;
-} Ast_Invoke;
-
-typedef struct {
-    Ast_Base base;
     Ast_Base* key;
     Ast_Base* value;
 } Ast_Key_Value;
@@ -231,6 +221,17 @@ typedef struct {
 
     LL_Function_Instantiation* (*instantiations)[LL_DEFAULT_MAP_ENTRY_COUNT];
 } Ast_Function_Declaration;
+
+typedef struct {
+    Ast_Base base;
+    Ast_Base* expr;
+    Ast_List arguments;
+	Ast_List ordered_arguments;
+    Ast_Function_Declaration* fn_decl;
+    LL_Function_Instantiation* resolved_fn_inst;
+    bool has_this_arg;
+    LL_Token_Info p_close;
+} Ast_Invoke;
 
 typedef struct {
     Ast_Base base;

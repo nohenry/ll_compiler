@@ -1,4 +1,5 @@
 native void write_int(int64 v);
+native void write_string(string v);
 
 void polymorphic(%T foo) {
     T foo_plus_1 = foo + 1;
@@ -25,6 +26,13 @@ void polymorphic_array_count(%T[%N] foo) {
     write_int(cast(int64)N);
 }
 
+void just_polymorphic_type(%T) {
+    T foo;
+
+    write_int(sizeof(T));
+    write_string("just polypmorh");
+}
+
 void main() {
     int a = 123;
     write_int(69);
@@ -40,4 +48,7 @@ void main() {
     polymorphic_ptr_to_array(&ba);
 
     polymorphic_array_count(ba);
+
+
+    just_polymorphic_type(int);
 }

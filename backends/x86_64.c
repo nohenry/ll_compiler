@@ -2373,7 +2373,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_JMP, rel32, params);
             break;
         case LL_IR_OPCODE_RETVALUE:
-            LL_Type_Function* fn_type = (LL_Type_Function*)b->fn->ident->base.type;
+            LL_Type_Function* fn_type = (LL_Type_Function*)b->fn->fn_type;
 
             if (b->indirect_return_type) {
                 LL_Type* return_type = ll_get_base_type(fn_type->return_type);

@@ -8,16 +8,16 @@ struct Dynamic_Array {
     void* data;
 }
 
-Dynamic_Array create() {
+Dynamic_Array create(%T) {
     Dynamic_Array dyn;
     dyn.count = 0;
     dyn.capacity = 0;
-    dyn.stride = 8;
+    dyn.stride = sizeof(T);
     dyn.data = null;
     return dyn;
 }
 
-void macro append(%D dyn, %T value) {
+void append(%D* dyn, %T value) {
     dyn.count += 1;
     if dyn.count > dyn.capacity {
         dyn.capacity = dyn.count * 2 + 16;
@@ -37,7 +37,7 @@ void macro foreach(%D dyn, %T tm, void code) {
 }
 
 void main() {
-    Dynamic_Array d = create();
+    Dynamic_Array d = create(int64);
     d.append(cast(int64)5);
     d.append(cast(int64)10);
     d.append(cast(int64)17);

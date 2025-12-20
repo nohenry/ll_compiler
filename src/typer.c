@@ -782,13 +782,16 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                     ll_typer_report_error_done(cc, typer);
                 }
 
-                parameter->ident->base.type = types[i];
                 parameter->ir_index = i;
                     
-                LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, parameter);
-                param_scope->ident = parameter->ident;
-
-                ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope, false);
+                // If we don't have an identifier it should be a generic without a name
+                // @TODO: throw error if it's not a generic and doesn't ahve identifier
+                if (parameter->ident) {
+                    parameter->ident->base.type = types[i];
+                    LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, parameter);
+                    param_scope->ident = parameter->ident;
+                    ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope, false);
+                }
             }
         } else types = NULL;
 
@@ -1853,6 +1856,24 @@ TRY_MEMBER_FUNCTION_CALL:
         LL_Typer_Resolve_Result resolve = { 0 };
         LL_Type** polymorphic_types = NULL;
 
+        if (inv->expr->kind == AST_KIND_IDENT && AST_AS(inv->expr, Ast_Ident)->str.ptr == LL_KEYWORD_SIZEOF.ptr) {
+            // @Todo: throw error if not 1 arg
+            result = ll_typer_type_expression(cc, typer, &inv->arguments.items[0], NULL, NULL);
+
+            LL_Backend_Layout layout;
+            if (result == typer->ty_type && inv->arguments.items[0]->has_const) {
+                layout = cc->target->get_layout(inv->arguments.items[0]->const_value.as_type);
+            } else {
+                layout = cc->target->get_layout(inv->arguments.items[0]->type);
+            }
+
+            (*expr)->has_const = true;
+            (*expr)->const_value.as_u64 = layout.size;
+
+            result = typer->ty_uint64;
+            break;
+        }
+
         LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, &inv->expr, NULL, &resolve);
         if (fn_type->base.kind != LL_TYPE_FUNCTION) {
             ll_typer_report_error(((LL_Error){ .main_token = inv->expr->token_info }), "Unable to call this like a function");
@@ -1866,6 +1887,7 @@ TRY_MEMBER_FUNCTION_CALL:
         // if we're directly calling a function:
         if (resolve.scope && resolve.scope->kind == LL_SCOPE_KIND_FUNCTION) {
             fn_decl = (Ast_Function_Declaration*)resolve.scope->decl;
+            inv->fn_decl = fn_decl;
             fn_scope = resolve.scope;
         }
 
@@ -1893,6 +1915,13 @@ TRY_MEMBER_FUNCTION_CALL:
             inv->has_this_arg = true;
 
             (void)ll_typer_type_expression(cc, typer, resolve.this_arg, declared_type, NULL);
+
+            if (fn_is_polymorphic) {
+                polymorphic_types[0] = (*resolve.this_arg)->type;
+                if (polymorphic_types[0]->kind != LL_TYPE_POINTER && !declared_type && fn_decl->parameters.items[0].type->kind == AST_KIND_TYPE_POINTER) {
+                    fn_type->parameters[0] = ll_typer_get_ptr_type(cc, typer, polymorphic_types[0]);
+                }
+            }
 
             ordered_arg_count++;
             ordered_args[0] = *resolve.this_arg;
@@ -1965,15 +1994,22 @@ TRY_MEMBER_FUNCTION_CALL:
             } else if (!fn_is_macro) {
                 provided_type = ll_typer_type_expression(cc, typer, value, declared_type, NULL);
             }
+            bool check_type_matches = true;
             if (!declared_type) {
-                declared_type = provided_type;
+                if (fn_decl && !fn_decl->parameters.items[di].ident && provided_type == typer->ty_type) {
+                    if (!(*value)->has_const) oc_todo("runtime type");
+                    declared_type = (*value)->const_value.as_type;
+                } else {
+                    declared_type = provided_type;
+                }
+                check_type_matches = false;
             }
 
             if (fn_is_polymorphic) {
                 polymorphic_types[di] = declared_type;
             }
 
-            if (provided_type && declared_type) {
+            if (check_type_matches && provided_type && declared_type) {
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, *value, declared_type)) {
                     ll_typer_report_error(((LL_Error){ .main_token = (*value)->token_info }), "Can't pass value to function parameter");
 
@@ -2082,7 +2118,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
                 if (!fn_type->parameters[arg_i]) {
                     LL_Type* provided_type = ll_typer_type_expression(cc, typer, &ordered_args[arg_i], NULL, NULL);
-                    if (ll_typer_match_polymorphic(cc, typer, parameter->type, provided_type, ordered_args[arg_i])) {
+                    if (ll_typer_match_polymorphic(cc, typer, parameter->type, provided_type, ordered_args[arg_i], resolve.this_arg != NULL && arg_i == 0)) {
                         parameter->ident->base.type = provided_type;
                     } else {
                         Ast_Base* original_argument = inv->arguments.items[arg_indices[arg_i]];
@@ -2144,8 +2180,9 @@ TRY_MEMBER_FUNCTION_CALL:
                             did_variadic = true;
                         }
 
-                        if (ll_typer_match_polymorphic(cc, typer, parameter->type, polymorphic_types[arg_i], ordered_args[arg_i])) {
-                            parameter->ident->base.type = polymorphic_types[arg_i];
+                        // if no ident, it means this is just a type polymorph
+                        if (ll_typer_match_polymorphic(cc, typer, parameter->type, polymorphic_types[arg_i], ordered_args[arg_i], resolve.this_arg != NULL && arg_i == 0)) {
+                            if (parameter->ident) parameter->ident->base.type = polymorphic_types[arg_i];
                             parameter->base.type = polymorphic_types[arg_i];
                         } else {
                             Ast_Base* original_argument = inv->arguments.items[arg_indices[arg_i]];
@@ -2155,10 +2192,12 @@ TRY_MEMBER_FUNCTION_CALL:
 
                         parameter->ir_index = arg_i;
 
-                        LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, parameter);
-                        param_scope->ident = parameter->ident;
+                        if (parameter->ident) {
+                            LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, parameter);
+                            param_scope->ident = parameter->ident;
 
-                        ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope, false);
+                            ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope, false);
+                        }
                     }
 
                     LL_Type_Function* last_fn = typer->current_fn;
@@ -2610,7 +2649,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
     return result;
 }
 
-bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base* type_decl, LL_Type* provided_type, Ast_Base* site) {
+bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base* type_decl, LL_Type* provided_type, Ast_Base* site, bool is_top_level_this_arg) {
     LL_Type* expected_type = ll_typer_get_type_from_typename(cc, typer, type_decl);
     if (expected_type == provided_type) return true;
 
@@ -2628,7 +2667,24 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
     }
 
     case AST_KIND_TYPE_POINTER: {
+        bool result = true;
         if (provided_type->kind != LL_TYPE_POINTER) {
+            if (is_top_level_this_arg) {
+                // func(%T* this)
+                // int a;
+                // a.func(); <- can pass this as pointer; autoderef
+                result = ll_typer_match_polymorphic(cc, typer,
+                    AST_AS(type_decl, Ast_Type_Pointer)->element,
+                    provided_type,
+                    site,
+                    false
+                );
+            } else {
+                result = false;
+            }
+        }
+
+        if (!result) {
             ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected a pointer type");
             ll_typer_report_error_no_src("    you provided the type ");
             ll_typer_report_error_type(cc, typer, provided_type);
@@ -2641,7 +2697,8 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
         return ll_typer_match_polymorphic(cc, typer,
             AST_AS(type_decl, Ast_Type_Pointer)->element,
             ((LL_Type_Pointer*)provided_type)->element_type,
-            site
+            site,
+            false
         );
     } break;
     case AST_KIND_INDEX: {
@@ -2690,7 +2747,8 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
         result |= ll_typer_match_polymorphic(cc, typer,
             slice->ptr,
             ((LL_Type_Slice*)provided_type)->element_type,
-            site
+            site,
+            false
         );
         return result;
     } break;
@@ -2710,7 +2768,8 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
         result |= ll_typer_match_polymorphic(cc, typer,
             slice->ptr,
             ((LL_Type_Slice*)provided_type)->element_type,
-            site
+            site,
+            false
         );
         return result;
     } break;

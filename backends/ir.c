@@ -940,6 +940,11 @@ DO_BIN_OP_ASSIGN_OP:
         oc_assert(!lvalue);
         Ast_Invoke* inv = AST_AS(expr, Ast_Invoke);
 
+        if (inv->expr->kind == AST_KIND_IDENT && AST_AS(inv->expr, Ast_Ident)->str.ptr == LL_KEYWORD_SIZEOF.ptr) {
+            result = ir_const_to_operand(cc, b, expr->type, expr->const_value);
+            break;
+        }
+
         LL_Ir_Operand invokee;
         if (inv->resolved_fn_inst) {
             if (inv->resolved_fn_inst->ir_index == 0) {
@@ -950,6 +955,7 @@ DO_BIN_OP_ASSIGN_OP:
 
                 LL_Ir_Function fn = {
                     .fn_type = inv->resolved_fn_inst->fn_type,
+                    // .fn_decl = inv->fn_decl,
                     .entry = entry_block_ref,
                     .exit = entry_block_ref,
                     .flags = 0,
@@ -998,11 +1004,13 @@ DO_BIN_OP_ASSIGN_OP:
         }
 
         ops[offset++] = invokee;
-        ops[offset++] = inv->ordered_arguments.count;
+        uint32_t* args_count = &ops[offset++];
+        *args_count = offset;
         for (i = 0; i < inv->ordered_arguments.count; ++i) {
             LL_Type* parameter_type;
             bool arg_lea = false;
             bool arg_lvalue = false;
+
             if (i >= fn_type->parameter_count - 1 && fn_type->is_variadic) {
                 parameter_type = cc->typer->ty_int32;
             } else {
@@ -1020,6 +1028,13 @@ DO_BIN_OP_ASSIGN_OP:
                 }
             }
 
+            if (inv->fn_decl) {
+                if (!inv->fn_decl->parameters.items[i].ident && parameter_type->kind == LL_TYPE_TYPE && inv->ordered_arguments.items[i]->has_const) {
+                    // we don't generate arguments for const only operands
+                    continue;
+                }
+            }
+
             LL_Ir_Operand arg_operand = ir_generate_expression(cc, b, inv->ordered_arguments.items[i], arg_lvalue);
             if (arg_lea) {
                 arg_operand = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, parameter_type, arg_operand);
@@ -1033,6 +1048,7 @@ DO_BIN_OP_ASSIGN_OP:
 
             ops[offset++] = arg_operand;
         }
+        *args_count = offset - *args_count;
 
         ir_append_op(cc, b, b->current_block, opcode, ops, offset);
 
