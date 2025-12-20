@@ -6,7 +6,7 @@ void do_integer_casting() {
     int8 a = 123;
     uint b = cast(uint)a;
 
-    write_int(b);
+    write_int(cast(int64)b);
 
     a = -10;
     write_int(a);

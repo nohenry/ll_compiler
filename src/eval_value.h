@@ -7,6 +7,7 @@ typedef struct ll_eval_value {
         double                as_f64;
         void*                 as_object;
         struct ll_eval_value* as_ptr;
+        struct ll_type*       as_type;
     };
 } LL_Eval_Value;
 

@@ -63,4 +63,18 @@ void main() {
     write_float64(arraay_data[1]);
     write_float64(arraay_data[2]);
     write_float64(arraay_data[3]);
+
+
+    const let Ima_Type = int;
+    Ima_Type bb = 123;
+    write_int(cast(int64)bb);
+
+    const let Ima_Type_Ptr = Ima_Type*;
+    Ima_Type_Ptr bb1 = &bb;
+    write_int(cast(int64)*bb1);
+
+    const let Ima_Type_Array = Ima_Type[8];
+    Ima_Type_Array bb2;
+    bb2[2] = bb;
+    write_int(cast(int64)bb2[2]);
 }

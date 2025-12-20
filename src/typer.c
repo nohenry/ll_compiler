@@ -59,33 +59,64 @@ LL_Typer ll_typer_create(Compiler_Context* cc) {
     };
     result.root_scope = result.current_scope = oc_arena_dup(&cc->arena, &root_scope, sizeof(root_scope));
 
-    result.ty_void = create_type(((LL_Type){ .kind = LL_TYPE_VOID }));
+    #define INSERT_BUILTIN_TYPE(ty, keyword, ...) do {                \
+        result.ty = create_type(((LL_Type) { __VA_ARGS__ }));                      \
+        LL_Scope_Builtin* scope = oc_arena_alloc(&cc->arena, sizeof(*scope)); \
+        scope->kind = LL_SCOPE_KIND_TYPENAME; \
+        scope->ident = oc_arena_alloc(&cc->arena, sizeof(*scope->ident));     \
+        scope->ident->resolved_scope = (LL_Scope*)scope;                                 \
+        scope->ident->str = keyword;                                          \
+        scope->declared_type = result.ty; \
+        ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);                           \
+    } while (0)
+    #define INSERT_TYPE_SCOPE(ty, keyword) do {                \
+        LL_Scope_Builtin* scope = oc_arena_alloc(&cc->arena, sizeof(*scope)); \
+        scope->kind = LL_SCOPE_KIND_TYPENAME; \
+        scope->ident = oc_arena_alloc(&cc->arena, sizeof(*scope->ident));     \
+        scope->ident->resolved_scope = (LL_Scope*)scope;                                 \
+        scope->ident->str = keyword;                                          \
+        scope->declared_type = result.ty; \
+        ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);                           \
+    } while (0)
+    #define INSERT_ANY_TYPE(ty, ...) do {                \
+        result.ty = create_type(((LL_Type) { __VA_ARGS__ }));                      \
+    } while (0)
 
-    result.ty_int8 = create_type(((LL_Type){ .kind = LL_TYPE_INT, .width = 8 }));
-    result.ty_int16 = create_type(((LL_Type){ .kind = LL_TYPE_INT, .width = 16 }));
-    result.ty_int32 = create_type(((LL_Type){ .kind = LL_TYPE_INT, .width = 32 }));
-    result.ty_int64 = create_type(((LL_Type){ .kind = LL_TYPE_INT, .width = 64 }));
-    result.ty_uint8 = create_type(((LL_Type){ .kind = LL_TYPE_UINT, .width = 8 }));
-    result.ty_uint16 = create_type(((LL_Type){ .kind = LL_TYPE_UINT, .width = 16 }));
-    result.ty_uint32 = create_type(((LL_Type){ .kind = LL_TYPE_UINT, .width = 32 }));
-    result.ty_uint64 = create_type(((LL_Type){ .kind = LL_TYPE_UINT, .width = 64 }));
-    result.ty_anyint = create_type(((LL_Type){ .kind = LL_TYPE_ANYINT }));
+    INSERT_BUILTIN_TYPE(ty_void, LL_KEYWORD_VOID, .kind = LL_TYPE_VOID);
 
-    result.ty_float16 = create_type(((LL_Type){ .kind = LL_TYPE_FLOAT, .width = 16 }));
-    result.ty_float32 = create_type(((LL_Type){ .kind = LL_TYPE_FLOAT, .width = 32 }));
-    result.ty_float64 = create_type(((LL_Type){ .kind = LL_TYPE_FLOAT, .width = 64 }));
-    result.ty_anyfloat = create_type(((LL_Type){ .kind = LL_TYPE_ANYFLOAT }));
+    INSERT_BUILTIN_TYPE(ty_int8, LL_KEYWORD_INT8, .kind = LL_TYPE_INT, .width = 8);
+    INSERT_BUILTIN_TYPE(ty_int16, LL_KEYWORD_INT16, .kind = LL_TYPE_INT, .width = 16);
+    INSERT_BUILTIN_TYPE(ty_int32, LL_KEYWORD_INT32, .kind = LL_TYPE_INT, .width = 32);
+    INSERT_BUILTIN_TYPE(ty_int64, LL_KEYWORD_INT64, .kind = LL_TYPE_INT, .width = 64);
+    INSERT_TYPE_SCOPE(ty_int64, LL_KEYWORD_INT);
+    INSERT_BUILTIN_TYPE(ty_uint8, LL_KEYWORD_UINT8, .kind = LL_TYPE_UINT, .width = 8);
+    INSERT_BUILTIN_TYPE(ty_uint16, LL_KEYWORD_UINT16, .kind = LL_TYPE_UINT, .width = 16);
+    INSERT_BUILTIN_TYPE(ty_uint32, LL_KEYWORD_UINT32, .kind = LL_TYPE_UINT, .width = 32);
+    INSERT_BUILTIN_TYPE(ty_uint64, LL_KEYWORD_UINT64, .kind = LL_TYPE_UINT, .width = 64);
+    INSERT_TYPE_SCOPE(ty_uint64, LL_KEYWORD_UINT);
+    INSERT_ANY_TYPE(ty_anyint,.kind = LL_TYPE_ANYINT);
 
-    result.ty_bool8 = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 8 }));
-    result.ty_bool16 = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 16 }));
-    result.ty_bool32 = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 32 }));
-    result.ty_bool64 = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 64 }));
-    result.ty_bool = create_type(((LL_Type){ .kind = LL_TYPE_BOOL, .width = 1 }));
-    result.ty_anybool = create_type(((LL_Type){ .kind = LL_TYPE_ANYBOOL }));
+    INSERT_BUILTIN_TYPE(ty_float16, LL_KEYWORD_FLOAT16, .kind = LL_TYPE_FLOAT, .width = 16);
+    INSERT_BUILTIN_TYPE(ty_float32, LL_KEYWORD_FLOAT32, .kind = LL_TYPE_FLOAT, .width = 32);
+    INSERT_BUILTIN_TYPE(ty_float64, LL_KEYWORD_FLOAT64, .kind = LL_TYPE_FLOAT, .width = 64);
+    INSERT_BUILTIN_TYPE(ty_float64, LL_KEYWORD_FLOAT, .kind = LL_TYPE_FLOAT, .width = 64);
+    INSERT_ANY_TYPE(ty_anyfloat, .kind = LL_TYPE_ANYFLOAT);
 
-    result.ty_string = create_type(((LL_Type){ .kind = LL_TYPE_STRING }));
-    result.ty_code_ref = create_type(((LL_Type){ .kind = LL_TYPE_CODE_REF }));
-    result.ty_char = create_type(((LL_Type){ .kind = LL_TYPE_CHAR, .width = 8 }));
+    INSERT_BUILTIN_TYPE(ty_bool8, LL_KEYWORD_BOOL8, .kind = LL_TYPE_BOOL, .width = 8);
+    INSERT_BUILTIN_TYPE(ty_bool16, LL_KEYWORD_BOOL16, .kind = LL_TYPE_BOOL, .width = 16);
+    INSERT_BUILTIN_TYPE(ty_bool32, LL_KEYWORD_BOOL32, .kind = LL_TYPE_BOOL, .width = 32);
+    INSERT_BUILTIN_TYPE(ty_bool64, LL_KEYWORD_BOOL64, .kind = LL_TYPE_BOOL, .width = 64);
+    INSERT_BUILTIN_TYPE(ty_bool, LL_KEYWORD_BOOL, .kind = LL_TYPE_BOOL, .width = 1);
+    INSERT_ANY_TYPE(ty_anybool, .kind = LL_TYPE_ANYBOOL);
+
+    INSERT_BUILTIN_TYPE(ty_string, LL_KEYWORD_STRING, .kind = LL_TYPE_STRING);
+    INSERT_BUILTIN_TYPE(ty_char, LL_KEYWORD_CHAR, .kind = LL_TYPE_CHAR, .width = 8);
+
+    INSERT_ANY_TYPE(ty_type, .kind = LL_TYPE_TYPE);
+
+    #undef INSERT_BUILTIN_TYPE
+    #undef INSERT_TYPE_SCOPE
+    #undef INSERT_ANY_TYPE
 
     return result;
 }
@@ -296,6 +327,12 @@ void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* 
         ll_print_type_raw(type, &stderr_writer);
         eprint("'");
     }
+}
+
+void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL_Type* type) {
+    (void)cc;
+    (void)typer;
+    ll_print_type_raw(type, &stderr_writer);
 }
 
 void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer) {
@@ -640,18 +677,24 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                 typer->current_scope = var_scope->parent;
             }
 
-            if (!ll_typer_can_implicitly_cast_expression(cc, typer, var_decl->initializer, declared_type)) {
-                oc_assert(init_type != NULL);
-                oc_assert(declared_type != NULL);
-                ll_typer_report_error(((LL_Error){ .main_token = var_decl->base.token_info }), "Can't assign value to variable");
+            if (declared_type) {
+                if (!ll_typer_can_implicitly_cast_expression(cc, typer, var_decl->initializer, declared_type)) {
+                    oc_assert(init_type != NULL);
+                    oc_assert(declared_type != NULL);
+                    ll_typer_report_error(((LL_Error){ .main_token = var_decl->base.token_info }), "Can't assign value to variable");
 
-                ll_typer_report_error_no_src("    variable is declared with type ");
-                ll_typer_report_error_type(cc, typer, declared_type);
-                ll_typer_report_error_no_src(", but tried to initialize it with type ");
-                ll_typer_report_error_type(cc, typer, init_type);
-                ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error_no_src("    variable is declared with type ");
+                    ll_typer_report_error_type(cc, typer, declared_type);
+                    ll_typer_report_error_no_src(", but tried to initialize it with type ");
+                    ll_typer_report_error_type(cc, typer, init_type);
+                    ll_typer_report_error_no_src("\n");
 
-                ll_typer_report_error_done(cc, typer);
+                    ll_typer_report_error_done(cc, typer);
+                }
+
+                ll_typer_add_implicit_cast(cc, typer, &var_decl->initializer, declared_type);
+            } else {
+                var_decl->ident->base.type = init_type;
             }
 
             if (var_decl->storage_class & LL_STORAGE_CLASS_CONST) {
@@ -666,8 +709,6 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
                 var_decl->base.has_const = true;
                 var_decl->base.const_value = var_decl->initializer->const_value;
             }
-
-            ll_typer_add_implicit_cast(cc, typer, &var_decl->initializer, declared_type);
         }
 
 		if (typer->current_scope->kind == LL_SCOPE_KIND_STRUCT) {
@@ -794,6 +835,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         named_type.scope = struct_scope;
 
         struct_scope->decl->type = oc_arena_dup(&cc->arena, &named_type, sizeof(named_type));
+        struct_scope->declared_type = struct_scope->decl->type;
         struct_scope->ident->base.type = struct_scope->decl->type;
 
         LL_Typer_Current_Record record = { 0 };
@@ -895,6 +937,7 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         case LL_TYPE_CHAR:
         case LL_TYPE_INT:
         case LL_TYPE_UINT:
+        case LL_TYPE_ANYINT:
         case LL_TYPE_FLOAT:
             return true;
         default: break;
@@ -905,6 +948,7 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         case LL_TYPE_CHAR:
         case LL_TYPE_INT:
         case LL_TYPE_UINT:
+        case LL_TYPE_ANYINT:
         case LL_TYPE_FLOAT:
             return true;
         default: break;
@@ -950,11 +994,21 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
     }
 
     switch (src_type->kind) {
+    case LL_TYPE_ANYINT:
+        switch (dst_type->kind) {
+        case LL_TYPE_INT:
+        case LL_TYPE_UINT:
+            return true;
+        default: break;
+        }
+        break;
     case LL_TYPE_INT:
         switch (dst_type->kind) {
         case LL_TYPE_INT:
             if (dst_type->width >= src_type->width) return true;
             break;
+        case LL_TYPE_ANYINT:
+            return true;
         default: break;
         }
         break;
@@ -966,6 +1020,8 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
         case LL_TYPE_UINT:
             if (dst_type->width >= src_type->width) return true;
             break;
+        case LL_TYPE_ANYINT:
+            return true;
         default: break;
         }
         break;
@@ -1141,7 +1197,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 
         Ast_Base* possible_const = (Ast_Base*)scope->ident;
 
-        if (scope->kind == LL_SCOPE_KIND_MACRO_PARAMETER) {
+        switch (scope->kind) {
+        case LL_SCOPE_KIND_MACRO_PARAMETER: {
             LL_Scope_Macro_Parameter* macro_param = (LL_Scope_Macro_Parameter*)scope;
             *expr = ast_clone_node_deep(cc, macro_param->value, (LL_Ast_Clone_Params) { .convert_all_idents_to_expansion = true });
             possible_const = *expr;
@@ -1152,7 +1209,14 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
                 ll_typer_add_implicit_cast(cc, typer, expr, macro_param->decl->type);
             }
             result = (*expr)->type;
-        } else {
+        } break;
+        case LL_SCOPE_KIND_TYPENAME:
+        case LL_SCOPE_KIND_STRUCT: {
+            (*expr)->has_const = 1;
+            (*expr)->const_value.as_type = scope->declared_type;
+            result = typer->ty_type;
+        } break;
+        default: {
             AST_AS((*expr), Ast_Ident)->resolved_scope = scope;
 
             if (resolve_result) {
@@ -1168,6 +1232,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             } else {
                 result = scope->ident->base.type;
             }
+        } break;
         }
 
         if (possible_const->has_const) {
@@ -1177,6 +1242,18 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 
         break;
     }
+    case AST_KIND_TYPE_POINTER: {
+        Ast_Base** element = &AST_AS((*expr), Ast_Type_Pointer)->element;
+        result = ll_typer_type_expression(cc, typer, element, NULL, NULL);
+        if (!result) return NULL;
+        if ((*element)->has_const) {
+            result = ll_typer_get_ptr_type(cc, typer, (*element)->const_value.as_type);
+            (*expr)->has_const = 1;
+            (*expr)->const_value.as_type = result;
+
+            result = typer->ty_type;
+        } else oc_todo("handle runtime");
+    } break;
     case AST_KIND_LITERAL_INT:
         (*expr)->has_const = 1u;
         (*expr)->const_value.as_i64 = (int64_t)AST_AS((*expr), Ast_Literal)->u64;
@@ -1415,7 +1492,7 @@ TRY_MEMBER_FUNCTION_CALL:
                 ll_typer_report_error_no_src(", but tried to assign value with type ");
                 ll_typer_report_error_type(cc, typer, opr->right->type);
                 ll_typer_report_error_no_src(" to it. You can explicitly cast the value with `cast(");
-                ll_typer_report_error_type(cc, typer, lhs_type);
+                ll_typer_report_error_type_no_fmt(cc, typer, lhs_type);
                 ll_typer_report_error_no_src(")\n");
 
                 ll_typer_report_error_done(cc, typer);
@@ -1439,7 +1516,7 @@ TRY_MEMBER_FUNCTION_CALL:
                 ll_typer_report_error_no_src(", but tried to assign value with type ");
                 ll_typer_report_error_type(cc, typer, rhs_type);
                 ll_typer_report_error_no_src(" to it. You can explicitly cast the value with `cast(");
-                ll_typer_report_error_type(cc, typer, lhs_type);
+                ll_typer_report_error_type_no_fmt(cc, typer, lhs_type);
                 ll_typer_report_error_no_src(")\n");
 
                 ll_typer_report_error_done(cc, typer);
@@ -1883,7 +1960,7 @@ TRY_MEMBER_FUNCTION_CALL:
             declared_type = fn_type->parameters[di];
             
             // code ref and void are only typed checked when the parameter is expanded in macro body
-            if (declared_type && declared_type->kind != LL_TYPE_CODE_REF && declared_type->kind != LL_TYPE_VOID) {
+            if (declared_type && declared_type->kind != LL_TYPE_VOID) {
                 provided_type = ll_typer_type_expression(cc, typer, value, declared_type, NULL);
             } else if (!fn_is_macro) {
                 provided_type = ll_typer_type_expression(cc, typer, value, declared_type, NULL);
@@ -1907,7 +1984,7 @@ TRY_MEMBER_FUNCTION_CALL:
                     ll_typer_report_error_no_src(" to it. ");
                     if (ll_typer_can_cast(cc, typer, (*value)->type, declared_type)) {
                         ll_typer_report_error_no_src("You can try explicitly casting the value with `cast(");
-                        ll_typer_report_error_type(cc, typer, declared_type);
+                        ll_typer_report_error_type_no_fmt(cc, typer, declared_type);
                         ll_typer_report_error_no_src(")`");
                     }
                     ll_typer_report_error_no_src("\n");
@@ -2113,8 +2190,32 @@ TRY_MEMBER_FUNCTION_CALL:
         Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
         result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
 
-        LL_Type* index_type = ll_typer_type_expression(cc, typer, &cf->start, typer->ty_int64, NULL);
-        if (!ll_typer_can_cast(cc, typer, index_type, typer->ty_int64)) {
+        if (result == typer->ty_type) {
+            if (!cf->ptr->has_const) oc_todo("handle runtime");
+            if (!cf->ptr->const_value.as_type) {
+                return NULL;
+            }
+            ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
+
+            uint64_t array_width;
+            if (cf->start->has_const) {
+                array_width = cf->start->const_value.as_u64;
+            } else {
+                LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->start);
+                array_width = value.as_u64;
+            }
+
+            result = ll_typer_get_array_type(cc, typer, cf->ptr->const_value.as_type, array_width);
+
+            (*expr)->has_const = 1;
+            (*expr)->const_value.as_type = result;
+
+            result = typer->ty_type;
+            break;
+        }
+
+        LL_Type* index_type = ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
+        if (!ll_typer_can_cast(cc, typer, index_type, typer->ty_anyint)) {
             ll_typer_report_error(((LL_Error){ .main_token = cf->start->token_info }), "Expected integer to index array");
 
             ll_typer_report_error_no_src(" you tried to index with type ");
@@ -2123,7 +2224,10 @@ TRY_MEMBER_FUNCTION_CALL:
 
             ll_typer_report_error_done(cc, typer);
         }
-        ll_typer_add_implicit_cast(cc, typer, &cf->start, typer->ty_int64);
+        // if (index_type == typer->ty_anyint) {
+        //     index_type = ll_typer_type_expression(cc, typer, &cf->start, typer->ty_int64, NULL);
+        // }
+        // ll_typer_add_implicit_cast(cc, typer, &cf->start, typer->ty_int64);
 
         switch (result->kind) {
         case LL_TYPE_ARRAY:
@@ -2157,6 +2261,23 @@ TRY_MEMBER_FUNCTION_CALL:
     case AST_KIND_SLICE: {
         Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
         result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
+
+        if (result == typer->ty_type) {
+            if (!cf->ptr->has_const) oc_todo("handle runtime");
+            if (!cf->ptr->const_value.as_type) {
+                return NULL;
+            }
+
+            result = ll_typer_get_slice_type(cc, typer, cf->ptr->const_value.as_type);
+
+            (*expr)->has_const = 1;
+            (*expr)->const_value.as_type = result;
+
+            result = typer->ty_type;
+            break;
+        }
+
+
         if (cf->start) ll_typer_type_expression(cc, typer, &cf->start, typer->ty_uint64, NULL);
         if (cf->stop) ll_typer_type_expression(cc, typer, &cf->stop, typer->ty_uint64, NULL);
 
@@ -2194,6 +2315,7 @@ TRY_MEMBER_FUNCTION_CALL:
                 goto AST_RETURN_EXIT_SCOPE;
                 oc_todo("");
             case LL_SCOPE_KIND_STRUCT:
+            case LL_SCOPE_KIND_TYPENAME:
             case LL_SCOPE_KIND_PACKAGE:
                 ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried returning out of a function");
                 ll_typer_report_error_done(cc, typer);
@@ -2248,6 +2370,7 @@ AST_RETURN_EXIT_SCOPE:
                 ll_typer_report_error_done(cc, typer);
                 goto AST_BREAK_EXIT_SCOPE;
             case LL_SCOPE_KIND_STRUCT:
+            case LL_SCOPE_KIND_TYPENAME:
             case LL_SCOPE_KIND_PACKAGE:
                 ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried breaking without a block to break out of");
                 ll_typer_report_error_done(cc, typer);
@@ -2422,39 +2545,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
     case AST_KIND_GENERIC:
         break;
     case AST_KIND_IDENT:
-        if (string_starts_with(AST_AS(typename, Ast_Ident)->str, lit("int"))) {
-            if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT.ptr) result = typer->ty_int32;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT8.ptr) result = typer->ty_int8;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT16.ptr) result = typer->ty_int16;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT32.ptr) result = typer->ty_int32;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_INT64.ptr) result = typer->ty_int64;
-        } else if (string_starts_with(AST_AS(typename, Ast_Ident)->str, lit("bool"))) {
-            if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL.ptr) result = typer->ty_bool;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL8.ptr) result = typer->ty_bool8;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL16.ptr) result = typer->ty_bool16;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL32.ptr) result = typer->ty_bool32;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_BOOL64.ptr) result = typer->ty_bool64;
-        } else if (string_starts_with(AST_AS(typename, Ast_Ident)->str, lit("uint"))) {
-            if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT.ptr) result = typer->ty_uint32;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT8.ptr) result = typer->ty_uint8;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT16.ptr) result = typer->ty_uint16;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT32.ptr) result = typer->ty_uint32;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_UINT64.ptr) result = typer->ty_uint64;
-        } else if (string_starts_with(AST_AS(typename, Ast_Ident)->str, lit("float"))) {
-            if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT.ptr) result = typer->ty_float32;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT16.ptr) result = typer->ty_float16;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT32.ptr) result = typer->ty_float32;
-            else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_FLOAT64.ptr) result = typer->ty_float64;
-        } else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_STRING.ptr) {
-            result = typer->ty_string;
-        } else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_VOID.ptr) {
-            result = typer->ty_void;
-        } else if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_CHAR.ptr) {
-            result = typer->ty_char;
-        } else if (string_eql(AST_AS(typename, Ast_Ident)->str, lit("code_ref"))) {
-            result = typer->ty_code_ref;
-        }
-        if (result) break;
+        if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_LET.ptr) return NULL;
 
         LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS(typename, Ast_Ident));
         if (!scope) {
@@ -2462,9 +2553,25 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
             ll_typer_report_error_done(cc, typer);
         }
 
-        result = scope->decl->type;
+        switch (scope->kind) {
+        case LL_SCOPE_KIND_STRUCT:
+        case LL_SCOPE_KIND_TYPENAME:
+            result = scope->declared_type;
+            break;
+        case LL_SCOPE_KIND_LOCAL:
+        case LL_SCOPE_KIND_PARAMETER:
+            if (scope->ident->base.has_const) {
+                result = scope->ident->base.const_value.as_type;
+                break;
+            }
+            // fallthrough
 
-        // oc_todo: search identifier in symbol table
+        default:
+            ll_typer_report_error(((LL_Error){ .main_token = AST_AS(typename, Ast_Ident)->base.token_info }), "Expected '{}' to be a type, but it's not", AST_AS(typename, Ast_Ident)->str);
+            ll_typer_report_error_done(cc, typer);
+            break;
+        }
+
         break;
     case AST_KIND_TYPE_POINTER: {
         result = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Type_Pointer)->element);
@@ -2492,8 +2599,6 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
     case AST_KIND_SLICE: {
         LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Slice)->ptr);
         if (!element_type) return NULL;
-        // ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Slice)->start, NULL, NULL);
-        // LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Slice)->right);
         result = ll_typer_get_slice_type(cc, typer, element_type);
         break;
     }
@@ -2516,6 +2621,7 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
 
         LL_Scope_Simple* scope = create_scope_simple(LL_SCOPE_KIND_STRUCT, cloned_generic);
         scope->ident = AST_AS(cloned_generic, Ast_Generic)->ident;
+        scope->declared_type = provided_type;
 
         ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
         return true;
@@ -2674,8 +2780,8 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
         // ll_print_type_raw(((LL_Type_Named*)type)->actual_type, w);
         // wprint(w, ")");
         break;
-    case LL_TYPE_CODE_REF:
-        wprint(w, "code_ref");
+    case LL_TYPE_TYPE:
+        wprint(w, "type");
         break;
     default: oc_assert(false); break;
     }
@@ -2833,6 +2939,7 @@ void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w) {
     case LL_SCOPE_KIND_MACRO_EXPANSION: wprint(w, "Macro_Expansion"); break;
     case LL_SCOPE_KIND_LOOP:        wprint(w, "Loop"); break;
     case LL_SCOPE_KIND_STRUCT:      wprint(w, "Struct"); break;
+    case LL_SCOPE_KIND_TYPENAME:    wprint(w, "Typename"); break;
     }
     if (scope->ident)
         wprint(w, " '{}'", scope->ident->str);

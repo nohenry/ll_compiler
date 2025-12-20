@@ -21,6 +21,7 @@ typedef enum {
     LL_SCOPE_KIND_BLOCK_VALUE,
     LL_SCOPE_KIND_MACRO_EXPANSION,
     LL_SCOPE_KIND_STRUCT,
+    LL_SCOPE_KIND_TYPENAME,
     LL_SCOPE_KIND_PACKAGE,
 } LL_Scope_Kind;
 
@@ -28,10 +29,13 @@ typedef struct scope_map {
     LL_Scope_Kind kind;
     struct scope_map* parent;
     Ast_Ident* ident;
+    struct ll_type* declared_type;
     Ast_Base* decl;
+
     LL_Scope_Map_Entry* children[LL_DEFAULT_MAP_ENTRY_COUNT];
-    uint32_t break_block_ref;
     size_t next_anon;
+
+    uint32_t break_block_ref;
     uint32_t break_value;
 } LL_Scope;
 
@@ -39,8 +43,16 @@ typedef struct {
     LL_Scope_Kind kind;
     struct scope_map* parent;
     Ast_Ident* ident;
+    struct ll_type* declared_type;
     Ast_Base* decl;
 } LL_Scope_Simple;
+
+typedef struct {
+    LL_Scope_Kind kind;
+    struct scope_map* parent;
+    Ast_Ident* ident;
+    struct ll_type* declared_type;
+} LL_Scope_Builtin;
 
 typedef struct {
     LL_Scope_Kind kind;
@@ -68,6 +80,7 @@ typedef enum {
     LL_TYPE_STRUCT,
     LL_TYPE_CODE_REF,
     LL_TYPE_NAMED,
+    LL_TYPE_TYPE,
 } LL_Type_Kind;
 
 typedef struct ll_type {
@@ -156,7 +169,7 @@ typedef struct ll_typer {
             *ty_anyfloat,
             *ty_void,
             *ty_string,
-            *ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool, *ty_code_ref, *ty_char;
+            *ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool, *ty_code_ref, *ty_char, *ty_type;
     
     LL_Type_Function* current_fn;
     LL_Type* block_type;

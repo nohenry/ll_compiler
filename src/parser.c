@@ -544,6 +544,28 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
         if (bin_precedence != 0 && bin_precedence >= last_precedence) {
             CONSUME();
             LL_Token op_tok = token;
+            
+            PEEK(&token);
+            if (op_tok.kind == '*') {
+            switch (token.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
+            case '*':
+            case '[':
+            case '%':
+            case ')':
+            case '}':
+            case ';':
+            case '.':
+            case ',':
+#pragma GCC diagnostic pop
+                left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
+                left->token_info = TOKEN_INFO(op_tok);
+                continue;
+            default: break;
+            }
+            }
+
             right = parser_parse_primary(cc, parser, false);
             // if (op_tok.kind == '.') {
             //     oc_breakpoint();

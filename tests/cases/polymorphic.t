@@ -1,7 +1,9 @@
 native void write_int(int64 v);
 
 void polymorphic(%T foo) {
+    T foo_plus_1 = foo + 1;
     write_int(cast(int64)foo);
+    write_int(cast(int64)foo_plus_1);
 }
 
 void polymorphic_ptr(%T* foo) {
