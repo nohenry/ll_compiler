@@ -209,7 +209,7 @@ LL_Backend_Layout x86_64_get_layout(LL_Type* ty) {
     case LL_TYPE_INT: return (LL_Backend_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
     case LL_TYPE_UINT: return (LL_Backend_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
     case LL_TYPE_CHAR: return (LL_Backend_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
-    case LL_TYPE_FLOAT: return (LL_Backend_Layout) { .size = ty->width / 8, .alignment = 16 };
+    case LL_TYPE_FLOAT: return (LL_Backend_Layout) { .size = ty->width / 8, .alignment = ty->width / 8 };
     case LL_TYPE_POINTER: return (LL_Backend_Layout) { .size = 8, .alignment = 8 };
     case LL_TYPE_ARRAY: {
         sub_layout = x86_64_get_layout(((LL_Type_Array*)ty)->element_type);
@@ -1736,6 +1736,8 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
             case LL_TYPE_STRUCT:
             case LL_TYPE_ARRAY:
             case LL_TYPE_STRING:
+            case LL_TYPE_FLOAT:
+            case LL_TYPE_ANYFLOAT:
             case LL_TYPE_ANYINT:
             case LL_TYPE_CHAR:
             case LL_TYPE_UINT:
@@ -1765,7 +1767,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                     case 2: params.scale = 1; break;
                     case 4: params.scale = 2; break;
                     case 8: params.scale = 3; break;
-                    default: oc_todo("add index size"); break;
+                    default: oc_todo("add index size {}", OPD_VALUE(operands[3])); break;
                     }
                 } break;
                 default: oc_todo("add lea operands"); break;

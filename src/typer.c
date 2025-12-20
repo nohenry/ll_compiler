@@ -820,6 +820,11 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         LL_Type* actual_class_type = ll_typer_get_struct_type(cc, typer, record.items, record.count);
         ((LL_Type_Named*)struct_scope->decl->type)->actual_type = actual_class_type;
     } break;
+    case AST_KIND_CONST: {
+        Ast_Marker* cf = AST_AS((*stmt), Ast_Marker);
+        (void)ll_typer_type_statement(cc, typer, &cf->expr);
+        (void)ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr);
+    } break;
     default: return ll_typer_type_expression(cc, typer, stmt, NULL, NULL);
     }
 
@@ -2107,8 +2112,17 @@ TRY_MEMBER_FUNCTION_CALL:
     case AST_KIND_INDEX: {
         Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
         result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
-        ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
 
+        LL_Type* index_type = ll_typer_type_expression(cc, typer, &cf->start, typer->ty_int64, NULL);
+        if (!ll_typer_can_cast(cc, typer, index_type, typer->ty_int64)) {
+            ll_typer_report_error(((LL_Error){ .main_token = cf->start->token_info }), "Expected integer to index array");
+
+            ll_typer_report_error_no_src(" you tried to index with type ");
+            ll_typer_report_error_type(cc, typer, index_type);
+            ll_typer_report_error_no_src("\n");
+
+            ll_typer_report_error_done(cc, typer);
+        }
         ll_typer_add_implicit_cast(cc, typer, &cf->start, typer->ty_int64);
 
         switch (result->kind) {

@@ -399,6 +399,18 @@ static LL_Eval_Value ll_eval_get_value(Compiler_Context* cc, LL_Eval_Context* b,
         default: result.as_u64 = 0; oc_todo("add error"); break;
         }
     } break;
+    case LL_IR_OPERAND_DATA_BIT: {
+        type = ir_get_operand_type(bir, FUNCTION(), lvalue);
+        switch (type->kind) {
+        case LL_TYPE_SLICE:
+        case LL_TYPE_STRING:
+        case LL_TYPE_ARRAY:
+        case LL_TYPE_STRUCT:
+            result.as_object = bir->data_items.items[OPD_VALUE(lvalue)].ptr;
+            break;
+        default: result.as_u64 = 0; oc_todo("add error"); break;
+        }
+    } break;
     default: oc_todo("implementn get value operand type\n"); break;
     }
 

@@ -20,6 +20,18 @@ int64 get_array_size(int64 a) {
     return 3 + 4 + a + *pb;
 }
 
+Big_Data get_big_data() {
+    Big_Data bd;
+    bd.a = 60;
+    bd.b = 120;
+    return bd;
+}
+
+float64[4] get_array_data() {
+    float64[4] result = [5.0, 6.0, 7.0, 8.0];
+    return result;
+}
+
 void main() {
     const int64 value = 8 + 4; // folded
     write_int(value);
@@ -41,4 +53,14 @@ void main() {
 
         write_int(880);
     }
+
+    Big_Data get_struct_from_const = const get_big_data();
+    write_int(get_struct_from_const.a);
+    write_int(get_struct_from_const.b);
+
+    float64[4] arraay_data = const get_array_data();
+    write_float64(arraay_data[0]);
+    write_float64(arraay_data[1]);
+    write_float64(arraay_data[2]);
+    write_float64(arraay_data[3]);
 }

@@ -484,6 +484,8 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stm
         }
         break;
     }
+    case AST_KIND_CONST: {
+    } break;
     default:
         ir_generate_expression(cc, b, stmt, false);
         break;
@@ -602,6 +604,59 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         break;
     }
     default: oc_todo("implement this"); break;
+    }
+
+    return result;
+}
+
+LL_Ir_Operand ir_const_to_operand(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* type, LL_Eval_Value const_value) {
+    LL_Ir_Operand result;
+    type = ll_get_base_type(type);
+    switch (type->kind) {
+    case LL_TYPE_FLOAT: {
+        uint32_t literal_index = FUNCTION()->literals.count;
+        if (type->width <= 32) {
+            oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f32 = (float)const_value.as_f64 }));
+        } else if (type->width <= 64) {
+            oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f64 = const_value.as_f64 }));
+        } else {
+            oc_assert(false);
+        }
+        result = LL_IR_OPERAND_IMMEDIATE64_BIT | literal_index;
+    } break;
+    case LL_TYPE_INT:
+        if (const_value.as_i64 <= 0x7FFFFFFLL && const_value.as_i64 > -0x7FFFFFFLL) {
+            result = LL_IR_OPERAND_IMMEDIATE_BIT | (int32_t)const_value.as_i64;
+        } else {
+            uint32_t literal_index = FUNCTION()->literals.count;
+            oc_assert(literal_index <= 0xFFFFFFF);
+            oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = const_value.as_i64 }));
+
+            result = LL_IR_OPERAND_IMMEDIATE64_BIT | (int32_t)literal_index;
+        }
+        break;
+    case LL_TYPE_BOOL:
+    case LL_TYPE_UINT:
+        if (const_value.as_u64 <= 0xFFFFFFFULL) {
+            result = LL_IR_OPERAND_IMMEDIATE_BIT | (uint32_t)const_value.as_u64;
+        } else {
+            uint32_t literal_index = FUNCTION()->literals.count;
+            oc_assert(literal_index <= 0xFFFFFFF);
+            oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = const_value.as_u64 }));
+
+            result = LL_IR_OPERAND_IMMEDIATE64_BIT | (uint32_t)literal_index;
+        }
+        break;
+    case LL_TYPE_SLICE:
+    case LL_TYPE_STRING:
+    case LL_TYPE_ARRAY:
+    case LL_TYPE_STRUCT: {
+        oc_assert((b->data_items.count & 0xF0000000u) == 0); // oc_todo: maybe support more
+        result = LL_IR_OPERAND_DATA_BIT | (uint32_t)b->data_items.count;
+        LL_Backend_Layout layout = cc->target->get_layout(type);
+        oc_array_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = const_value.as_object, .len = max(layout.size, layout.alignment), .type = type}));
+    } break;
+    default: ll_print_type(type); oc_todo("implement type"); break;
     }
 
     return result;
@@ -1204,43 +1259,7 @@ HANDLE_SLICE_OP:
         }
 
         if (ident->base.has_const) {
-            switch (ident->base.type->kind) {
-            case LL_TYPE_FLOAT: {
-                uint32_t literal_index = FUNCTION()->literals.count;
-                if (expr->type->width <= 32) {
-                    oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f32 = (float)AST_AS(expr, Ast_Literal)->f64 }));
-                } else if (expr->type->width <= 64) {
-                    oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f64 = AST_AS(expr, Ast_Literal)->f64 }));
-                } else {
-                    oc_assert(false);
-                }
-                result = LL_IR_OPERAND_IMMEDIATE64_BIT | literal_index;
-            } break;
-            case LL_TYPE_INT:
-                if (ident->base.const_value.as_i64 <= 0x7FFFFFFLL && ident->base.const_value.as_i64 > -0x7FFFFFFLL) {
-                    result = LL_IR_OPERAND_IMMEDIATE_BIT | (int32_t)ident->base.const_value.as_i64;
-                } else {
-                    uint32_t literal_index = FUNCTION()->literals.count;
-                    oc_assert(literal_index <= 0xFFFFFFF);
-                    oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = ident->base.const_value.as_i64 }));
-
-                    result = LL_IR_OPERAND_IMMEDIATE64_BIT | (int32_t)literal_index;
-                }
-                break;
-            case LL_TYPE_UINT:
-                if (ident->base.const_value.as_u64 <= 0xFFFFFFFULL) {
-                    result = LL_IR_OPERAND_IMMEDIATE_BIT | (uint32_t)ident->base.const_value.as_u64;
-                } else {
-                    uint32_t literal_index = FUNCTION()->literals.count;
-                    oc_assert(literal_index <= 0xFFFFFFF);
-                    oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_u64 = ident->base.const_value.as_u64 }));
-
-                    result = LL_IR_OPERAND_IMMEDIATE64_BIT | (uint32_t)literal_index;
-                }
-                break;
-            default: ll_print_type(ident->base.type); oc_todo("implement type"); break;
-            }
-
+            result = ir_const_to_operand(cc, b, ident->base.type, ident->base.const_value);
             break; // break outer switch
         }
 
@@ -1266,7 +1285,7 @@ HANDLE_SLICE_OP:
     case AST_KIND_CONST: {
         Ast_Marker* cf = AST_AS(expr, Ast_Marker);
         oc_assert(cf->base.has_const);
-        result = cf->base.const_value.as_u64;
+        result = ir_const_to_operand(cc, b, cf->base.type, cf->base.const_value);
         break;
     }
     case AST_KIND_RETURN: {
