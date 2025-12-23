@@ -40,6 +40,6 @@ typedef struct ll_eval_context {
     uword native_fn_exe_code_size;
 } LL_Eval_Context;
 
-LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, Ast_Base* expr);
+LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, Code* expr);
 void ll_eval_init(Compiler_Context* cc, LL_Eval_Context* b);
 LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, uint32_t fn_index, uint32_t argument_cound, LL_Ir_Operand* arguments);

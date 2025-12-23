@@ -57,24 +57,24 @@ LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename) {
 #define CONSUME() lexer_consume(cc, &(parser)->lexer)
 #define UNEXPECTED() unexpected_token(cc, parser, __FILE__, __LINE__)
 #define EXPECT(kind, out) expect_token(cc, parser, kind, out, __FILE__, __LINE__)
-#define CREATE_NODE(_kind, value) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), value); create_node(cc, (Ast_Base*)&v, sizeof(v)); })
+#define CREATE_NODE(_kind, value) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), value); create_node(cc, (Code*)&v, sizeof(v)); })
 
 #define _CREATE_ASSIGN_KIND(_kind, type) _Generic((type), \
-        Ast_Base : (void)0,                       \
+        Code : (void)0,                       \
         default : v.base.kind = _kind                    \
     )
 
-static Ast_Base* create_node(Compiler_Context* cc, Ast_Base* node, size_t size) {
+static Code* create_node(Compiler_Context* cc, Code* node, size_t size) {
     return oc_arena_dup(&cc->arena, node, size);
 }
 
-static Ast_Ident* create_ident(Compiler_Context* cc, string sym) {
-    Ast_Ident* ident = (Ast_Ident*)CREATE_NODE(AST_KIND_IDENT, ((Ast_Ident){ .str = sym, .symbol_index = AST_IDENT_SYMBOL_INVALID }));
+static Code_Ident* create_ident(Compiler_Context* cc, string sym) {
+    Code_Ident* ident = (Code_Ident*)CREATE_NODE(CODE_KIND_IDENT, ((Code_Ident){ .str = sym, .symbol_index = CODE_IDENT_SYMBOL_INVALID }));
     if (ident->str.ptr[0] == '$') {
         ident->str.ptr++;
         ident->str.len--;
         ident->str = ll_intern_string(cc, ident->str);
-        ident->flags |= AST_IDENT_FLAG_EXPAND;
+        ident->flags |= CODE_IDENT_FLAG_EXPAND;
     }
     return ident;
 }
@@ -113,8 +113,8 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
     }
 }
 
-Ast_Base* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
-    Ast_Block block = { .base.kind = AST_KIND_BLOCK };
+Code* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
+    Code_Block block = { .base.kind = CODE_KIND_BLOCK };
     LL_Token token;
 
     while (parser->lexer.pos < parser->lexer.source.len) {
@@ -125,8 +125,8 @@ Ast_Base* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
     return oc_arena_dup(&cc->arena, &block, sizeof(block));
 }
 
-Ast_Base* parser_parse_statement(Compiler_Context* cc, LL_Parser* parser) {
-    Ast_Base* result;
+Code* parser_parse_statement(Compiler_Context* cc, LL_Parser* parser) {
+    Code* result;
     LL_Token token;
     LL_Storage_Class storage_class = 0;
     PEEK(&token);
@@ -140,7 +140,7 @@ START_SWITCH:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
         case '{':
-            result = (Ast_Base*)parser_parse_block(cc, parser);
+            result = (Code*)parser_parse_block(cc, parser);
             break;
 #pragma GCC diagnostic pop
         case LL_TOKEN_KIND_IDENT:
@@ -154,13 +154,13 @@ START_SWITCH:
                     CONSUME();
                     PEEK(&token);
                     if (token.kind == '{') {
-                        result = (Ast_Base*)parser_parse_block(cc, parser);
-                        result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
+                        result = (Code*)parser_parse_block(cc, parser);
+                        result = CREATE_NODE(CODE_KIND_CONST, ((Code_Marker){ .expr = result }));
                         result->token_info = kw;
                         return result;
                     } else if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
                         result = parser_parse_expression(cc, parser, NULL, 0, false);
-                        result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
+                        result = CREATE_NODE(CODE_KIND_CONST, ((Code_Marker){ .expr = result }));
                         result->token_info = kw;
                         goto HANDLE_TRY_DECL;
                     } else {
@@ -186,7 +186,7 @@ HANDLE_IDENT:
             }
 
             result = parser_parse_expression(cc, parser, NULL, 0, true);
-            if (result && (result->kind == AST_KIND_IF || result->kind == AST_KIND_FOR  || result->kind == AST_KIND_WHILE)) break;
+            if (result && (result->kind == CODE_KIND_IF || result->kind == CODE_KIND_FOR  || result->kind == CODE_KIND_WHILE)) break;
 HANDLE_TRY_DECL:
             PEEK(&token);
             if (token.kind == LL_TOKEN_KIND_IDENT) // this includes macro keyword
@@ -199,15 +199,15 @@ HANDLE_TRY_DECL:
     return result;
 }
 
-Ast_Block* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
+Code_Block* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
-    Ast_Block block = { .base.kind = AST_KIND_BLOCK };
+    Code_Block block = { .base.kind = CODE_KIND_BLOCK };
 
     PEEK(&token);
     if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
         block.base.token_info = TOKEN_INFO(token);
         CONSUME();
-        block.flags |= AST_BLOCK_FLAG_EXPR;
+        block.flags |= CODE_BLOCK_FLAG_EXPR;
         EXPECT('{', &token);
         block.c_open = TOKEN_INFO(token);
     } else {
@@ -227,10 +227,10 @@ Ast_Block* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
     return oc_arena_dup(&cc->arena, &block, sizeof(block));
 }
 
-Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
+Code_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
     PEEK(&token);
-    Ast_Base* type, *init;
+    Code* type, *init;
     LL_Parameter_Flags flags = 0;
 
     if (token.kind == LL_TOKEN_KIND_RANGE) {
@@ -239,19 +239,19 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         flags |= LL_PARAMETER_FLAG_VARIADIC;	
     } else if (token.kind == '%') {
         CONSUME();
-        if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
-        Ast_Ident* ident = create_ident(cc, token.str);
+        if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Code_Parameter) { 0 };
+        Code_Ident* ident = create_ident(cc, token.str);
         ident->base.token_info = TOKEN_INFO(token);
 
-        type = CREATE_NODE(AST_KIND_GENERIC, ((Ast_Generic) { .ident = ident }));
+        type = CREATE_NODE(CODE_KIND_GENERIC, ((Code_Generic) { .ident = ident }));
         type = parser_parse_expression(cc, parser, type, 0, true);
     } else {
         type = parser_parse_expression(cc, parser, NULL, 0, true);
     }
 
-    // if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Ast_Parameter) { 0 };
+    // if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Code_Parameter) { 0 };
     PEEK(&token);
-    Ast_Ident* ident = NULL;
+    Code_Ident* ident = NULL;
     if (token.kind == LL_TOKEN_KIND_IDENT) {
         CONSUME();
         ident = create_ident(cc, token.str);
@@ -268,8 +268,8 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         init = NULL;
     }
 
-    return (Ast_Parameter) {
-        .base.kind = AST_KIND_PARAMETER,
+    return (Code_Parameter) {
+        .base.kind = CODE_KIND_PARAMETER,
         .base.token_info = eql_info,
         .type = type,
         .ident = ident,
@@ -278,14 +278,14 @@ Ast_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
     };
 }
 
-Ast_Base* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
+Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
     PEEK(&token);
     LL_Token_Info struct_kw = TOKEN_INFO(token);
     CONSUME(); // struct kw
 
-    Ast_List items = { 0 };
-    Ast_Ident* ident;
+    Code_List items = { 0 };
+    Code_Ident* ident;
 
     PEEK(&token);
     if (token.kind == LL_TOKEN_KIND_IDENT) {
@@ -304,12 +304,12 @@ Ast_Base* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
     EXPECT('}', &token);
     LL_Token_Info c_close = TOKEN_INFO(token);
 
-    Ast_Base* result = CREATE_NODE(AST_KIND_STRUCT, ((Ast_Struct){ .ident = ident, .body = items, .c_open = c_open, .c_close = c_close }));
+    Code* result = CREATE_NODE(CODE_KIND_STRUCT, ((Code_Struct){ .ident = ident, .body = items, .c_open = c_open, .c_close = c_close }));
     result->token_info = struct_kw;
     return result;
 }
 
-Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_Base* type, LL_Storage_Class storage_class) {
+Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* type, LL_Storage_Class storage_class) {
     LL_Token token;
     if (!type) {
         type = parser_parse_expression(cc, parser, NULL, 0, true);
@@ -320,12 +320,12 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
         storage_class |= LL_STORAGE_CLASS_MACRO;
         EXPECT(LL_TOKEN_KIND_IDENT, &token);
     }
-    Ast_Ident* ident = create_ident(cc, token.str);
+    Code_Ident* ident = create_ident(cc, token.str);
     ident->base.token_info = TOKEN_INFO(token);
 
     bool fn = false;
-    Ast_Parameter_List parameters = { 0 };
-    Ast_Base* body_or_init;
+    Code_Parameter_List parameters = { 0 };
+    Code* body_or_init;
     LL_Token_Info p_open, p_close, eql;
 
     PEEK(&token);
@@ -339,7 +339,7 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 
             PEEK(&token);
             while (token.kind != ')') {
-                Ast_Parameter parameter = parser_parse_parameter(cc, parser);
+                Code_Parameter parameter = parser_parse_parameter(cc, parser);
                 oc_array_append(&cc->arena, &parameters, parameter);
                 PEEK(&token);
 
@@ -355,7 +355,7 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
 
             PEEK(&token);
             if (token.kind == '{') {
-                body_or_init = (Ast_Base*)parser_parse_block(cc, parser);
+                body_or_init = (Code*)parser_parse_block(cc, parser);
             } else {
                 EXPECT(';', &token);
                 body_or_init = NULL;
@@ -376,7 +376,7 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
     }
 
     if (fn) {
-        return CREATE_NODE(AST_KIND_FUNCTION_DECLARATION, ((Ast_Function_Declaration){
+        return CREATE_NODE(CODE_KIND_FUNCTION_DECLARATION, ((Code_Function_Declaration){
             .return_type = type,
             .ident = ident,
             .parameters = parameters,
@@ -385,7 +385,7 @@ Ast_Base* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Ast_
             .p_open = p_open, .p_close = p_close,
         }));
     } else {
-        return CREATE_NODE(AST_KIND_VARIABLE_DECLARATION, ((Ast_Variable_Declaration){
+        return CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
             .base.token_info = eql,
             .type = type,
             .ident = ident,
@@ -449,10 +449,10 @@ int get_postfix_precedence(LL_Token token) {
     }
 }
 
-Ast_Base* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
+Code* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
-    Ast_Base *expr1, *expr2;
-    Ast_Initializer result = { 0 };
+    Code *expr1, *expr2;
+    Code_Initializer result = { 0 };
     PEEK(&token);
     result.base.token_info = TOKEN_INFO(token);
     CONSUME(); // consume {
@@ -464,7 +464,7 @@ Ast_Base* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
         if (token.kind == '=') {
             CONSUME();
             expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
-            expr1 = CREATE_NODE(AST_KIND_KEY_VALUE, ((Ast_Key_Value) { .key = expr1, .value = expr2 }));
+            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1, .value = expr2 }));
             expr1->token_info = TOKEN_INFO(token);
         }
 
@@ -480,13 +480,13 @@ Ast_Base* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
 
     EXPECT('}', &token);
     result.c_close = TOKEN_INFO(token);
-    return CREATE_NODE(AST_KIND_INITIALIZER, result);
+    return CREATE_NODE(CODE_KIND_INITIALIZER, result);
 }
 
-Ast_Base* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser) {
+Code* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
-    Ast_Base *expr1, *expr2;
-    Ast_Initializer result = { 0 };
+    Code *expr1, *expr2;
+    Code_Initializer result = { 0 };
     PEEK(&token);
     result.base.token_info = TOKEN_INFO(token);
     CONSUME(); // consume [
@@ -497,7 +497,7 @@ Ast_Base* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser
         if (token.kind == '=') {
             CONSUME();
             expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
-            expr1 = CREATE_NODE(AST_KIND_KEY_VALUE, ((Ast_Key_Value) { .key = expr1, .value = expr2 }));
+            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1, .value = expr2 }));
             expr1->token_info = TOKEN_INFO(token);
         }
         oc_array_append(&cc->arena, &result, expr1);
@@ -512,12 +512,12 @@ Ast_Base* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser
 
     EXPECT(']', &token);
     result.c_close = TOKEN_INFO(token);
-    return CREATE_NODE(AST_KIND_ARRAY_INITIALIZER, result);
+    return CREATE_NODE(CODE_KIND_ARRAY_INITIALIZER, result);
 }
 
-Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_Base* left, int last_precedence, bool from_statement) {
+Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* left, int last_precedence, bool from_statement) {
     LL_Token token;
-    Ast_Base *right;
+    Code *right;
     if (left == NULL) {
         PEEK(&token);
         switch (token.kind) {
@@ -564,7 +564,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
             case '.':
             case ',':
 #pragma GCC diagnostic pop
-                left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
+                left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
                 left->token_info = TOKEN_INFO(op_tok);
                 continue;
             default: break;
@@ -581,13 +581,13 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                 if (next_bin_precedence != 0 && next_bin_precedence > bin_precedence) {
                     right = parser_parse_expression(cc, parser, right, bin_precedence + 1, false);
                 } else if (next_post_precedence != 0 && next_post_precedence > bin_precedence) {
-                    Ast_Base* new_right = parser_parse_expression(cc, parser, right, next_post_precedence, false);
+                    Code* new_right = parser_parse_expression(cc, parser, right, next_post_precedence, false);
                     if (new_right == right) break;
                     right = new_right;
                 } else break;
             }
 
-            left = CREATE_NODE(AST_KIND_BINARY_OP, ((Ast_Operation){ .left = left, .right = right, .op = op_tok }));
+            left = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){ .left = left, .right = right, .op = op_tok }));
             left->token_info = TOKEN_INFO(op_tok);
             from_statement = false;
         } else if (post_precedence != 0 && post_precedence >= last_precedence) {
@@ -598,8 +598,8 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                     LL_Token_Info ti = TOKEN_INFO(token);
                     CONSUME();
 
-                    Ast_List arguments = { 0 };
-                    Ast_Base *expr1, *expr2;
+                    Code_List arguments = { 0 };
+                    Code *expr1, *expr2;
                     PEEK(&token);
                     while (token.kind != ')') {
                         expr1 = parser_parse_expression(cc, parser, NULL, 30, false);
@@ -607,7 +607,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                         if (token.kind == '=') {
                             CONSUME();
                             expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
-                            expr1 = CREATE_NODE(AST_KIND_KEY_VALUE, ((Ast_Key_Value) { .key = expr1, .value = expr2 }));
+                            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1, .value = expr2 }));
                         }
                         oc_array_append(&cc->arena, &arguments, expr1);
 
@@ -621,7 +621,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
 
                     CONSUME();
 
-                    left = CREATE_NODE(AST_KIND_INVOKE, ((Ast_Invoke){ .expr = left, .arguments = arguments, .p_close = TOKEN_INFO(token) }));
+                    left = CREATE_NODE(CODE_KIND_INVOKE, ((Code_Invoke){ .expr = left, .arguments = arguments, .p_close = TOKEN_INFO(token) }));
                     left->token_info = ti;
 
                     break;
@@ -630,16 +630,16 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                     if (!from_statement) return left;
                     CONSUME();
                     
-                    left = CREATE_NODE(AST_KIND_TYPE_POINTER, ((Ast_Type_Pointer){ .element = left }));
+                    left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
                     left->token_info = TOKEN_INFO(token);
 
                     break;
                 }
                 case '[': {
-                    Ast_Base *start = NULL, *stop = NULL;
+                    Code *start = NULL, *stop = NULL;
                     LL_Token_Info ti = TOKEN_INFO(token);
                     CONSUME();
-                    Ast_Kind kind = AST_KIND_INDEX;
+                    Code_Kind kind = CODE_KIND_INDEX;
 
                     PEEK(&token);
                     switch (token.kind) {
@@ -647,7 +647,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                         break;
                     case ':':
                         CONSUME();
-                        kind = AST_KIND_SLICE;
+                        kind = CODE_KIND_SLICE;
 
                         PEEK(&token);
                         if (token.kind != ']') {
@@ -661,7 +661,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                         PEEK(&token);
                         if (token.kind == ':') {
                             CONSUME();
-                            kind = AST_KIND_SLICE;
+                            kind = CODE_KIND_SLICE;
 
                             PEEK(&token);
                             if (token.kind != ']') {
@@ -673,7 +673,7 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
                     }
                     EXPECT(']', &token);
 
-                    left = CREATE_NODE(kind, ((Ast_Slice){ .ptr = left, .start = start, .stop = stop }));
+                    left = CREATE_NODE(kind, ((Code_Slice){ .ptr = left, .start = start, .stop = stop }));
                     left->token_info = ti;
                     break;
                 }
@@ -687,9 +687,9 @@ Ast_Base* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Ast_B
     return left;
 }
 
-Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_statement) {
+Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_statement) {
     LL_Token token;
-    Ast_Base *result, *right, *body, *update;
+    Code *result, *right, *body, *update;
     PEEK(&token);
 
     switch (token.kind) {
@@ -708,41 +708,41 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
         break;
     case '-':
         CONSUME();
-        result = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = token, .right = parser_parse_expression(cc, parser, NULL, 140, false) }));
+        result = CREATE_NODE(CODE_KIND_PRE_OP, ((Code_Operation){ .op = token, .right = parser_parse_expression(cc, parser, NULL, 140, false) }));
         break;
     case '*':
         CONSUME();
-        result = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = token, .right = parser_parse_expression(cc, parser, NULL, 140, false) }));
+        result = CREATE_NODE(CODE_KIND_PRE_OP, ((Code_Operation){ .op = token, .right = parser_parse_expression(cc, parser, NULL, 140, false) }));
         break;
     case '&':
         CONSUME();
-        result = CREATE_NODE(AST_KIND_PRE_OP, ((Ast_Operation){ .op = token, .right = parser_parse_expression(cc, parser, NULL, 140, false) }));
+        result = CREATE_NODE(CODE_KIND_PRE_OP, ((Code_Operation){ .op = token, .right = parser_parse_expression(cc, parser, NULL, 140, false) }));
         break;
     case '%':
         CONSUME();
         if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return NULL;
-        Ast_Ident* ident = create_ident(cc, token.str);
+        Code_Ident* ident = create_ident(cc, token.str);
         ident->base.token_info = TOKEN_INFO(token);
 
-        result = CREATE_NODE(AST_KIND_GENERIC, ((Ast_Generic) { .ident = ident }));
+        result = CREATE_NODE(CODE_KIND_GENERIC, ((Code_Generic) { .ident = ident }));
         result = parser_parse_expression(cc, parser, result, 0, true);
         break;
 #pragma GCC diagnostic pop
     
     case LL_TOKEN_KIND_INT:
-        result = CREATE_NODE(AST_KIND_LITERAL_INT, ((Ast_Literal){ .u64 = token.u64 }));
+        result = CREATE_NODE(CODE_KIND_LITERAL_INT, ((Code_Literal){ .u64 = token.u64 }));
         result->token_info = TOKEN_INFO(token);
         CONSUME();
         break;
 
     case LL_TOKEN_KIND_FLOAT:
-        result = CREATE_NODE(AST_KIND_LITERAL_FLOAT, ((Ast_Literal){ .f64 = token.f64 }));
+        result = CREATE_NODE(CODE_KIND_LITERAL_FLOAT, ((Code_Literal){ .f64 = token.f64 }));
         result->token_info = TOKEN_INFO(token);
         CONSUME();
         break;
 
     case LL_TOKEN_KIND_STRING:
-        result = CREATE_NODE(AST_KIND_LITERAL_STRING, ((Ast_Literal){ .str = token.str }));
+        result = CREATE_NODE(CODE_KIND_LITERAL_STRING, ((Code_Literal){ .str = token.str }));
         result->token_info = TOKEN_INFO(token);
         CONSUME();
         break;
@@ -756,7 +756,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
             result = parser_parse_expression(cc, parser, NULL, 0, false);
             PEEK(&token);
             if (token.kind == '{' || (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr)) {
-                body = (Ast_Base*)parser_parse_block(cc, parser);
+                body = (Code*)parser_parse_block(cc, parser);
             } else {
                 body = parser_parse_expression(cc, parser, NULL, 0, false);
                 PEEK(&token);
@@ -773,7 +773,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
                 CONSUME();
                 PEEK(&token);
                 if (token.kind == '{') {
-                    right = (Ast_Base*)parser_parse_block(cc, parser);
+                    right = (Code*)parser_parse_block(cc, parser);
                 } else {
                     right = parser_parse_expression(cc, parser, NULL, 0, false);
                     if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_IF.ptr) {}
@@ -783,7 +783,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
                 right = NULL;
             }
 
-            result = CREATE_NODE(AST_KIND_IF, ((Ast_If){ .cond = result, .body = body, .else_clause = right, .else_kw = else_kw }));
+            result = CREATE_NODE(CODE_KIND_IF, ((Code_If){ .cond = result, .body = body, .else_clause = right, .else_kw = else_kw }));
             result->token_info = if_kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_WHILE.ptr) {
@@ -794,13 +794,13 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
 
             PEEK(&token);
             if (token.kind == '{') {
-                body = (Ast_Base*)parser_parse_block(cc, parser);
+                body = (Code*)parser_parse_block(cc, parser);
             } else {
                 body = parser_parse_expression(cc, parser, NULL, 0, false);
                 if (from_statement) EXPECT(';', &token);
             }
 
-            result = CREATE_NODE(AST_KIND_WHILE, ((Ast_Loop){ .cond = right, .body = body }));
+            result = CREATE_NODE(CODE_KIND_WHILE, ((Code_Loop){ .cond = right, .body = body }));
             result->token_info = for_kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
@@ -824,19 +824,19 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
             PEEK(&token);
             if (token.kind == '{') {
                 update = NULL;
-                body = (Ast_Base*)parser_parse_block(cc, parser);
+                body = (Code*)parser_parse_block(cc, parser);
             } else {
                 update = parser_parse_expression(cc, parser, NULL, 0, false);
                 PEEK(&token);
                 if (token.kind == '{') {
-                    body = (Ast_Base*)parser_parse_block(cc, parser);
+                    body = (Code*)parser_parse_block(cc, parser);
                 } else {
                     body = parser_parse_expression(cc, parser, NULL, 0, false);
                     if (from_statement) EXPECT(';', &token);
                 }
             }
 
-            result = CREATE_NODE(AST_KIND_FOR, ((Ast_Loop){ .init = result, .cond = right, .update = update, .body = body }));
+            result = CREATE_NODE(CODE_KIND_FOR, ((Code_Loop){ .init = result, .cond = right, .update = update, .body = body }));
             result->token_info = for_kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_CAST.ptr) {
@@ -850,17 +850,17 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
             LL_Token_Info p_close = TOKEN_INFO(token);
             right = parser_parse_expression(cc, parser, NULL, 150, false);
 
-            result = CREATE_NODE(AST_KIND_CAST, ((Ast_Cast){ .cast_type = result, .expr = right, .p_open = p_open, .p_close = p_close }));
+            result = CREATE_NODE(CODE_KIND_CAST, ((Code_Cast){ .cast_type = result, .expr = right, .p_open = p_open, .p_close = p_close }));
             result->token_info = cast_kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_DO.ptr) {
-            result = (Ast_Base*)parser_parse_block(cc, parser);
+            result = (Code*)parser_parse_block(cc, parser);
             break;
         } else if (token.str.ptr == LL_KEYWORD_CONST.ptr) {
             LL_Token_Info kw = TOKEN_INFO(token);
             CONSUME();
             result = parser_parse_expression(cc, parser, NULL, 0, false);
-            result = CREATE_NODE(AST_KIND_CONST, ((Ast_Marker){ .expr = result }));
+            result = CREATE_NODE(CODE_KIND_CONST, ((Code_Marker){ .expr = result }));
             result->token_info = kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_RETURN.ptr) {
@@ -870,30 +870,30 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
             if (token.kind != ';')
                 result = parser_parse_expression(cc, parser, NULL, 0, false);
             else result = NULL;
-            result = CREATE_NODE(AST_KIND_RETURN, ((Ast_Control_Flow){ .expr = result }));
+            result = CREATE_NODE(CODE_KIND_RETURN, ((Code_Control_Flow){ .expr = result }));
             result->token_info = kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_BREAK.ptr) {
             CONSUME();
             LL_Token_Info kw = TOKEN_INFO(token);
             result = NULL;
-            Ast_Control_Flow_Target target = AST_CONTROL_FLOW_TARGET_ANY;
+            Code_Control_Flow_Target target = CODE_CONTROL_FLOW_TARGET_ANY;
 
             PEEK(&token);
             if (token.kind != ';') {
                 if (token.kind == LL_TOKEN_KIND_IDENT) {
                     if (token.str.ptr == LL_KEYWORD_DO.ptr) {
                         CONSUME();
-                        target = AST_CONTROL_FLOW_TARGET_DO;
+                        target = CODE_CONTROL_FLOW_TARGET_DO;
                     } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
                         CONSUME();
-                        target = AST_CONTROL_FLOW_TARGET_FOR;
+                        target = CODE_CONTROL_FLOW_TARGET_FOR;
                     // } else if (token.str.ptr == LL_KEYWORD_IF.ptr) {
                     //     CONSUME();
-                    //     target = AST_CONTROL_FLOW_TARGET_IF;
+                    //     target = CODE_CONTROL_FLOW_TARGET_IF;
                     } else if (token.str.ptr == LL_KEYWORD_WHILE.ptr) {
                         CONSUME();
-                        target = AST_CONTROL_FLOW_TARGET_WHILE;
+                        target = CODE_CONTROL_FLOW_TARGET_WHILE;
                     }
                 }
                 PEEK(&token);
@@ -901,7 +901,7 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
                     result = parser_parse_expression(cc, parser, NULL, 0, false);
                 }
             };
-            result = CREATE_NODE(AST_KIND_BREAK, ((Ast_Control_Flow){ .expr = result, .target = target }));
+            result = CREATE_NODE(CODE_KIND_BREAK, ((Code_Control_Flow){ .expr = result, .target = target }));
             result->token_info = kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_CONTINUE.ptr) {
@@ -911,12 +911,12 @@ Ast_Base* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool fro
             if (token.kind != ';')
                 result = parser_parse_expression(cc, parser, NULL, 0, false);
             else result = NULL;
-            result = CREATE_NODE(AST_KIND_CONTINUE, ((Ast_Control_Flow){ .expr = result }));
+            result = CREATE_NODE(CODE_KIND_CONTINUE, ((Code_Control_Flow){ .expr = result }));
             result->token_info = kw;
             break;
         }
         CONSUME();
-        result = (Ast_Base*)create_ident(cc, token.str);
+        result = (Code*)create_ident(cc, token.str);
         result->token_info = TOKEN_INFO(token);
         break;
 
@@ -936,73 +936,73 @@ void print_storage_class(LL_Storage_Class storage_class, Oc_Writer* w) {
     if (storage_class & LL_STORAGE_CLASS_CONST) wprint(w, "const ");
 }
 
-const char* ast_get_node_kind(Ast_Base* node) {
+const char* ast_get_node_kind(Code* node) {
     switch (node->kind) {
-        case AST_KIND_LITERAL_INT: return "Int_Literal";
-        case AST_KIND_LITERAL_FLOAT: return "Float_Literal";
-        case AST_KIND_LITERAL_STRING: return "String_Literal";
-        case AST_KIND_IDENT: return "Identifier";
-        case AST_KIND_BINARY_OP: return "Binary_Operator";
-        case AST_KIND_PRE_OP: return "Prefix_Operator";
-        case AST_KIND_INVOKE: return "Invoke";
-        case AST_KIND_INITIALIZER: return "Initializer";
-        case AST_KIND_ARRAY_INITIALIZER: return "Array_Initializer";
-        case AST_KIND_KEY_VALUE: return "Key_Value";
-        case AST_KIND_BLOCK: return "Block";
-        case AST_KIND_CONST: return "Const";
-        case AST_KIND_VARIABLE_DECLARATION: return "Variable_Declaration";
-        case AST_KIND_FUNCTION_DECLARATION: return "Function_Declaration";
-        case AST_KIND_PARAMETER: return "Parameter";
-        case AST_KIND_RETURN: return "Return";
-        case AST_KIND_BREAK: return "Break";
-        case AST_KIND_CONTINUE: return "Continue";
-        case AST_KIND_IF: return "If";
-        case AST_KIND_FOR: return "For";
-        case AST_KIND_WHILE: return "While";
-        case AST_KIND_INDEX: return "Index";
-        case AST_KIND_SLICE: return "Slice";
-        case AST_KIND_CAST: return "Cast";
-        case AST_KIND_STRUCT: return "Struct";
-        case AST_KIND_GENERIC: return "Generic";
-        case AST_KIND_TYPE_POINTER: return "Pointer";
+        case CODE_KIND_LITERAL_INT: return "Int_Literal";
+        case CODE_KIND_LITERAL_FLOAT: return "Float_Literal";
+        case CODE_KIND_LITERAL_STRING: return "String_Literal";
+        case CODE_KIND_IDENT: return "Identifier";
+        case CODE_KIND_BINARY_OP: return "Binary_Operator";
+        case CODE_KIND_PRE_OP: return "Prefix_Operator";
+        case CODE_KIND_INVOKE: return "Invoke";
+        case CODE_KIND_INITIALIZER: return "Initializer";
+        case CODE_KIND_ARRAY_INITIALIZER: return "Array_Initializer";
+        case CODE_KIND_KEY_VALUE: return "Key_Value";
+        case CODE_KIND_BLOCK: return "Block";
+        case CODE_KIND_CONST: return "Const";
+        case CODE_KIND_VARIABLE_DECLARATION: return "Variable_Declaration";
+        case CODE_KIND_FUNCTION_DECLARATION: return "Function_Declaration";
+        case CODE_KIND_PARAMETER: return "Parameter";
+        case CODE_KIND_RETURN: return "Return";
+        case CODE_KIND_BREAK: return "Break";
+        case CODE_KIND_CONTINUE: return "Continue";
+        case CODE_KIND_IF: return "If";
+        case CODE_KIND_FOR: return "For";
+        case CODE_KIND_WHILE: return "While";
+        case CODE_KIND_INDEX: return "Index";
+        case CODE_KIND_SLICE: return "Slice";
+        case CODE_KIND_CAST: return "Cast";
+        case CODE_KIND_STRUCT: return "Struct";
+        case CODE_KIND_GENERIC: return "Generic";
+        case CODE_KIND_TYPE_POINTER: return "Pointer";
         default: oc_unreachable("");
     }
 }
 
-void print_node_value(Ast_Base* node, Oc_Writer* w) {
+void print_node_value(Code* node, Oc_Writer* w) {
     switch (node->kind) {
-        case AST_KIND_LITERAL_INT:    wprint(w, "{}", AST_AS(node, Ast_Literal)->u64); break;
-        case AST_KIND_LITERAL_FLOAT:  wprint(w, "{}", AST_AS(node, Ast_Literal)->f64); break;
-        case AST_KIND_LITERAL_STRING: wprint(w, "{}", AST_AS(node, Ast_Literal)->str); break;
-        case AST_KIND_IDENT:          wprint(w, "{}", AST_AS(node, Ast_Ident)->str); break;
-        case AST_KIND_BINARY_OP: lexer_print_token_raw_to_writer(&AST_AS(node, Ast_Operation)->op, w); break;
-        case AST_KIND_PRE_OP:    lexer_print_token_raw_to_writer(&AST_AS(node, Ast_Operation)->op, w); break;
-        case AST_KIND_INVOKE: break;
-        case AST_KIND_INITIALIZER: break;
-        case AST_KIND_ARRAY_INITIALIZER: break;
-        case AST_KIND_KEY_VALUE: break;
-        case AST_KIND_BLOCK: break;
-        case AST_KIND_CONST: break;
-        case AST_KIND_VARIABLE_DECLARATION: print_storage_class(AST_AS(node, Ast_Variable_Declaration)->storage_class, w); break;
-        case AST_KIND_FUNCTION_DECLARATION: print_storage_class(AST_AS(node, Ast_Function_Declaration)->storage_class, w); break;
-        case AST_KIND_PARAMETER: break;
-        case AST_KIND_RETURN: break;
-        case AST_KIND_BREAK: break;
-        case AST_KIND_CONTINUE: break;
-        case AST_KIND_IF: break;
-        case AST_KIND_FOR: break;
-        case AST_KIND_WHILE: break;
-        case AST_KIND_INDEX: break;
-        case AST_KIND_SLICE: break;
-        case AST_KIND_GENERIC: break;
-        case AST_KIND_CAST:
+        case CODE_KIND_LITERAL_INT:    wprint(w, "{}", CODE_AS(node, Code_Literal)->u64); break;
+        case CODE_KIND_LITERAL_FLOAT:  wprint(w, "{}", CODE_AS(node, Code_Literal)->f64); break;
+        case CODE_KIND_LITERAL_STRING: wprint(w, "{}", CODE_AS(node, Code_Literal)->str); break;
+        case CODE_KIND_IDENT:          wprint(w, "{}", CODE_AS(node, Code_Ident)->str); break;
+        case CODE_KIND_BINARY_OP: lexer_print_token_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
+        case CODE_KIND_PRE_OP:    lexer_print_token_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
+        case CODE_KIND_INVOKE: break;
+        case CODE_KIND_INITIALIZER: break;
+        case CODE_KIND_ARRAY_INITIALIZER: break;
+        case CODE_KIND_KEY_VALUE: break;
+        case CODE_KIND_BLOCK: break;
+        case CODE_KIND_CONST: break;
+        case CODE_KIND_VARIABLE_DECLARATION: print_storage_class(CODE_AS(node, Code_Variable_Declaration)->storage_class, w); break;
+        case CODE_KIND_FUNCTION_DECLARATION: print_storage_class(CODE_AS(node, Code_Function_Declaration)->storage_class, w); break;
+        case CODE_KIND_PARAMETER: break;
+        case CODE_KIND_RETURN: break;
+        case CODE_KIND_BREAK: break;
+        case CODE_KIND_CONTINUE: break;
+        case CODE_KIND_IF: break;
+        case CODE_KIND_FOR: break;
+        case CODE_KIND_WHILE: break;
+        case CODE_KIND_INDEX: break;
+        case CODE_KIND_SLICE: break;
+        case CODE_KIND_GENERIC: break;
+        case CODE_KIND_CAST:
             if (node->type)
                 ll_print_type_raw(node->type, &stdout_writer);
             break;
-        case AST_KIND_STRUCT:
-            print_node_value(&AST_AS(node, Ast_Struct)->ident->base, w);
+        case CODE_KIND_STRUCT:
+            print_node_value(&CODE_AS(node, Code_Struct)->ident->base, w);
             break;
-        case AST_KIND_TYPE_POINTER: break;
+        case CODE_KIND_TYPE_POINTER: break;
         default: oc_unreachable("");
     }
 
@@ -1011,7 +1011,7 @@ void print_node_value(Ast_Base* node, Oc_Writer* w) {
     }
 }
 
-void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
+void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
     uint32_t i;
     for (i = 0; i < indent; ++i) {
         wprint(w, "  ");
@@ -1031,318 +1031,318 @@ void print_node(Ast_Base* node, uint32_t indent, Oc_Writer* w) {
     }
     wprint(w, "\n");
     switch (node->kind) {
-        case AST_KIND_BINARY_OP: 
-            print_node(AST_AS(node, Ast_Operation)->left, indent + 1, w);
-            print_node(AST_AS(node, Ast_Operation)->right, indent + 1, w);
+        case CODE_KIND_BINARY_OP: 
+            print_node(CODE_AS(node, Code_Operation)->left, indent + 1, w);
+            print_node(CODE_AS(node, Code_Operation)->right, indent + 1, w);
             break;
-        case AST_KIND_PRE_OP: 
-            print_node(AST_AS(node, Ast_Operation)->right, indent + 1, w);
+        case CODE_KIND_PRE_OP: 
+            print_node(CODE_AS(node, Code_Operation)->right, indent + 1, w);
             break;
 
-        case AST_KIND_INVOKE: 
-            print_node(AST_AS(node, Ast_Invoke)->expr, indent + 1, w);
-            // for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
-            //     print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->arguments.items[i], indent + 1, w);
+        case CODE_KIND_INVOKE: 
+            print_node(CODE_AS(node, Code_Invoke)->expr, indent + 1, w);
+            // for (i = 0; i < CODE_AS(node, Code_Invoke)->arguments.count; ++i) {
+            //     print_node((Code*)CODE_AS(node, Code_Invoke)->arguments.items[i], indent + 1, w);
             // }
-            for (i = 0; i < AST_AS(node, Ast_Invoke)->ordered_arguments.count; ++i) {
-                print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->ordered_arguments.items[i], indent + 1, w);
+            for (i = 0; i < CODE_AS(node, Code_Invoke)->ordered_arguments.count; ++i) {
+                print_node((Code*)CODE_AS(node, Code_Invoke)->ordered_arguments.items[i], indent + 1, w);
             }
             break;
 
-        case AST_KIND_INITIALIZER: 
-        case AST_KIND_ARRAY_INITIALIZER: 
-            for (i = 0; i < AST_AS(node, Ast_Initializer)->count; ++i) {
-                print_node((Ast_Base*)AST_AS(node, Ast_Initializer)->items[i], indent + 1, w);
+        case CODE_KIND_INITIALIZER: 
+        case CODE_KIND_ARRAY_INITIALIZER: 
+            for (i = 0; i < CODE_AS(node, Code_Initializer)->count; ++i) {
+                print_node((Code*)CODE_AS(node, Code_Initializer)->items[i], indent + 1, w);
             }
             break;
 
-        case AST_KIND_KEY_VALUE: 
-            print_node((Ast_Base*)AST_AS(node, Ast_Key_Value)->key, indent + 1, w);
-            print_node((Ast_Base*)AST_AS(node, Ast_Key_Value)->value, indent + 1, w);
+        case CODE_KIND_KEY_VALUE: 
+            print_node((Code*)CODE_AS(node, Code_Key_Value)->key, indent + 1, w);
+            print_node((Code*)CODE_AS(node, Code_Key_Value)->value, indent + 1, w);
             break;
 
-        case AST_KIND_CONST:
-            print_node(AST_AS(node, Ast_Marker)->expr, indent + 1, w);
+        case CODE_KIND_CONST:
+            print_node(CODE_AS(node, Code_Marker)->expr, indent + 1, w);
             break;
-        case AST_KIND_VARIABLE_DECLARATION:
-            print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->type, indent + 1, w);
-            print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1, w);
-            if (AST_AS(node, Ast_Variable_Declaration)->initializer) print_node(AST_AS(node, Ast_Variable_Declaration)->initializer, indent + 1, w);
+        case CODE_KIND_VARIABLE_DECLARATION:
+            print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->type, indent + 1, w);
+            print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->ident, indent + 1, w);
+            if (CODE_AS(node, Code_Variable_Declaration)->initializer) print_node(CODE_AS(node, Code_Variable_Declaration)->initializer, indent + 1, w);
             break;
 
-        case AST_KIND_FUNCTION_DECLARATION:
-            print_node(AST_AS(node, Ast_Function_Declaration)->return_type, indent + 1, w);
-            print_node((Ast_Base*)AST_AS(node, Ast_Function_Declaration)->ident, indent + 1, w);
-            for (i = 0; i < AST_AS(node, Ast_Function_Declaration)->parameters.count; ++i) {
-                print_node((Ast_Base*)&AST_AS(node, Ast_Function_Declaration)->parameters.items[i], indent + 1, w);
+        case CODE_KIND_FUNCTION_DECLARATION:
+            print_node(CODE_AS(node, Code_Function_Declaration)->return_type, indent + 1, w);
+            print_node((Code*)CODE_AS(node, Code_Function_Declaration)->ident, indent + 1, w);
+            for (i = 0; i < CODE_AS(node, Code_Function_Declaration)->parameters.count; ++i) {
+                print_node((Code*)&CODE_AS(node, Code_Function_Declaration)->parameters.items[i], indent + 1, w);
             }
-            if (AST_AS(node, Ast_Function_Declaration)->body) print_node(AST_AS(node, Ast_Function_Declaration)->body, indent + 1, w);
+            if (CODE_AS(node, Code_Function_Declaration)->body) print_node(CODE_AS(node, Code_Function_Declaration)->body, indent + 1, w);
             break;
 
-        case AST_KIND_PARAMETER:
-            if (AST_AS(node, Ast_Variable_Declaration)->type)
-                print_node(AST_AS(node, Ast_Variable_Declaration)->type, indent + 1, w);
-            if (AST_AS(node, Ast_Variable_Declaration)->ident)
-                print_node((Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, indent + 1, w);
+        case CODE_KIND_PARAMETER:
+            if (CODE_AS(node, Code_Variable_Declaration)->type)
+                print_node(CODE_AS(node, Code_Variable_Declaration)->type, indent + 1, w);
+            if (CODE_AS(node, Code_Variable_Declaration)->ident)
+                print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->ident, indent + 1, w);
             break;
-        case AST_KIND_RETURN:
-            if (AST_AS(node, Ast_Control_Flow)->expr)
-                print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1, w);
+        case CODE_KIND_RETURN:
+            if (CODE_AS(node, Code_Control_Flow)->expr)
+                print_node(CODE_AS(node, Code_Control_Flow)->expr, indent + 1, w);
             break;
-        case AST_KIND_BREAK:
-            if (AST_AS(node, Ast_Control_Flow)->expr)
-                print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1, w);
+        case CODE_KIND_BREAK:
+            if (CODE_AS(node, Code_Control_Flow)->expr)
+                print_node(CODE_AS(node, Code_Control_Flow)->expr, indent + 1, w);
             break;
-        case AST_KIND_CONTINUE:
-            if (AST_AS(node, Ast_Control_Flow)->expr)
-                print_node(AST_AS(node, Ast_Control_Flow)->expr, indent + 1, w);
+        case CODE_KIND_CONTINUE:
+            if (CODE_AS(node, Code_Control_Flow)->expr)
+                print_node(CODE_AS(node, Code_Control_Flow)->expr, indent + 1, w);
             break;
-        case AST_KIND_IF:
-            if (AST_AS(node, Ast_If)->cond)
-                print_node(AST_AS(node, Ast_If)->cond, indent + 1, w);
-            if (AST_AS(node, Ast_If)->body)
-                print_node(AST_AS(node, Ast_If)->body, indent + 1, w);
-            if (AST_AS(node, Ast_If)->else_clause)
-                print_node(AST_AS(node, Ast_If)->else_clause, indent + 1, w);
+        case CODE_KIND_IF:
+            if (CODE_AS(node, Code_If)->cond)
+                print_node(CODE_AS(node, Code_If)->cond, indent + 1, w);
+            if (CODE_AS(node, Code_If)->body)
+                print_node(CODE_AS(node, Code_If)->body, indent + 1, w);
+            if (CODE_AS(node, Code_If)->else_clause)
+                print_node(CODE_AS(node, Code_If)->else_clause, indent + 1, w);
             break;
-        case AST_KIND_WHILE:
-        case AST_KIND_FOR:
-            if (AST_AS(node, Ast_Loop)->init)
-                print_node(AST_AS(node, Ast_Loop)->init, indent + 1, w);
-            if (AST_AS(node, Ast_Loop)->cond)
-                print_node(AST_AS(node, Ast_Loop)->cond, indent + 1, w);
-            if (AST_AS(node, Ast_Loop)->update)
-                print_node(AST_AS(node, Ast_Loop)->update, indent + 1, w);
-            if (AST_AS(node, Ast_Loop)->body)
-                print_node(AST_AS(node, Ast_Loop)->body, indent + 1, w);
-            break;
-
-        case AST_KIND_INDEX:
-            print_node(AST_AS(node, Ast_Operation)->left, indent + 1, w);
-            if (AST_AS(node, Ast_Operation)->right)
-                print_node(AST_AS(node, Ast_Operation)->right, indent + 1, w);
+        case CODE_KIND_WHILE:
+        case CODE_KIND_FOR:
+            if (CODE_AS(node, Code_Loop)->init)
+                print_node(CODE_AS(node, Code_Loop)->init, indent + 1, w);
+            if (CODE_AS(node, Code_Loop)->cond)
+                print_node(CODE_AS(node, Code_Loop)->cond, indent + 1, w);
+            if (CODE_AS(node, Code_Loop)->update)
+                print_node(CODE_AS(node, Code_Loop)->update, indent + 1, w);
+            if (CODE_AS(node, Code_Loop)->body)
+                print_node(CODE_AS(node, Code_Loop)->body, indent + 1, w);
             break;
 
-        case AST_KIND_CAST:
-            if (AST_AS(node, Ast_Cast)->cast_type) print_node(AST_AS(node, Ast_Cast)->cast_type, indent + 1, w);
-            print_node(AST_AS(node, Ast_Cast)->expr, indent + 1, w);
+        case CODE_KIND_INDEX:
+            print_node(CODE_AS(node, Code_Operation)->left, indent + 1, w);
+            if (CODE_AS(node, Code_Operation)->right)
+                print_node(CODE_AS(node, Code_Operation)->right, indent + 1, w);
             break;
 
-        case AST_KIND_STRUCT:
-            for (i = 0; i < AST_AS(node, Ast_Struct)->body.count; ++i) {
-                print_node(AST_AS(node, Ast_Struct)->body.items[i], indent + 1, w);
+        case CODE_KIND_CAST:
+            if (CODE_AS(node, Code_Cast)->cast_type) print_node(CODE_AS(node, Code_Cast)->cast_type, indent + 1, w);
+            print_node(CODE_AS(node, Code_Cast)->expr, indent + 1, w);
+            break;
+
+        case CODE_KIND_STRUCT:
+            for (i = 0; i < CODE_AS(node, Code_Struct)->body.count; ++i) {
+                print_node(CODE_AS(node, Code_Struct)->body.items[i], indent + 1, w);
             }
             break;
 
-        case AST_KIND_GENERIC:
-            print_node((Ast_Base*)AST_AS(node, Ast_Generic)->ident, indent + 1, w);
+        case CODE_KIND_GENERIC:
+            print_node((Code*)CODE_AS(node, Code_Generic)->ident, indent + 1, w);
             break;
 
-        case AST_KIND_TYPE_POINTER:
-            print_node(AST_AS(node, Ast_Type_Pointer)->element, indent + 1, w);
+        case CODE_KIND_TYPE_POINTER:
+            print_node(CODE_AS(node, Code_Type_Pointer)->element, indent + 1, w);
             break;
 
-        case AST_KIND_BLOCK:
-            for (i = 0; i < AST_AS(node, Ast_Block)->count; ++i) {
-                print_node(AST_AS(node, Ast_Block)->items[i], indent + 1, w);
+        case CODE_KIND_BLOCK:
+            for (i = 0; i < CODE_AS(node, Code_Block)->count; ++i) {
+                print_node(CODE_AS(node, Code_Block)->items[i], indent + 1, w);
             }
 
         default: break;
     }
 }
 
-Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone_Params params) {
+Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params params) {
     uint32_t i;
-    Ast_Base* result;
+    Code* result;
     if (!node) return NULL;
 
     switch (node->kind) {
-    case AST_KIND_BINARY_OP:
-        result = CREATE_NODE(node->kind, ((Ast_Operation) {
+    case CODE_KIND_BINARY_OP:
+        result = CREATE_NODE(node->kind, ((Code_Operation) {
             .base.token_info = node->token_info,
-            .left = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->left, params),
-            .op = AST_AS(node, Ast_Operation)->op,
-            .right = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->right, params),
+            .left = ast_clone_node_deep(cc, CODE_AS(node, Code_Operation)->left, params),
+            .op = CODE_AS(node, Code_Operation)->op,
+            .right = ast_clone_node_deep(cc, CODE_AS(node, Code_Operation)->right, params),
         }));
         break;
-    case AST_KIND_PRE_OP: 
-        result = CREATE_NODE(node->kind, ((Ast_Operation) {
+    case CODE_KIND_PRE_OP: 
+        result = CREATE_NODE(node->kind, ((Code_Operation) {
             .base.token_info = node->token_info,
-            .op = AST_AS(node, Ast_Operation)->op,
-            .right = ast_clone_node_deep(cc, AST_AS(node, Ast_Operation)->right, params),
+            .op = CODE_AS(node, Code_Operation)->op,
+            .right = ast_clone_node_deep(cc, CODE_AS(node, Code_Operation)->right, params),
         }));
         break;
 
-    case AST_KIND_INVOKE: {
-        Ast_List newargs = { 0 };
-        for (i = 0; i < AST_AS(node, Ast_Invoke)->arguments.count; ++i) {
-            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Invoke)->arguments.items[i], params));
+    case CODE_KIND_INVOKE: {
+        Code_List newargs = { 0 };
+        for (i = 0; i < CODE_AS(node, Code_Invoke)->arguments.count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, CODE_AS(node, Code_Invoke)->arguments.items[i], params));
         }
-        result = CREATE_NODE(node->kind, ((Ast_Invoke) {
+        result = CREATE_NODE(node->kind, ((Code_Invoke) {
             .base.token_info = node->token_info,
-            .expr = AST_AS(node, Ast_Invoke)->expr,
+            .expr = CODE_AS(node, Code_Invoke)->expr,
             .arguments = newargs,
         }));
-        // for (i = 0; i < AST_AS(node, Ast_Invoke)->ordered_arguments.count; ++i) {
-        //     print_node((Ast_Base*)AST_AS(node, Ast_Invoke)->ordered_arguments.items[i], indent + 1, w);
+        // for (i = 0; i < CODE_AS(node, Code_Invoke)->ordered_arguments.count; ++i) {
+        //     print_node((Code*)CODE_AS(node, Code_Invoke)->ordered_arguments.items[i], indent + 1, w);
         // }
     } break;
 
-    case AST_KIND_INITIALIZER: 
-    case AST_KIND_ARRAY_INITIALIZER: {
-        Ast_List newargs = { 0 };
-        for (i = 0; i < AST_AS(node, Ast_Initializer)->count; ++i) {
-            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Initializer)->items[i], params));
+    case CODE_KIND_INITIALIZER: 
+    case CODE_KIND_ARRAY_INITIALIZER: {
+        Code_List newargs = { 0 };
+        for (i = 0; i < CODE_AS(node, Code_Initializer)->count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, CODE_AS(node, Code_Initializer)->items[i], params));
         }
-        result = CREATE_NODE(node->kind, ((Ast_Initializer) {
+        result = CREATE_NODE(node->kind, ((Code_Initializer) {
             .base.token_info = node->token_info,
             .items = newargs.items,
             .count = newargs.count,
             .capacity = newargs.capacity,
         }));
-        // for (i = 0; i < AST_AS(node, Ast_Initializer)->count; ++i) {
-        //     print_node((Ast_Base*)AST_AS(node, Ast_Initializer)->items[i], indent + 1, w);
+        // for (i = 0; i < CODE_AS(node, Code_Initializer)->count; ++i) {
+        //     print_node((Code*)CODE_AS(node, Code_Initializer)->items[i], indent + 1, w);
         // }
     } break;
 
-    case AST_KIND_KEY_VALUE: 
-        result = CREATE_NODE(node->kind, ((Ast_Key_Value) {
+    case CODE_KIND_KEY_VALUE: 
+        result = CREATE_NODE(node->kind, ((Code_Key_Value) {
             .base.token_info = node->token_info,
-            .key = ast_clone_node_deep(cc, AST_AS(node, Ast_Key_Value)->key, params),
-            .value = ast_clone_node_deep(cc, AST_AS(node, Ast_Key_Value)->value, params),
+            .key = ast_clone_node_deep(cc, CODE_AS(node, Code_Key_Value)->key, params),
+            .value = ast_clone_node_deep(cc, CODE_AS(node, Code_Key_Value)->value, params),
         }));
         break;
 
-    case AST_KIND_CONST:
-        result = CREATE_NODE(node->kind, ((Ast_Marker) {
+    case CODE_KIND_CONST:
+        result = CREATE_NODE(node->kind, ((Code_Marker) {
             .base.token_info = node->token_info,
-            .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Marker)->expr, params),
+            .expr = ast_clone_node_deep(cc, CODE_AS(node, Code_Marker)->expr, params),
         }));
         break;
-    case AST_KIND_VARIABLE_DECLARATION:
-        result = CREATE_NODE(node->kind, ((Ast_Variable_Declaration) {
+    case CODE_KIND_VARIABLE_DECLARATION:
+        result = CREATE_NODE(node->kind, ((Code_Variable_Declaration) {
             .base.token_info = node->token_info,
-            .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Variable_Declaration)->type, params),
-            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Variable_Declaration)->ident, params),
-            .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Variable_Declaration)->initializer, params),
-            .storage_class = AST_AS(node, Ast_Variable_Declaration)->storage_class,
+            .type = ast_clone_node_deep(cc, CODE_AS(node, Code_Variable_Declaration)->type, params),
+            .ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Variable_Declaration)->ident, params),
+            .initializer = ast_clone_node_deep(cc, CODE_AS(node, Code_Variable_Declaration)->initializer, params),
+            .storage_class = CODE_AS(node, Code_Variable_Declaration)->storage_class,
         }));
         break;
 
-    case AST_KIND_FUNCTION_DECLARATION: {
-        Ast_Parameter_List newargs = { 0 };
-        for (i = 0; i < AST_AS(node, Ast_Function_Declaration)->parameters.count; ++i) {
-            oc_array_append(&cc->arena, &newargs, ((Ast_Parameter){
-                .base.kind = AST_KIND_PARAMETER,
-                .base.token_info = AST_AS(node, Ast_Function_Declaration)->parameters.items[i].base.token_info,
-                .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->parameters.items[i].type, params),
-                .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Function_Declaration)->parameters.items[i].ident, params),
-                .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->parameters.items[i].initializer, params),
-                .flags = AST_AS(node, Ast_Function_Declaration)->parameters.items[i].flags,
+    case CODE_KIND_FUNCTION_DECLARATION: {
+        Code_Parameter_List newargs = { 0 };
+        for (i = 0; i < CODE_AS(node, Code_Function_Declaration)->parameters.count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ((Code_Parameter){
+                .base.kind = CODE_KIND_PARAMETER,
+                .base.token_info = CODE_AS(node, Code_Function_Declaration)->parameters.items[i].base.token_info,
+                .type = ast_clone_node_deep(cc, CODE_AS(node, Code_Function_Declaration)->parameters.items[i].type, params),
+                .ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Function_Declaration)->parameters.items[i].ident, params),
+                .initializer = ast_clone_node_deep(cc, CODE_AS(node, Code_Function_Declaration)->parameters.items[i].initializer, params),
+                .flags = CODE_AS(node, Code_Function_Declaration)->parameters.items[i].flags,
             }));
         }
 
-        result = CREATE_NODE(node->kind, ((Ast_Function_Declaration) {
+        result = CREATE_NODE(node->kind, ((Code_Function_Declaration) {
             .base.token_info = node->token_info,
-            .return_type = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->return_type, params),
-            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Function_Declaration)->ident, params),
-            .body = ast_clone_node_deep(cc, AST_AS(node, Ast_Function_Declaration)->body, params),
-            .storage_class = AST_AS(node, Ast_Function_Declaration)->storage_class,
+            .return_type = ast_clone_node_deep(cc, CODE_AS(node, Code_Function_Declaration)->return_type, params),
+            .ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Function_Declaration)->ident, params),
+            .body = ast_clone_node_deep(cc, CODE_AS(node, Code_Function_Declaration)->body, params),
+            .storage_class = CODE_AS(node, Code_Function_Declaration)->storage_class,
             .parameters = newargs,
         }));
     } break;
 
-    case AST_KIND_PARAMETER:
-        result = CREATE_NODE(node->kind, ((Ast_Parameter){
+    case CODE_KIND_PARAMETER:
+        result = CREATE_NODE(node->kind, ((Code_Parameter){
             .base.token_info = node->token_info,
-            .type = ast_clone_node_deep(cc, AST_AS(node, Ast_Parameter)->type, params),
-            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Parameter)->ident, params),
-            .initializer = ast_clone_node_deep(cc, AST_AS(node, Ast_Parameter)->initializer, params),
-            .flags = AST_AS(node, Ast_Parameter)->flags,
+            .type = ast_clone_node_deep(cc, CODE_AS(node, Code_Parameter)->type, params),
+            .ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Parameter)->ident, params),
+            .initializer = ast_clone_node_deep(cc, CODE_AS(node, Code_Parameter)->initializer, params),
+            .flags = CODE_AS(node, Code_Parameter)->flags,
         }));
         break;
-    case AST_KIND_CONTINUE:
-    case AST_KIND_BREAK:
-    case AST_KIND_RETURN:
-        result = CREATE_NODE(node->kind, ((Ast_Control_Flow){
+    case CODE_KIND_CONTINUE:
+    case CODE_KIND_BREAK:
+    case CODE_KIND_RETURN:
+        result = CREATE_NODE(node->kind, ((Code_Control_Flow){
             .base.token_info = node->token_info,
-            .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Control_Flow)->expr, params),
+            .expr = ast_clone_node_deep(cc, CODE_AS(node, Code_Control_Flow)->expr, params),
         }));
         break;
-    case AST_KIND_IF:
-        result = CREATE_NODE(node->kind, ((Ast_If){
+    case CODE_KIND_IF:
+        result = CREATE_NODE(node->kind, ((Code_If){
             .base.token_info = node->token_info,
-            .cond = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->cond, params),
-            .body = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->body, params),
-            .else_clause = ast_clone_node_deep(cc, AST_AS(node, Ast_If)->else_clause, params),
+            .cond = ast_clone_node_deep(cc, CODE_AS(node, Code_If)->cond, params),
+            .body = ast_clone_node_deep(cc, CODE_AS(node, Code_If)->body, params),
+            .else_clause = ast_clone_node_deep(cc, CODE_AS(node, Code_If)->else_clause, params),
         }));
         break;
-    case AST_KIND_WHILE:
-    case AST_KIND_FOR:
-        result = CREATE_NODE(node->kind, ((Ast_Loop){
+    case CODE_KIND_WHILE:
+    case CODE_KIND_FOR:
+        result = CREATE_NODE(node->kind, ((Code_Loop){
             .base.token_info = node->token_info,
-            .init = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->init, params),
-            .cond = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->cond, params),
-            .update = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->update, params),
-            .body = ast_clone_node_deep(cc, AST_AS(node, Ast_Loop)->body, params),
-        }));
-        break;
-
-    case AST_KIND_INDEX:
-    case AST_KIND_SLICE:
-        result = CREATE_NODE(node->kind, ((Ast_Slice){
-            .base.token_info = node->token_info,
-            .ptr = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->ptr, params),
-            .start = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->start, params),
-            .stop = ast_clone_node_deep(cc, AST_AS(node, Ast_Slice)->stop, params),
+            .init = ast_clone_node_deep(cc, CODE_AS(node, Code_Loop)->init, params),
+            .cond = ast_clone_node_deep(cc, CODE_AS(node, Code_Loop)->cond, params),
+            .update = ast_clone_node_deep(cc, CODE_AS(node, Code_Loop)->update, params),
+            .body = ast_clone_node_deep(cc, CODE_AS(node, Code_Loop)->body, params),
         }));
         break;
 
-    case AST_KIND_CAST:
-        result = CREATE_NODE(node->kind, ((Ast_Cast){
+    case CODE_KIND_INDEX:
+    case CODE_KIND_SLICE:
+        result = CREATE_NODE(node->kind, ((Code_Slice){
             .base.token_info = node->token_info,
-            .cast_type = ast_clone_node_deep(cc, AST_AS(node, Ast_Cast)->cast_type, params),
-            .expr = ast_clone_node_deep(cc, AST_AS(node, Ast_Cast)->expr, params),
+            .ptr = ast_clone_node_deep(cc, CODE_AS(node, Code_Slice)->ptr, params),
+            .start = ast_clone_node_deep(cc, CODE_AS(node, Code_Slice)->start, params),
+            .stop = ast_clone_node_deep(cc, CODE_AS(node, Code_Slice)->stop, params),
         }));
         break;
 
-    case AST_KIND_STRUCT: {
-        Ast_List newargs = { 0 };
-        for (i = 0; i < AST_AS(node, Ast_Struct)->body.count; ++i) {
-            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Struct)->body.items[i], params));
+    case CODE_KIND_CAST:
+        result = CREATE_NODE(node->kind, ((Code_Cast){
+            .base.token_info = node->token_info,
+            .cast_type = ast_clone_node_deep(cc, CODE_AS(node, Code_Cast)->cast_type, params),
+            .expr = ast_clone_node_deep(cc, CODE_AS(node, Code_Cast)->expr, params),
+        }));
+        break;
+
+    case CODE_KIND_STRUCT: {
+        Code_List newargs = { 0 };
+        for (i = 0; i < CODE_AS(node, Code_Struct)->body.count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, CODE_AS(node, Code_Struct)->body.items[i], params));
         }
-        result = CREATE_NODE(node->kind, ((Ast_Struct){
+        result = CREATE_NODE(node->kind, ((Code_Struct){
             .base.token_info = node->token_info,
-            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Struct)->ident, params),
+            .ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Struct)->ident, params),
             .body = newargs,
         }));
     } break;
 
-    case AST_KIND_GENERIC:
-        result = CREATE_NODE(node->kind, ((Ast_Generic){
+    case CODE_KIND_GENERIC:
+        result = CREATE_NODE(node->kind, ((Code_Generic){
             .base.token_info = node->token_info,
-            .ident = (Ast_Ident*)ast_clone_node_deep(cc, (Ast_Base*)AST_AS(node, Ast_Generic)->ident, params),
+            .ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Generic)->ident, params),
         }));
         break;
 
-    case AST_KIND_TYPE_POINTER:
-        result = CREATE_NODE(node->kind, ((Ast_Type_Pointer){
+    case CODE_KIND_TYPE_POINTER:
+        result = CREATE_NODE(node->kind, ((Code_Type_Pointer){
             .base.token_info = node->token_info,
-            .element = ast_clone_node_deep(cc, AST_AS(node, Ast_Type_Pointer)->element, params),
+            .element = ast_clone_node_deep(cc, CODE_AS(node, Code_Type_Pointer)->element, params),
         }));
         break;
 
-    case AST_KIND_BLOCK: {
-        Ast_Block_Flags flags = AST_AS(node, Ast_Block)->flags;
+    case CODE_KIND_BLOCK: {
+        Code_Block_Flags flags = CODE_AS(node, Code_Block)->flags;
         if (params.expand_first_block) {
             params.expand_first_block = false;
-            flags |= AST_BLOCK_FLAG_MACRO_EXPANSION;
+            flags |= CODE_BLOCK_FLAG_MACRO_EXPANSION;
         }
-        Ast_List newargs = { 0 };
-        for (i = 0; i < AST_AS(node, Ast_Block)->count; ++i) {
-            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, AST_AS(node, Ast_Block)->items[i], params));
+        Code_List newargs = { 0 };
+        for (i = 0; i < CODE_AS(node, Code_Block)->count; ++i) {
+            oc_array_append(&cc->arena, &newargs, ast_clone_node_deep(cc, CODE_AS(node, Code_Block)->items[i], params));
         }
-        result = CREATE_NODE(AST_KIND_BLOCK, ((Ast_Block){
+        result = CREATE_NODE(CODE_KIND_BLOCK, ((Code_Block){
             .base.token_info = node->token_info,
             .flags = flags,
             .items = newargs.items,
@@ -1351,29 +1351,29 @@ Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone
         }));
     } break;
 
-    case AST_KIND_LITERAL_INT: {
-        result = CREATE_NODE(node->kind, ((Ast_Literal){
+    case CODE_KIND_LITERAL_INT: {
+        result = CREATE_NODE(node->kind, ((Code_Literal){
             .base.token_info = node->token_info,
-            .u64 = AST_AS(node, Ast_Literal)->u64,
+            .u64 = CODE_AS(node, Code_Literal)->u64,
         }));
     } break;
-    case AST_KIND_LITERAL_FLOAT: {
-        result = CREATE_NODE(node->kind, ((Ast_Literal){
+    case CODE_KIND_LITERAL_FLOAT: {
+        result = CREATE_NODE(node->kind, ((Code_Literal){
             .base.token_info = node->token_info,
-            .f64 = AST_AS(node, Ast_Literal)->f64,
+            .f64 = CODE_AS(node, Code_Literal)->f64,
         }));
     } break;
-    case AST_KIND_LITERAL_STRING: {
-        result = CREATE_NODE(node->kind, ((Ast_Literal){
+    case CODE_KIND_LITERAL_STRING: {
+        result = CREATE_NODE(node->kind, ((Code_Literal){
             .base.token_info = node->token_info,
-            .str = AST_AS(node, Ast_Literal)->str,
+            .str = CODE_AS(node, Code_Literal)->str,
         }));
     } break;
-    case AST_KIND_IDENT: {
-        result = CREATE_NODE(node->kind, ((Ast_Ident){
+    case CODE_KIND_IDENT: {
+        result = CREATE_NODE(node->kind, ((Code_Ident){
             .base.token_info = node->token_info,
-            .str = AST_AS(node, Ast_Ident)->str,
-            .flags = AST_AS(node, Ast_Ident)->flags | (params.convert_all_idents_to_expansion ? AST_IDENT_FLAG_EXPAND : 0),
+            .str = CODE_AS(node, Code_Ident)->str,
+            .flags = CODE_AS(node, Code_Ident)->flags | (params.convert_all_idents_to_expansion ? CODE_IDENT_FLAG_EXPAND : 0),
         }));
     } break;
     // default: oc_unreachable(""); break;

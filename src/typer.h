@@ -28,9 +28,9 @@ typedef enum {
 typedef struct scope_map {
     LL_Scope_Kind kind;
     struct scope_map* parent;
-    Ast_Ident* ident;
+    Code_Ident* ident;
     struct ll_type* declared_type;
-    Ast_Base* decl;
+    Code* decl;
 
     LL_Scope_Map_Entry* children[LL_DEFAULT_MAP_ENTRY_COUNT];
     size_t next_anon;
@@ -42,24 +42,24 @@ typedef struct scope_map {
 typedef struct {
     LL_Scope_Kind kind;
     struct scope_map* parent;
-    Ast_Ident* ident;
+    Code_Ident* ident;
     struct ll_type* declared_type;
-    Ast_Base* decl;
+    Code* decl;
 } LL_Scope_Simple;
 
 typedef struct {
     LL_Scope_Kind kind;
     struct scope_map* parent;
-    Ast_Ident* ident;
+    Code_Ident* ident;
     struct ll_type* declared_type;
 } LL_Scope_Builtin;
 
 typedef struct {
     LL_Scope_Kind kind;
     struct scope_map* parent;
-    Ast_Ident* ident;
-    Ast_Base* decl;
-    Ast_Base* value;
+    Code_Ident* ident;
+    Code* decl;
+    Code* value;
 } LL_Scope_Macro_Parameter;
 
 typedef enum {
@@ -141,7 +141,7 @@ typedef struct ll_type_intern_map_entry {
 
 typedef struct {
     LL_Scope* scope;
-    Ast_Base** this_arg;
+    Code** this_arg;
 } LL_Typer_Resolve_Result;
 
 typedef struct {
@@ -181,7 +181,7 @@ typedef struct ll_typer {
 } LL_Typer;
 
 typedef struct {
-    Ast_Ident* ident;
+    Code_Ident* ident;
     LL_Type* type;
 } LL_Typer_Matched_Polymorph;
 
@@ -190,32 +190,32 @@ size_t ll_type_hash(LL_Type* type, size_t seed);
 LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* return_type, LL_Type** parameter_types, size_t parameter_count, bool is_variadic);
 
 LL_Typer ll_typer_create(Compiler_Context* cc);
-void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Ast_Base* node);
+void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node);
 
-LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base** stmt);
-LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
-LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Ast_Base* typename);
+LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt);
+LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
+LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename);
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);
 
 bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Type* dst_type);
 bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Eval_Value* src_value, LL_Type* dst_type);
-bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr, LL_Type* dst_type);
+bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typer, Code* expr, LL_Type* dst_type);
 
 void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist);
 LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
-LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Ast_Ident* ident);
+LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Ident* ident);
 
 void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
 
 
-void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type);
+void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type);
 LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type);
 
 
-LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Ast_Function_Declaration* fn_decl, LL_Function_Instantiation inst);
-LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Ast_Function_Declaration* fn_decl, LL_Type_Function* fn_type);
-bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base* type_decl, LL_Type* provided_type, Ast_Base* site, bool is_top_level_this_arg);
+LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Function_Instantiation inst);
+LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Type_Function* fn_type);
+bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* type_decl, LL_Type* provided_type, Code* site, bool is_top_level_this_arg);
 
 static inline LL_Type* ll_get_base_type(LL_Type* type) {
     while (type && type->kind == LL_TYPE_NAMED) {

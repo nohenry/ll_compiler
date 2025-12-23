@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
     cc.exit_0 = exit_0;
 
     LL_Parser parser = parser_create_from_file(&cc, filename);
-    Ast_Base* root = parser_parse_file(&cc, &parser);
+    Code* root = parser_parse_file(&cc, &parser);
     LL_Typer typer = ll_typer_create(&cc);
     LL_Eval_Context eval_context = { 0 };
     ll_eval_init(&cc, &eval_context);

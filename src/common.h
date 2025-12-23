@@ -16,6 +16,40 @@ inline bool is_eql(void* a, void* b, size_t size) {
 }
 
 #define LL_DEFAULT_MAP_ENTRY_COUNT (256u)
+#define Hash_Map(K, V) struct { struct { K _key; V _value; uint32 filled; }* entries; uint32 count_filled, capacity; }
+
+#define hash_map_get(arena, hm, key) ({                                             \
+        uint32 index = MAP_DEFAULT_HASH_FN(key, MAP_DEFAULT_SEED) % (hm)->capacity; \
+        uint32 until_index = index;                                                 \
+        __typeof__((hm)->entries[0]._value)* result = NULL;                          \
+        do {                                                                        \
+            if (MAP_DEFAULT_EQL_FN((hm)->entries[index]._key, key)) {                \
+                result = &(hm)->entries[index]._value;                               \
+                break;                                                              \
+            }                                                                       \
+            index = (index + 1) % (hm)->capacity;                                   \
+        } while ((hm)->entries[index].filled && index != until_index);              \
+        result;                                                                     \
+    })
+
+#define hash_map_put(arena, hm, key, value) do {                                                                                                 \
+        if ((hm)->count_filled >= (hm)->capacity / 2) {                                                                                          \
+            uint32 new_cap = (hm)->capacity ? (hm)->capacity * 4 : 32;                                                                          \
+            void* new_ptr = oc_arena_realloc((arena), (hm)->entries, (hm)->capacity * sizeof(*(hm)->entries), new_cap * sizeof(*(hm)->entries)); \
+            (hm)->entries = new_ptr;                                                                                                               \
+            (hm)->capacity = new_cap;                                                                                                            \
+        }                                                                                                                                        \
+        uint32 index = MAP_DEFAULT_HASH_FN(key, MAP_DEFAULT_SEED) % (hm)->capacity;                                                                \
+        while ((hm)->entries[index].filled) {                                                                                                      \
+            if (MAP_DEFAULT_EQL_FN((hm)->entries[index]._key, key)) {                                                                               \
+                break;                                                                                                                           \
+            }                                                                                                                                    \
+            index = (index + 1) % (hm)->capacity;                                                                                                  \
+        }                                                                                                                                        \
+        (hm)->entries[index]._key = key;                                                                                               \
+        (hm)->entries[index]._value = value;                                                                                               \
+        (hm)->count_filled++; \
+    } while(0)
 
 typedef struct string_intern_map_entry {
     string value;

@@ -791,7 +791,7 @@ typedef struct
 #define NT_S390_TODPREG	0x303		/* s390 TOD programmable register */
 #define NT_S390_CTRS	0x304		/* s390 control registers */
 #define NT_S390_PREFIX	0x305		/* s390 prefix register */
-#define NT_S390_LAST_BREAK	0x306	/* s390 breaking event address */
+#define NT_S390_LCODE_BREAK	0x306	/* s390 breaking event address */
 #define NT_S390_SYSTEM_CALL	0x307	/* s390 system call restart data */
 #define NT_S390_TDB	0x308		/* s390 transaction diagnostic block */
 #define NT_S390_VXRS_LOW	0x309	/* s390 vector registers 0-15
@@ -3843,12 +3843,12 @@ enum
 #define R_TILEGX_IMM16_X1_HW2_PCREL 55	/* X1 pipe PC relative hword 2 */
 #define R_TILEGX_IMM16_X0_HW3_PCREL 56	/* X0 pipe PC relative hword 3 */
 #define R_TILEGX_IMM16_X1_HW3_PCREL 57	/* X1 pipe PC relative hword 3 */
-#define R_TILEGX_IMM16_X0_HW0_LAST_PCREL 58 /* X0 pipe PC-rel last hword 0 */
-#define R_TILEGX_IMM16_X1_HW0_LAST_PCREL 59 /* X1 pipe PC-rel last hword 0 */
-#define R_TILEGX_IMM16_X0_HW1_LAST_PCREL 60 /* X0 pipe PC-rel last hword 1 */
-#define R_TILEGX_IMM16_X1_HW1_LAST_PCREL 61 /* X1 pipe PC-rel last hword 1 */
-#define R_TILEGX_IMM16_X0_HW2_LAST_PCREL 62 /* X0 pipe PC-rel last hword 2 */
-#define R_TILEGX_IMM16_X1_HW2_LAST_PCREL 63 /* X1 pipe PC-rel last hword 2 */
+#define R_TILEGX_IMM16_X0_HW0_LCODE_PCREL 58 /* X0 pipe PC-rel last hword 0 */
+#define R_TILEGX_IMM16_X1_HW0_LCODE_PCREL 59 /* X1 pipe PC-rel last hword 0 */
+#define R_TILEGX_IMM16_X0_HW1_LCODE_PCREL 60 /* X0 pipe PC-rel last hword 1 */
+#define R_TILEGX_IMM16_X1_HW1_LCODE_PCREL 61 /* X1 pipe PC-rel last hword 1 */
+#define R_TILEGX_IMM16_X0_HW2_LCODE_PCREL 62 /* X0 pipe PC-rel last hword 2 */
+#define R_TILEGX_IMM16_X1_HW2_LCODE_PCREL 63 /* X1 pipe PC-rel last hword 2 */
 #define R_TILEGX_IMM16_X0_HW0_GOT 64	/* X0 pipe hword 0 GOT offset */
 #define R_TILEGX_IMM16_X1_HW0_GOT 65	/* X1 pipe hword 0 GOT offset */
 #define R_TILEGX_IMM16_X0_HW0_PLT_PCREL 66 /* X0 pipe PC-rel PLT hword 0 */
@@ -3857,37 +3857,37 @@ enum
 #define R_TILEGX_IMM16_X1_HW1_PLT_PCREL 69 /* X1 pipe PC-rel PLT hword 1 */
 #define R_TILEGX_IMM16_X0_HW2_PLT_PCREL 70 /* X0 pipe PC-rel PLT hword 2 */
 #define R_TILEGX_IMM16_X1_HW2_PLT_PCREL 71 /* X1 pipe PC-rel PLT hword 2 */
-#define R_TILEGX_IMM16_X0_HW0_LAST_GOT 72 /* X0 pipe last hword 0 GOT offset */
-#define R_TILEGX_IMM16_X1_HW0_LAST_GOT 73 /* X1 pipe last hword 0 GOT offset */
-#define R_TILEGX_IMM16_X0_HW1_LAST_GOT 74 /* X0 pipe last hword 1 GOT offset */
-#define R_TILEGX_IMM16_X1_HW1_LAST_GOT 75 /* X1 pipe last hword 1 GOT offset */
+#define R_TILEGX_IMM16_X0_HW0_LCODE_GOT 72 /* X0 pipe last hword 0 GOT offset */
+#define R_TILEGX_IMM16_X1_HW0_LCODE_GOT 73 /* X1 pipe last hword 0 GOT offset */
+#define R_TILEGX_IMM16_X0_HW1_LCODE_GOT 74 /* X0 pipe last hword 1 GOT offset */
+#define R_TILEGX_IMM16_X1_HW1_LCODE_GOT 75 /* X1 pipe last hword 1 GOT offset */
 #define R_TILEGX_IMM16_X0_HW3_PLT_PCREL 76 /* X0 pipe PC-rel PLT hword 3 */
 #define R_TILEGX_IMM16_X1_HW3_PLT_PCREL 77 /* X1 pipe PC-rel PLT hword 3 */
 #define R_TILEGX_IMM16_X0_HW0_TLS_GD 78	/* X0 pipe hword 0 TLS GD offset */
 #define R_TILEGX_IMM16_X1_HW0_TLS_GD 79	/* X1 pipe hword 0 TLS GD offset */
 #define R_TILEGX_IMM16_X0_HW0_TLS_LE 80	/* X0 pipe hword 0 TLS LE offset */
 #define R_TILEGX_IMM16_X1_HW0_TLS_LE 81	/* X1 pipe hword 0 TLS LE offset */
-#define R_TILEGX_IMM16_X0_HW0_LAST_TLS_LE 82 /* X0 pipe last hword 0 LE off */
-#define R_TILEGX_IMM16_X1_HW0_LAST_TLS_LE 83 /* X1 pipe last hword 0 LE off */
-#define R_TILEGX_IMM16_X0_HW1_LAST_TLS_LE 84 /* X0 pipe last hword 1 LE off */
-#define R_TILEGX_IMM16_X1_HW1_LAST_TLS_LE 85 /* X1 pipe last hword 1 LE off */
-#define R_TILEGX_IMM16_X0_HW0_LAST_TLS_GD 86 /* X0 pipe last hword 0 GD off */
-#define R_TILEGX_IMM16_X1_HW0_LAST_TLS_GD 87 /* X1 pipe last hword 0 GD off */
-#define R_TILEGX_IMM16_X0_HW1_LAST_TLS_GD 88 /* X0 pipe last hword 1 GD off */
-#define R_TILEGX_IMM16_X1_HW1_LAST_TLS_GD 89 /* X1 pipe last hword 1 GD off */
+#define R_TILEGX_IMM16_X0_HW0_LCODE_TLS_LE 82 /* X0 pipe last hword 0 LE off */
+#define R_TILEGX_IMM16_X1_HW0_LCODE_TLS_LE 83 /* X1 pipe last hword 0 LE off */
+#define R_TILEGX_IMM16_X0_HW1_LCODE_TLS_LE 84 /* X0 pipe last hword 1 LE off */
+#define R_TILEGX_IMM16_X1_HW1_LCODE_TLS_LE 85 /* X1 pipe last hword 1 LE off */
+#define R_TILEGX_IMM16_X0_HW0_LCODE_TLS_GD 86 /* X0 pipe last hword 0 GD off */
+#define R_TILEGX_IMM16_X1_HW0_LCODE_TLS_GD 87 /* X1 pipe last hword 0 GD off */
+#define R_TILEGX_IMM16_X0_HW1_LCODE_TLS_GD 88 /* X0 pipe last hword 1 GD off */
+#define R_TILEGX_IMM16_X1_HW1_LCODE_TLS_GD 89 /* X1 pipe last hword 1 GD off */
 /* Relocs 90-91 are currently not defined.  */
 #define R_TILEGX_IMM16_X0_HW0_TLS_IE 92	/* X0 pipe hword 0 TLS IE offset */
 #define R_TILEGX_IMM16_X1_HW0_TLS_IE 93	/* X1 pipe hword 0 TLS IE offset */
-#define R_TILEGX_IMM16_X0_HW0_LAST_PLT_PCREL 94 /* X0 pipe PC-rel PLT last hword 0 */
-#define R_TILEGX_IMM16_X1_HW0_LAST_PLT_PCREL 95 /* X1 pipe PC-rel PLT last hword 0 */
-#define R_TILEGX_IMM16_X0_HW1_LAST_PLT_PCREL 96 /* X0 pipe PC-rel PLT last hword 1 */
-#define R_TILEGX_IMM16_X1_HW1_LAST_PLT_PCREL 97 /* X1 pipe PC-rel PLT last hword 1 */
-#define R_TILEGX_IMM16_X0_HW2_LAST_PLT_PCREL 98 /* X0 pipe PC-rel PLT last hword 2 */
-#define R_TILEGX_IMM16_X1_HW2_LAST_PLT_PCREL 99 /* X1 pipe PC-rel PLT last hword 2 */
-#define R_TILEGX_IMM16_X0_HW0_LAST_TLS_IE 100 /* X0 pipe last hword 0 IE off */
-#define R_TILEGX_IMM16_X1_HW0_LAST_TLS_IE 101 /* X1 pipe last hword 0 IE off */
-#define R_TILEGX_IMM16_X0_HW1_LAST_TLS_IE 102 /* X0 pipe last hword 1 IE off */
-#define R_TILEGX_IMM16_X1_HW1_LAST_TLS_IE 103 /* X1 pipe last hword 1 IE off */
+#define R_TILEGX_IMM16_X0_HW0_LCODE_PLT_PCREL 94 /* X0 pipe PC-rel PLT last hword 0 */
+#define R_TILEGX_IMM16_X1_HW0_LCODE_PLT_PCREL 95 /* X1 pipe PC-rel PLT last hword 0 */
+#define R_TILEGX_IMM16_X0_HW1_LCODE_PLT_PCREL 96 /* X0 pipe PC-rel PLT last hword 1 */
+#define R_TILEGX_IMM16_X1_HW1_LCODE_PLT_PCREL 97 /* X1 pipe PC-rel PLT last hword 1 */
+#define R_TILEGX_IMM16_X0_HW2_LCODE_PLT_PCREL 98 /* X0 pipe PC-rel PLT last hword 2 */
+#define R_TILEGX_IMM16_X1_HW2_LCODE_PLT_PCREL 99 /* X1 pipe PC-rel PLT last hword 2 */
+#define R_TILEGX_IMM16_X0_HW0_LCODE_TLS_IE 100 /* X0 pipe last hword 0 IE off */
+#define R_TILEGX_IMM16_X1_HW0_LCODE_TLS_IE 101 /* X1 pipe last hword 0 IE off */
+#define R_TILEGX_IMM16_X0_HW1_LCODE_TLS_IE 102 /* X0 pipe last hword 1 IE off */
+#define R_TILEGX_IMM16_X1_HW1_LCODE_TLS_IE 103 /* X1 pipe last hword 1 IE off */
 /* Relocs 104-105 are currently not defined.  */
 #define R_TILEGX_TLS_DTPMOD64	106	/* 64-bit ID of symbol's module */
 #define R_TILEGX_TLS_DTPOFF64	107	/* 64-bit offset in TLS block */

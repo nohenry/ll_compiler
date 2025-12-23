@@ -30,7 +30,7 @@ LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind);
 bool ll_backend_write_to_file(Compiler_Context* cc, LL_Backend* b, char* filepath);
 void ll_backend_execute(Compiler_Context* cc, LL_Backend* b, LL_Backend_Ir* bir);
 
-void ll_backend_generate_statement(Compiler_Context* cc, LL_Backend* b, Ast_Base* stmt);
+void ll_backend_generate_statement(Compiler_Context* cc, LL_Backend* b, Code* stmt);
 void ll_backend_generate_statement_from_ir(Compiler_Context* cc, LL_Backend* b, LL_Backend_Ir* bir);
 
 #define AS_LITTLE_ENDIAN_U8(x) (x)

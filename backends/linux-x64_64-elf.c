@@ -98,7 +98,7 @@ typedef struct {
 
     uint32_t stack_used;
 
-    Ast_Ident memcpy_ident;
+    Code_Ident memcpy_ident;
 } Linux_x86_64_Elf_Backend;
 
 typedef struct {
@@ -1487,7 +1487,7 @@ DO_OPCODE_ARITHMETIC:
             switch (OPD_TYPE(invokee)) {
             case LL_IR_OPERAND_FUNCTION_BIT: {
                 LL_Ir_Function* fn = &bir->fns.items[OPD_VALUE(invokee)];
-                Ast_Ident* ident = fn->ident;
+                Code_Ident* ident = fn->ident;
 
                 if (fn->flags & LL_IR_FUNCTION_FLAG_EXTERN || fn->generated_offset == LL_IR_FUNCTION_OFFSET_INVALID) {
                     params.relative = 0;
@@ -1596,7 +1596,7 @@ void linux_x86_64_elf_generate(Compiler_Context* cc, Linux_x86_64_Elf_Backend* b
         fn->generated_offset = (int64_t)function_offset;
 
         // symbol could be valid in the case that it's used before defined
-        if (fn->ident->symbol_index == AST_IDENT_SYMBOL_INVALID) {
+        if (fn->ident->symbol_index == CODE_IDENT_SYMBOL_INVALID) {
             fn->ident->symbol_index = (int32_t)b->symbols.count;
             oc_array_append(&cc->arena, &b->symbols, (Elf64_Sym){ 0 });
         }

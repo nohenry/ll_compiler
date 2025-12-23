@@ -44,7 +44,7 @@ LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind) {
     return backend;
 }
 
-void ll_backend_generate_statement(Compiler_Context* cc, LL_Backend* b, Ast_Base* stmt) {
+void ll_backend_generate_statement(Compiler_Context* cc, LL_Backend* b, Code* stmt) {
     switch (b->kind) {
     case LL_BACKEND_IR: ir_generate_statement(cc, b->backend, stmt); break;
     // case LL_BACKEND_C: backend_c_generate_root(cc, b->backend, stmt); break;

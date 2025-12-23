@@ -6,39 +6,53 @@
 
 #define optional
 
+typedef struct code Code;
+
+typedef struct {
+    Code** items;
+    uint32_t count, capacity;
+} LL_Flattened;
+
+typedef struct {
+    Code* yielded_on;
+
+    LL_Flattened flattened;
+    uint32_t flattened_todo_cursor;
+} LL_Queued;
+
 typedef enum {
-    AST_KIND_LITERAL_INT,
-    AST_KIND_LITERAL_FLOAT,
-    AST_KIND_LITERAL_STRING,
-    AST_KIND_IDENT,
+    CODE_KIND_LITERAL_INT,
+    CODE_KIND_LITERAL_FLOAT,
+    CODE_KIND_LITERAL_STRING,
+    CODE_KIND_IDENT,
 
-    AST_KIND_BINARY_OP,
-    AST_KIND_PRE_OP,
-    AST_KIND_INVOKE,
+    CODE_KIND_BINARY_OP,
+    CODE_KIND_PRE_OP,
+    CODE_KIND_INVOKE,
 
-    AST_KIND_VARIABLE_DECLARATION,
-    AST_KIND_FUNCTION_DECLARATION,
-    AST_KIND_PARAMETER,
-    AST_KIND_BLOCK,
-    AST_KIND_CONST,
-    AST_KIND_INITIALIZER,
-    AST_KIND_ARRAY_INITIALIZER,
-    AST_KIND_KEY_VALUE,
+    CODE_KIND_VARIABLE_DECLARATION,
+    CODE_KIND_FUNCTION_DECLARATION,
+    CODE_KIND_PARAMETER,
+    CODE_KIND_BLOCK,
+    CODE_KIND_CONST,
+    CODE_KIND_INITIALIZER,
+    CODE_KIND_ARRAY_INITIALIZER,
+    CODE_KIND_KEY_VALUE,
 
-    AST_KIND_RETURN,
-    AST_KIND_BREAK,
-    AST_KIND_CONTINUE,
-    AST_KIND_IF,
-    AST_KIND_FOR,
-    AST_KIND_WHILE,
+    CODE_KIND_RETURN,
+    CODE_KIND_BREAK,
+    CODE_KIND_CONTINUE,
+    CODE_KIND_IF,
+    CODE_KIND_FOR,
+    CODE_KIND_WHILE,
 
-    AST_KIND_STRUCT,
-    AST_KIND_INDEX,
-    AST_KIND_SLICE,
-    AST_KIND_CAST,
-    AST_KIND_GENERIC,
-    AST_KIND_TYPE_POINTER,
-} Ast_Kind;
+    CODE_KIND_STRUCT,
+    CODE_KIND_INDEX,
+    CODE_KIND_SLICE,
+    CODE_KIND_CAST,
+    CODE_KIND_GENERIC,
+    CODE_KIND_TYPE_POINTER,
+} Code_Kind;
 
 typedef enum {
     LL_STORAGE_CLASS_EXTERN = (1 << 0),
@@ -55,215 +69,216 @@ typedef enum {
 
 struct ll_type;
 
-typedef struct {
-    Ast_Kind kind;
+struct code {
+    Code_Kind kind;
+    uint8_t has_const;
+    LL_Queued* queued;
     struct ll_type* type;
     LL_Eval_Value const_value;
-    uint8_t has_const;
     LL_Token_Info token_info;
-} Ast_Base;
+};
 
 typedef struct ll_function_instantiation {
     struct ll_function_instantiation* next;
     struct ll_type_function* fn_type;
-    Ast_Base* body optional;
+    Code* body optional;
     uint32_t ir_index;
 } LL_Function_Instantiation;
 
-#define AST_IDENT_SYMBOL_INVALID ((int32_t)-1)
+#define CODE_IDENT_SYMBOL_INVALID ((int32_t)-1)
 
-typedef uint32_t Ast_Ident_Flags;
+typedef uint32_t Code_Ident_Flags;
 enum {
-    AST_IDENT_FLAG_EXPAND = (1u << 0u),
+    CODE_IDENT_FLAG_EXPAND = (1u << 0u),
 };
 
 typedef struct {
-    Ast_Base base;
+    Code base;
     string str;
     struct scope_map* resolved_scope;
     int32_t symbol_index;
-    Ast_Ident_Flags flags;
-} Ast_Ident;
+    Code_Ident_Flags flags;
+} Code_Ident;
 
 typedef struct {
     size_t count;
     size_t capacity;
-    Ast_Base** items;
-} Ast_List;
+    Code** items;
+} Code_List;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* type;
-    Ast_Ident* ident;
-    Ast_Base* initializer;
+    Code base;
+    Code* type;
+    Code_Ident* ident;
+    Code* initializer;
     LL_Parameter_Flags flags;
     uint32_t ir_index;
-} Ast_Parameter;
+} Code_Parameter;
 
 typedef struct {
     uint32_t count;
     uint32_t capacity;
-    Ast_Parameter* items;
-} Ast_Parameter_List;
+    Code_Parameter* items;
+} Code_Parameter_List;
 
 typedef enum {
-    AST_BLOCK_FLAG_EXPR            = (1u << 0u),
-    AST_BLOCK_FLAG_MACRO_EXPANSION = (1u << 1u),
-} Ast_Block_Flags;
+    CODE_BLOCK_FLAG_EXPR            = (1u << 0u),
+    CODE_BLOCK_FLAG_MACRO_EXPANSION = (1u << 1u),
+} Code_Block_Flags;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Block_Flags flags;
+    Code base;
+    Code_Block_Flags flags;
 
 	struct scope_map* scope;
 
     uint32_t count;
     uint32_t capacity;
-    Ast_Base** items;
+    Code** items;
     LL_Token_Info c_open, c_close;
-} Ast_Block;
+} Code_Block;
 
 typedef struct {
-    Ast_Base base;
+    Code base;
     union {
         uint64_t u64;
         double f64;
         string str;
     };
-} Ast_Literal;
+} Code_Literal;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* left;
-    Ast_Base* right;
+    Code base;
+    Code* left;
+    Code* right;
     LL_Token op;
-} Ast_Operation;
+} Code_Operation;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* ptr;
-    Ast_Base* start;
-    Ast_Base* stop;
-} Ast_Slice;
+    Code base;
+    Code* ptr;
+    Code* start;
+    Code* stop;
+} Code_Slice;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* key;
-    Ast_Base* value;
-} Ast_Key_Value;
+    Code base;
+    Code* key;
+    Code* value;
+} Code_Key_Value;
 
 typedef struct {
-    Ast_Base base;
+    Code base;
 
     uint32_t count;
     uint32_t capacity;
-    Ast_Base** items;
+    Code** items;
     LL_Token_Info c_close;
-} Ast_Initializer;
+} Code_Initializer;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* expr;
-} Ast_Marker;
+    Code base;
+    Code* expr;
+} Code_Marker;
 
 enum {
-    AST_CONTROL_FLOW_TARGET_ANY,
-    AST_CONTROL_FLOW_TARGET_DO,
-    AST_CONTROL_FLOW_TARGET_IF,
-    AST_CONTROL_FLOW_TARGET_FOR,
-    AST_CONTROL_FLOW_TARGET_WHILE,
+    CODE_CONTROL_FLOW_TARGET_ANY,
+    CODE_CONTROL_FLOW_TARGET_DO,
+    CODE_CONTROL_FLOW_TARGET_IF,
+    CODE_CONTROL_FLOW_TARGET_FOR,
+    CODE_CONTROL_FLOW_TARGET_WHILE,
 };
-typedef uint32 Ast_Control_Flow_Target;
+typedef uint32 Code_Control_Flow_Target;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* expr;
-    Ast_Control_Flow_Target target;
+    Code base;
+    Code* expr;
+    Code_Control_Flow_Target target;
     struct scope_map* referenced_scope;
-} Ast_Control_Flow;
+} Code_Control_Flow;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* init;
-    Ast_Base* cond;
-    Ast_Base* update;
-    Ast_Base* body;
+    Code base;
+    Code* init;
+    Code* cond;
+    Code* update;
+    Code* body;
     struct scope_map* scope;
-} Ast_Loop;
+} Code_Loop;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* cond;
-    Ast_Base* body;
-    Ast_Base* else_clause;
+    Code base;
+    Code* cond;
+    Code* body;
+    Code* else_clause;
     LL_Token_Info else_kw;
-} Ast_If;
+} Code_If;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* type;
-    Ast_Ident* ident;
-    Ast_Base* initializer optional;
+    Code base;
+    Code* type;
+    Code_Ident* ident;
+    Code* initializer optional;
     LL_Storage_Class storage_class;
     uint32_t ir_index; // for locals, it's the locals index
                        // for structs, it's the type field index
-} Ast_Variable_Declaration;
+} Code_Variable_Declaration;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* return_type;
-    Ast_Ident* ident;
-    Ast_Parameter_List parameters;
-    Ast_Base* body optional;
+    Code base;
+    Code* return_type;
+    Code_Ident* ident;
+    Code_Parameter_List parameters;
+    Code* body optional;
     LL_Storage_Class storage_class;
     uint32_t ir_index;
     LL_Token_Info p_open, p_close;
 
     LL_Function_Instantiation* (*instantiations)[LL_DEFAULT_MAP_ENTRY_COUNT];
-} Ast_Function_Declaration;
+} Code_Function_Declaration;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* expr;
-    Ast_List arguments;
-	Ast_List ordered_arguments;
-    Ast_Function_Declaration* fn_decl;
+    Code base;
+    Code* expr;
+    Code_List arguments;
+	Code_List ordered_arguments;
+    Code_Function_Declaration* fn_decl;
     LL_Function_Instantiation* resolved_fn_inst;
     bool has_this_arg;
     LL_Token_Info p_close;
-} Ast_Invoke;
+} Code_Invoke;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Ident* ident;
-    Ast_List body;
+    Code base;
+    Code_Ident* ident;
+    Code_List body;
     LL_Token_Info c_open, c_close;
-} Ast_Struct;
+} Code_Struct;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* cast_type;
-    Ast_Base* expr;
+    Code base;
+    Code* cast_type;
+    Code* expr;
     LL_Token_Info p_open, p_close;
-} Ast_Cast;
+} Code_Cast;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Ident* ident;
-} Ast_Generic;
+    Code base;
+    Code_Ident* ident;
+} Code_Generic;
 
 typedef struct {
-    Ast_Base base;
-    Ast_Base* element;
-} Ast_Type_Pointer;
+    Code base;
+    Code* element;
+} Code_Type_Pointer;
 
-#define AST_AS(value, Type) ((Type*)(value))
+#define CODE_AS(value, Type) ((Type*)(value))
 
 
 typedef struct {
     bool expand_first_block;
     bool convert_all_idents_to_expansion;
-} LL_Ast_Clone_Params;
+} LL_Code_Clone_Params;
 
-const char* ast_get_node_kind(Ast_Base* node);
-Ast_Base* ast_clone_node_deep(Compiler_Context* cc, Ast_Base* node, LL_Ast_Clone_Params params);
+const char* ast_get_node_kind(Code* node);
+Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params params);

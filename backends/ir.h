@@ -19,7 +19,7 @@ typedef uint32_t LL_Ir_Operand;
 #define OPD_TYPE(operand) ((operand) & LL_IR_OPERAND_TYPE_MASK)
 
 typedef struct {
-    Ast_Ident* ident;
+    Code_Ident* ident;
 } LL_Ir_Local;
 
 typedef struct {
@@ -127,7 +127,7 @@ typedef struct {
 } LL_Ir_Literals_List;
 
 typedef struct {
-    Ast_Ident* ident;
+    Code_Ident* ident;
     LL_Type_Function* fn_type;
     LL_Ir_Block_Ref entry;
     LL_Ir_Block_Ref exit;
@@ -208,9 +208,9 @@ typedef struct ll_backend_ir {
 
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b);
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath);
-void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt);
-void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* stmt);
-LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Ast_Base* expr, bool ref);
+void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt);
+void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt);
+LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Code* expr, bool ref);
 LL_Type* ir_get_operand_type(LL_Backend_Ir* bir, LL_Ir_Function* fn, LL_Ir_Operand operand);
 
 size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i);

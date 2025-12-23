@@ -12,9 +12,9 @@
             ll_intern_type(cc, typer, &t); \
         })
 
-#define create_scope(kind, decl) create_scope_(cc, typer, kind, (Ast_Base*)(decl))
+#define create_scope(kind, decl) create_scope_(cc, typer, kind, (Code*)(decl))
 
-static LL_Scope* create_scope_(Compiler_Context* cc, LL_Typer* typer, LL_Scope_Kind kind, Ast_Base* decl) {
+static LL_Scope* create_scope_(Compiler_Context* cc, LL_Typer* typer, LL_Scope_Kind kind, Code* decl) {
     (void)typer;
     LL_Scope* result;
     result = oc_arena_alloc(&cc->arena, sizeof(LL_Scope));
@@ -26,9 +26,9 @@ static LL_Scope* create_scope_(Compiler_Context* cc, LL_Typer* typer, LL_Scope_K
     return result;
 }
 
-#define create_scope_simple(kind, decl) create_scope_simple_(cc, typer, kind, (Ast_Base*)(decl))
+#define create_scope_simple(kind, decl) create_scope_simple_(cc, typer, kind, (Code*)(decl))
 
-static LL_Scope_Simple* create_scope_simple_(Compiler_Context* cc, LL_Typer* typer, LL_Scope_Kind kind, Ast_Base* decl) {
+static LL_Scope_Simple* create_scope_simple_(Compiler_Context* cc, LL_Typer* typer, LL_Scope_Kind kind, Code* decl) {
     (void)typer;
     LL_Scope_Simple* result;
     result = oc_arena_alloc(&cc->arena, sizeof(LL_Scope_Simple));
@@ -38,9 +38,9 @@ static LL_Scope_Simple* create_scope_simple_(Compiler_Context* cc, LL_Typer* typ
     return result;
 }
 
-#define create_scope_macro_parameter(decl) create_scope_macro_parameter_(cc, typer, (Ast_Base*)(decl))
+#define create_scope_macro_parameter(decl) create_scope_macro_parameter_(cc, typer, (Code*)(decl))
 
-static LL_Scope_Macro_Parameter* create_scope_macro_parameter_(Compiler_Context* cc, LL_Typer* typer, Ast_Base* decl) {
+static LL_Scope_Macro_Parameter* create_scope_macro_parameter_(Compiler_Context* cc, LL_Typer* typer, Code* decl) {
     (void)typer;
     LL_Scope_Macro_Parameter* result;
     result = oc_arena_alloc(&cc->arena, sizeof(LL_Scope_Macro_Parameter));
@@ -342,7 +342,7 @@ void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer) {
     oc_exit(-1);
 }
 
-void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Ast_Base* node) {
+void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     ll_typer_type_statement(cc, typer, &node);
 }
 
@@ -616,20 +616,20 @@ LL_Type* ll_typer_implicit_cast_leftright(Compiler_Context* cc, LL_Typer* typer,
 }
 
 
-LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base** stmt) {
+LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt) {
     uint32_t i;
     LL_Type** types;
 
     switch ((*stmt)->kind) {
-    case AST_KIND_BLOCK: {
-        Ast_Block* blk = AST_AS((*stmt), Ast_Block);
+    case CODE_KIND_BLOCK: {
+        Code_Block* blk = CODE_AS((*stmt), Code_Block);
         LL_Scope* block_scope = NULL;
 
         if (
             typer->current_scope->kind != LL_SCOPE_KIND_LOOP
             && typer->current_scope->kind != LL_SCOPE_KIND_PACKAGE
         ) {
-            if (blk->flags & AST_BLOCK_FLAG_MACRO_EXPANSION) {
+            if (blk->flags & CODE_BLOCK_FLAG_MACRO_EXPANSION) {
                 block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *stmt);
             } else {
                 block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *stmt);
@@ -649,8 +649,8 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
             typer->current_scope = block_scope->parent;
         }
     } break;
-    case AST_KIND_VARIABLE_DECLARATION: {
-        Ast_Variable_Declaration* var_decl = AST_AS((*stmt), Ast_Variable_Declaration);
+    case CODE_KIND_VARIABLE_DECLARATION: {
+        Code_Variable_Declaration* var_decl = CODE_AS((*stmt), Code_Variable_Declaration);
         LL_Type* declared_type = ll_typer_get_type_from_typename(cc, typer, var_decl->type);
         var_decl->ident->base.type = declared_type;
 
@@ -661,7 +661,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 			var_scope = create_scope(LL_SCOPE_KIND_LOCAL, var_decl);
 		}
         var_scope->ident = var_decl->ident;
-        if (var_decl->ident->flags & AST_IDENT_FLAG_EXPAND) {
+        if (var_decl->ident->flags & CODE_IDENT_FLAG_EXPAND) {
             ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope, true);
         } else {
             ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope, false);
@@ -669,7 +669,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
         if (var_decl->initializer) {
             LL_Type* init_type;
-            if (var_decl->ident->flags & AST_IDENT_FLAG_EXPAND) {
+            if (var_decl->ident->flags & CODE_IDENT_FLAG_EXPAND) {
                 init_type = ll_typer_type_expression(cc, typer, &var_decl->initializer, declared_type, NULL);
             } else {
                 typer->current_scope = (LL_Scope*)var_scope;
@@ -724,8 +724,8 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
         break;
     }
-    case AST_KIND_FUNCTION_DECLARATION: {
-        Ast_Function_Declaration* fn_decl = AST_AS((*stmt), Ast_Function_Declaration);
+    case CODE_KIND_FUNCTION_DECLARATION: {
+        Code_Function_Declaration* fn_decl = CODE_AS((*stmt), Code_Function_Declaration);
 
         LL_Scope* fn_scope = create_scope(LL_SCOPE_KIND_FUNCTION, fn_decl);
         fn_scope->ident = fn_decl->ident;
@@ -739,7 +739,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         if (fn_decl->parameters.count) {
             types = alloca(sizeof(*types) * fn_decl->parameters.count);
             for (i = 0; i < fn_decl->parameters.count; ++i) {
-                Ast_Parameter* parameter = &fn_decl->parameters.items[i];
+                Code_Parameter* parameter = &fn_decl->parameters.items[i];
 
                 if (did_variadic) {
                     ll_typer_report_error(((LL_Error){ .highlight_start = parameter->type->token_info, .highlight_end = parameter->ident->base.token_info }), "No parameters can be after variadic parameter");
@@ -812,7 +812,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
         if (fn_decl->body) {
             if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
-                Ast_Block* blk = AST_AS(fn_decl->body, Ast_Block);
+                Code_Block* blk = CODE_AS(fn_decl->body, Code_Block);
                 ll_typer_report_error(((LL_Error) { .main_token = blk->c_open, .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Extern function shouldn't have a body");
                 ll_typer_report_error_done(cc, typer);
             }
@@ -826,8 +826,8 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
 
         break;
     }
-    case AST_KIND_STRUCT: {
-        Ast_Struct* strct = AST_AS(*stmt, Ast_Struct);
+    case CODE_KIND_STRUCT: {
+        Code_Struct* strct = CODE_AS(*stmt, Code_Struct);
 
         LL_Scope* struct_scope = create_scope(LL_SCOPE_KIND_STRUCT, *stmt);
         struct_scope->ident = strct->ident;
@@ -865,8 +865,8 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Ast_Base
         LL_Type* actual_class_type = ll_typer_get_struct_type(cc, typer, record.items, record.count);
         ((LL_Type_Named*)struct_scope->decl->type)->actual_type = actual_class_type;
     } break;
-    case AST_KIND_CONST: {
-        Ast_Marker* cf = AST_AS((*stmt), Ast_Marker);
+    case CODE_KIND_CONST: {
+        Code_Marker* cf = CODE_AS((*stmt), Code_Marker);
         (void)ll_typer_type_statement(cc, typer, &cf->expr);
         (void)ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr);
     } break;
@@ -1106,7 +1106,7 @@ bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* ty
     return false;
 }
 
-bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base* expr, LL_Type* dst_type) {
+bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typer, Code* expr, LL_Type* dst_type) {
     LL_Type* src_type = expr->type;
 
     if (ll_typer_can_implicitly_cast(cc, typer, src_type, dst_type)) return true;
@@ -1119,14 +1119,14 @@ bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typ
     return false;
 }
 
-void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type) {
+void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type) {
     (void)typer;
     if ((*expr)->type == expected_type) {
         return;
     }
 
-    Ast_Cast cast = {
-        .base.kind = AST_KIND_CAST,
+    Code_Cast cast = {
+        .base.kind = CODE_KIND_CAST,
         .base.type = expected_type,
         .expr = *expr,
     };
@@ -1135,23 +1135,23 @@ void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
         (*expr)->const_value = const_value_cast((*expr)->const_value, (*expr)->type, expected_type);
     }
 
-    Ast_Base* new_node = oc_arena_dup(&cc->arena, &cast, sizeof(cast));
+    Code* new_node = oc_arena_dup(&cc->arena, &cast, sizeof(cast));
     *expr = new_node;
 }
 
-LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Base** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
+LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
     LL_Type* result;
     size_t i;
     switch ((*expr)->kind) {
-    case AST_KIND_BLOCK: {
+    case CODE_KIND_BLOCK: {
         LL_Type* last_block_type = typer->block_type;
         typer->block_type = expected_type;
-        Ast_Block* blk = AST_AS((*expr), Ast_Block);
+        Code_Block* blk = CODE_AS((*expr), Code_Block);
         blk->base.type = expected_type;
 
         LL_Scope* block_scope = NULL; 
         if (typer->current_scope->kind != LL_SCOPE_KIND_LOOP) {
-            if (blk->flags & AST_BLOCK_FLAG_MACRO_EXPANSION) {
+            if (blk->flags & CODE_BLOCK_FLAG_MACRO_EXPANSION) {
                 block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *expr);
             } else {
                 block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *expr);
@@ -1163,8 +1163,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 
         blk->scope = block_scope;
 
-        for (i = 0; i < AST_AS((*expr), Ast_Block)->count; ++i) {
-            ll_typer_type_statement(cc, typer, &AST_AS((*expr), Ast_Block)->items[i]);
+        for (i = 0; i < CODE_AS((*expr), Code_Block)->count; ++i) {
+            ll_typer_type_statement(cc, typer, &CODE_AS((*expr), Code_Block)->items[i]);
         }
 
         if (block_scope) {
@@ -1175,15 +1175,15 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         typer->block_type = last_block_type;
         break;
     }
-    case AST_KIND_IDENT: {
-        if (AST_AS((*expr), Ast_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || AST_AS((*expr), Ast_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
+    case CODE_KIND_IDENT: {
+        if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
             if (expected_type->kind == LL_TYPE_BOOL) {
                 result = expected_type;
                 break;
             }
             result = typer->ty_anybool;
             break;
-        } else if (AST_AS((*expr), Ast_Ident)->str.ptr == LL_KEYWORD_NULL.ptr) {
+        } else if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_NULL.ptr) {
             if (expected_type->kind == LL_TYPE_POINTER) {
                 result = expected_type;
                 break;
@@ -1191,19 +1191,19 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             result = ll_typer_get_ptr_type(cc, typer, typer->ty_void);
             break;
         }
-        LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS((*expr), Ast_Ident));
+        LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, CODE_AS((*expr), Code_Ident));
         if (!scope) {
-            ll_typer_report_error(((LL_Error){ .main_token = AST_AS((*expr), Ast_Ident)->base.token_info }), "Symbol '{}' not found", AST_AS((*expr), Ast_Ident)->str);
+            ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS((*expr), Code_Ident)->str);
             ll_typer_report_error_done(cc, typer);
             return NULL;
         }
 
-        Ast_Base* possible_const = (Ast_Base*)scope->ident;
+        Code* possible_const = (Code*)scope->ident;
 
         switch (scope->kind) {
         case LL_SCOPE_KIND_MACRO_PARAMETER: {
             LL_Scope_Macro_Parameter* macro_param = (LL_Scope_Macro_Parameter*)scope;
-            *expr = ast_clone_node_deep(cc, macro_param->value, (LL_Ast_Clone_Params) { .convert_all_idents_to_expansion = true });
+            *expr = ast_clone_node_deep(cc, macro_param->value, (LL_Code_Clone_Params) { .convert_all_idents_to_expansion = true });
             possible_const = *expr;
 
             result = ll_typer_type_expression(cc, typer, expr, expected_type, resolve_result);
@@ -1220,7 +1220,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             result = typer->ty_type;
         } break;
         default: {
-            AST_AS((*expr), Ast_Ident)->resolved_scope = scope;
+            CODE_AS((*expr), Code_Ident)->resolved_scope = scope;
 
             if (resolve_result) {
                 resolve_result->scope = scope;
@@ -1245,8 +1245,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
 
         break;
     }
-    case AST_KIND_TYPE_POINTER: {
-        Ast_Base** element = &AST_AS((*expr), Ast_Type_Pointer)->element;
+    case CODE_KIND_TYPE_POINTER: {
+        Code** element = &CODE_AS((*expr), Code_Type_Pointer)->element;
         result = ll_typer_type_expression(cc, typer, element, NULL, NULL);
         if (!result) return NULL;
         if ((*element)->has_const) {
@@ -1257,9 +1257,9 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             result = typer->ty_type;
         } else oc_todo("handle runtime");
     } break;
-    case AST_KIND_LITERAL_INT:
+    case CODE_KIND_LITERAL_INT:
         (*expr)->has_const = 1u;
-        (*expr)->const_value.as_i64 = (int64_t)AST_AS((*expr), Ast_Literal)->u64;
+        (*expr)->const_value.as_i64 = (int64_t)CODE_AS((*expr), Code_Literal)->u64;
 
         if (expected_type) {
             switch (expected_type->kind) {
@@ -1277,9 +1277,9 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             result = typer->ty_anyint;
         }
         break;
-    case AST_KIND_LITERAL_FLOAT:
+    case CODE_KIND_LITERAL_FLOAT:
         (*expr)->has_const = 1u;
-        (*expr)->const_value.as_f64 = (int64_t)AST_AS((*expr), Ast_Literal)->f64;
+        (*expr)->const_value.as_f64 = (int64_t)CODE_AS((*expr), Code_Literal)->f64;
 
         if (expected_type) {
             switch (expected_type->kind) {
@@ -1294,12 +1294,12 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             result = typer->ty_anyfloat;
         }
         break;
-    case AST_KIND_LITERAL_STRING:
-        result = ll_typer_get_array_type(cc, typer, typer->ty_char, AST_AS((*expr), Ast_Literal)->str.len);
+    case CODE_KIND_LITERAL_STRING:
+        result = ll_typer_get_array_type(cc, typer, typer->ty_char, CODE_AS((*expr), Code_Literal)->str.len);
         // result = typer->ty_string;
         break;
-    case AST_KIND_ARRAY_INITIALIZER: {
-        Ast_Initializer* init = AST_AS((*expr), Ast_Initializer);
+    case CODE_KIND_ARRAY_INITIALIZER: {
+        Code_Initializer* init = CODE_AS((*expr), Code_Initializer);
         uint8_t* provided_elements = alloca(init->count * sizeof(*provided_elements));
         memset(provided_elements, 0, init->count * sizeof(*provided_elements));
 
@@ -1309,8 +1309,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             uint32_t element_index = 0;
             for (i = 0; i < init->count; ++i, ++element_index) {
                 LL_Type* provided_type;
-                if (init->items[i]->kind == AST_KIND_KEY_VALUE) {
-                    Ast_Key_Value* kv = AST_AS((*expr), Ast_Key_Value);
+                if (init->items[i]->kind == CODE_KIND_KEY_VALUE) {
+                    Code_Key_Value* kv = CODE_AS((*expr), Code_Key_Value);
                     LL_Eval_Value key = ll_eval_node(cc, cc->eval_context, cc->bir, kv->key);
                     element_index = (uint32_t)key.as_u64;
                     provided_type = ll_typer_type_expression(cc, typer, &kv->value, arr_type->element_type, NULL);
@@ -1341,8 +1341,8 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
         }
         break;
     }
-    case AST_KIND_BINARY_OP: {
-        Ast_Operation* opr = AST_AS((*expr), Ast_Operation);
+    case CODE_KIND_BINARY_OP: {
+        Code_Operation* opr = CODE_AS((*expr), Code_Operation);
 
         // handle dot member access
         switch (opr->op.kind) {
@@ -1352,11 +1352,11 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Ast_Bas
             LL_Typer_Resolve_Result result = { 0 };	
             ll_typer_type_expression(cc, typer, &opr->left, NULL, &result);
 
-            if (opr->right->kind != AST_KIND_IDENT) {
+            if (opr->right->kind != CODE_KIND_IDENT) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Member should be identifier");
                 ll_typer_report_error_done(cc, typer);
             }
-            Ast_Ident* right_ident = AST_AS(opr->right, Ast_Ident);
+            Code_Ident* right_ident = CODE_AS(opr->right, Code_Ident);
 
             if (result.scope) {
                 LL_Scope* member_scope;
@@ -1425,12 +1425,12 @@ TRY_MEMBER_FUNCTION_CALL:
                 ll_typer_type_expression(cc, typer, &opr->right, NULL, &result);
                 if (result.scope->kind == LL_SCOPE_KIND_FUNCTION) {
                     LL_Type_Function* fn_type = (LL_Type_Function*)result.scope->ident->base.type;
-                    Ast_Function_Declaration* fn = AST_AS(result.scope->decl, Ast_Function_Declaration);
+                    Code_Function_Declaration* fn = CODE_AS(result.scope->decl, Code_Function_Declaration);
                     oc_assert(fn_type->base.kind == LL_TYPE_FUNCTION);
 
                     if (fn_type->parameter_count > 0) {
                         LL_Type* member_arg_parameter = fn_type->parameters[0];
-                        if (!member_arg_parameter || fn->parameters.items[0].base.kind == AST_KIND_GENERIC) {
+                        if (!member_arg_parameter || fn->parameters.items[0].base.kind == CODE_KIND_GENERIC) {
                             right_ident->resolved_scope = result.scope;
                             right_ident->base.type = (LL_Type*)fn_type;
 
@@ -1754,14 +1754,14 @@ TRY_MEMBER_FUNCTION_CALL:
         }
         break;
     }
-    case AST_KIND_PRE_OP: {
+    case CODE_KIND_PRE_OP: {
         LL_Type* expr_type;
         result = NULL;
-        switch (AST_AS((*expr), Ast_Operation)->op.kind) {
+        switch (CODE_AS((*expr), Code_Operation)->op.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
         case '-': {
-            expr_type = ll_typer_type_expression(cc, typer, &AST_AS((*expr), Ast_Operation)->right, expected_type, NULL);
+            expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, expected_type, NULL);
 
             switch (expr_type->kind) {
             case LL_TYPE_FLOAT:
@@ -1770,7 +1770,7 @@ TRY_MEMBER_FUNCTION_CALL:
                 break;
             default:
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Negation only works for signed ints and floats");
-                ll_typer_report_error(((LL_Error){ .main_token = AST_AS((*expr), Ast_Operation)->right->token_info }), "");
+                ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Operation)->right->token_info }), "");
                 ll_typer_report_error_no_src("    has type");
                 ll_typer_report_error_type(cc, typer, expr_type);
                 ll_typer_report_error_no_src("\n");
@@ -1785,22 +1785,22 @@ TRY_MEMBER_FUNCTION_CALL:
                 result = expr_type;
             }
 
-            ll_typer_add_implicit_cast(cc, typer, &AST_AS((*expr), Ast_Operation)->right, result);
+            ll_typer_add_implicit_cast(cc, typer, &CODE_AS((*expr), Code_Operation)->right, result);
         } break;
         case '*': {
 
             if (expected_type) {
                 expr_type = ll_typer_get_ptr_type(cc, typer, expected_type);
-                expr_type = ll_typer_type_expression(cc, typer, &AST_AS((*expr), Ast_Operation)->right, expr_type, NULL);
+                expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, expr_type, NULL);
             } else {
-                expr_type = ll_typer_type_expression(cc, typer, &AST_AS((*expr), Ast_Operation)->right, NULL, NULL);
+                expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, NULL, NULL);
             }
 
             switch (expr_type->kind) {
             case LL_TYPE_POINTER: result = ((LL_Type_Pointer*)expr_type)->element_type; break;
             default:
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Dereference only works with a pointer");
-                ll_typer_report_error(((LL_Error){ .main_token = AST_AS((*expr), Ast_Operation)->right->token_info }), "");
+                ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Operation)->right->token_info }), "");
                 ll_typer_report_error_no_src("    has type");
                 ll_typer_report_error_type(cc, typer, expr_type);
                 ll_typer_report_error_no_src("\n");
@@ -1811,9 +1811,9 @@ TRY_MEMBER_FUNCTION_CALL:
         case '&': {
             if (expected_type && expected_type->kind == LL_TYPE_POINTER) {
                 LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)expected_type;
-                expr_type = ll_typer_type_expression(cc, typer, &AST_AS((*expr), Ast_Operation)->right, ptr_type->element_type, NULL);
+                expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, ptr_type->element_type, NULL);
             } else {
-                expr_type = ll_typer_type_expression(cc, typer, &AST_AS((*expr), Ast_Operation)->right, NULL, NULL);
+                expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, NULL, NULL);
             }
             result = ll_typer_get_ptr_type(cc, typer, expr_type);
         } break;
@@ -1823,14 +1823,14 @@ TRY_MEMBER_FUNCTION_CALL:
 
         if (!result) {
             eprint("\x1b[31;1mTODO:\x1b[0m operator '");
-            lexer_print_token_raw_to_writer(&AST_AS((*expr), Ast_Operation)->op, &stderr_writer);
+            lexer_print_token_raw_to_writer(&CODE_AS((*expr), Code_Operation)->op, &stderr_writer);
             eprint("' cannot be applied to expression of type \n");
             ll_typer_report_error_type(cc, typer, expr_type);
             eprint("\n");
         }
     } break;
-    case AST_KIND_CAST: {
-        Ast_Cast* cast = AST_AS((*expr), Ast_Cast);
+    case CODE_KIND_CAST: {
+        Code_Cast* cast = CODE_AS((*expr), Code_Cast);
         LL_Type* specified_type = ll_typer_get_type_from_typename(cc, typer, cast->cast_type);
         LL_Type* src_type = ll_typer_type_expression(cc, typer, &cast->expr, specified_type, NULL);
         
@@ -1848,15 +1848,15 @@ TRY_MEMBER_FUNCTION_CALL:
 
         result = specified_type;
     } break;
-    case AST_KIND_INVOKE: {
+    case CODE_KIND_INVOKE: {
         uword pi, di;
-        Ast_Invoke* inv = AST_AS((*expr), Ast_Invoke);
-        Ast_Function_Declaration* fn_decl = NULL;
+        Code_Invoke* inv = CODE_AS((*expr), Code_Invoke);
+        Code_Function_Declaration* fn_decl = NULL;
         LL_Scope* fn_scope = NULL;
         LL_Typer_Resolve_Result resolve = { 0 };
         LL_Type** polymorphic_types = NULL;
 
-        if (inv->expr->kind == AST_KIND_IDENT && AST_AS(inv->expr, Ast_Ident)->str.ptr == LL_KEYWORD_SIZEOF.ptr) {
+        if (inv->expr->kind == CODE_KIND_IDENT && CODE_AS(inv->expr, Code_Ident)->str.ptr == LL_KEYWORD_SIZEOF.ptr) {
             // @Todo: throw error if not 1 arg
             result = ll_typer_type_expression(cc, typer, &inv->arguments.items[0], NULL, NULL);
 
@@ -1886,7 +1886,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
         // if we're directly calling a function:
         if (resolve.scope && resolve.scope->kind == LL_SCOPE_KIND_FUNCTION) {
-            fn_decl = (Ast_Function_Declaration*)resolve.scope->decl;
+            fn_decl = (Code_Function_Declaration*)resolve.scope->decl;
             inv->fn_decl = fn_decl;
             fn_scope = resolve.scope;
         }
@@ -1897,15 +1897,15 @@ TRY_MEMBER_FUNCTION_CALL:
         if (fn_is_polymorphic) {
             polymorphic_types = alloca(sizeof(*polymorphic_types) * fn_decl->parameters.count);
         }
-        // if (!fn_decl && inv->expr->kind == AST_KIND_IDENT) {
-        //     Ast_Ident* ident = AST_AS(inv->expr, Ast_Ident);
+        // if (!fn_decl && inv->expr->kind == CODE_KIND_IDENT) {
+        //     Code_Ident* ident = CODE_AS(inv->expr, Code_Ident);
         //     if (ident->resolved_scope->kind == LL_SCOPE_KIND_FUNCTION) {
-        //         fn_decl = (Ast_Function_Declaration*)ident->resolved_scope->decl;
+        //         fn_decl = (Code_Function_Declaration*)ident->resolved_scope->decl;
         //         fn_scope = ident->resolved_scope;
         //     }
         // }
 
-        Ast_Base** ordered_args = oc_arena_alloc(&cc->arena, sizeof(ordered_args[0]) * (fn_type->parameter_count + inv->arguments.count));
+        Code** ordered_args = oc_arena_alloc(&cc->arena, sizeof(ordered_args[0]) * (fn_type->parameter_count + inv->arguments.count));
         uint32_t*  arg_indices = oc_arena_alloc(&cc->arena, sizeof(arg_indices[0]) * (fn_type->parameter_count + inv->arguments.count));
         int ordered_arg_count = 0;
         int variadic_arg_count = 0;
@@ -1918,7 +1918,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
             if (fn_is_polymorphic) {
                 polymorphic_types[0] = (*resolve.this_arg)->type;
-                if (polymorphic_types[0]->kind != LL_TYPE_POINTER && !declared_type && fn_decl->parameters.items[0].type->kind == AST_KIND_TYPE_POINTER) {
+                if (polymorphic_types[0]->kind != LL_TYPE_POINTER && !declared_type && fn_decl->parameters.items[0].type->kind == CODE_KIND_TYPE_POINTER) {
                     fn_type->parameters[0] = ll_typer_get_ptr_type(cc, typer, polymorphic_types[0]);
                 }
             }
@@ -1936,11 +1936,11 @@ TRY_MEMBER_FUNCTION_CALL:
         uword arg_count = inv->arguments.count;
         for (pi = 0; pi < arg_count; ++pi, ++di) {
             LL_Type *declared_type = NULL, *provided_type = NULL;
-            Ast_Base** value;
-            Ast_Base** current_arg = &inv->arguments.items[pi];
+            Code** value;
+            Code** current_arg = &inv->arguments.items[pi];
             
-            if ((*current_arg)->kind == AST_KIND_KEY_VALUE) {
-                Ast_Key_Value* kv = AST_AS((*current_arg), Ast_Key_Value);
+            if ((*current_arg)->kind == CODE_KIND_KEY_VALUE) {
+                Code_Key_Value* kv = CODE_AS((*current_arg), Code_Key_Value);
                 if (!fn_decl || !fn_scope) {
                     ll_typer_report_error(((LL_Error){ .highlight_start = kv->key->token_info, .highlight_end = kv->value->token_info }), "Keyed arguments are only allowed when calling a functino directly.");
                     eprint("\x1b[1m    this is probably due to calling a function pointer, but this is invalid\x1b[0m\n");
@@ -1955,20 +1955,20 @@ TRY_MEMBER_FUNCTION_CALL:
                     break;
                 }
 
-                if (kv->key->kind != AST_KIND_IDENT) {
+                if (kv->key->kind != CODE_KIND_IDENT) {
                     ll_typer_report_error(((LL_Error){ .main_token = kv->key->token_info }), "Argument key needs to be an identifier");
                     ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
-                LL_Scope* parameter_scope = ll_scope_get(fn_scope, AST_AS(kv->key, Ast_Ident)->str);
+                LL_Scope* parameter_scope = ll_scope_get(fn_scope, CODE_AS(kv->key, Code_Ident)->str);
                 if (parameter_scope->kind != LL_SCOPE_KIND_PARAMETER) {
-                    ll_typer_report_error(((LL_Error){ .main_token = kv->key->token_info }), "Parameter '{}' does not exist for the function", AST_AS(kv->key, Ast_Ident)->str);
+                    ll_typer_report_error(((LL_Error){ .main_token = kv->key->token_info }), "Parameter '{}' does not exist for the function", CODE_AS(kv->key, Code_Ident)->str);
                     ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
-                di = AST_AS(parameter_scope->decl, Ast_Parameter)->ir_index;
+                di = CODE_AS(parameter_scope->decl, Code_Parameter)->ir_index;
                 value = &kv->value;
             } else {
                 if (fn_type->is_variadic) {
@@ -2105,8 +2105,8 @@ TRY_MEMBER_FUNCTION_CALL:
                     }
                 }
             */
-            Ast_Base* new_body = ast_clone_node_deep(cc, fn_decl->body, (LL_Ast_Clone_Params) { .expand_first_block = true });
-            oc_assert(new_body->kind == AST_KIND_BLOCK);
+            Code* new_body = ast_clone_node_deep(cc, fn_decl->body, (LL_Code_Clone_Params) { .expand_first_block = true });
+            oc_assert(new_body->kind == CODE_KIND_BLOCK);
 
             LL_Scope* old_scope = typer->current_scope;
             LL_Scope* param_scope = create_scope(LL_SCOPE_KIND_BLOCK, NULL);
@@ -2114,14 +2114,14 @@ TRY_MEMBER_FUNCTION_CALL:
 
             typer->current_scope = param_scope;
             for (int arg_i = 0; arg_i < ordered_arg_count; arg_i++) {
-                Ast_Parameter* parameter = &fn_decl->parameters.items[arg_i];
+                Code_Parameter* parameter = &fn_decl->parameters.items[arg_i];
 
                 if (!fn_type->parameters[arg_i]) {
                     LL_Type* provided_type = ll_typer_type_expression(cc, typer, &ordered_args[arg_i], NULL, NULL);
                     if (ll_typer_match_polymorphic(cc, typer, parameter->type, provided_type, ordered_args[arg_i], resolve.this_arg != NULL && arg_i == 0)) {
                         parameter->ident->base.type = provided_type;
                     } else {
-                        Ast_Base* original_argument = inv->arguments.items[arg_indices[arg_i]];
+                        Code* original_argument = inv->arguments.items[arg_indices[arg_i]];
                         ll_typer_report_error(((LL_Error){ .main_token = original_argument->token_info }), "invalid arg");
                         ll_typer_report_error_done(cc, typer);
                     }
@@ -2153,8 +2153,8 @@ TRY_MEMBER_FUNCTION_CALL:
 
 
 
-                    Ast_Function_Declaration* new_fn_decl = (Ast_Function_Declaration*)ast_clone_node_deep(cc, (Ast_Base*)fn_decl, (LL_Ast_Clone_Params) { 0 });
-                    oc_assert(new_fn_decl->base.kind == AST_KIND_FUNCTION_DECLARATION);
+                    Code_Function_Declaration* new_fn_decl = (Code_Function_Declaration*)ast_clone_node_deep(cc, (Code*)fn_decl, (LL_Code_Clone_Params) { 0 });
+                    oc_assert(new_fn_decl->base.kind == CODE_KIND_FUNCTION_DECLARATION);
 
                     /*
                         scope
@@ -2171,7 +2171,7 @@ TRY_MEMBER_FUNCTION_CALL:
                     bool did_variadic = false;
                     bool did_default = false;
                     for (int arg_i = 0; arg_i < ordered_arg_count; arg_i++) {
-                        Ast_Parameter* parameter = &new_fn_decl->parameters.items[arg_i];
+                        Code_Parameter* parameter = &new_fn_decl->parameters.items[arg_i];
 
                         if (did_variadic) {
                             break;
@@ -2185,7 +2185,7 @@ TRY_MEMBER_FUNCTION_CALL:
                             if (parameter->ident) parameter->ident->base.type = polymorphic_types[arg_i];
                             parameter->base.type = polymorphic_types[arg_i];
                         } else {
-                            Ast_Base* original_argument = inv->arguments.items[arg_indices[arg_i]];
+                            Code* original_argument = inv->arguments.items[arg_indices[arg_i]];
                             ll_typer_report_error(((LL_Error){ .main_token = original_argument->token_info }), "invalid arg");
                             ll_typer_report_error_done(cc, typer);
                         }
@@ -2225,8 +2225,8 @@ TRY_MEMBER_FUNCTION_CALL:
 
         result = fn_type->return_type;
     } break;
-    case AST_KIND_INDEX: {
-        Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
+    case CODE_KIND_INDEX: {
+        Code_Slice* cf = CODE_AS((*expr), Code_Slice);
         result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
 
         if (result == typer->ty_type) {
@@ -2297,8 +2297,8 @@ TRY_MEMBER_FUNCTION_CALL:
         }
 
     } break;
-    case AST_KIND_SLICE: {
-        Ast_Slice* cf = AST_AS((*expr), Ast_Slice);
+    case CODE_KIND_SLICE: {
+        Code_Slice* cf = CODE_AS((*expr), Code_Slice);
         result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
 
         if (result == typer->ty_type) {
@@ -2335,15 +2335,15 @@ TRY_MEMBER_FUNCTION_CALL:
         }
 
     } break;
-    case AST_KIND_CONST: {
-        Ast_Marker* cf = AST_AS((*expr), Ast_Marker);
+    case CODE_KIND_CONST: {
+        Code_Marker* cf = CODE_AS((*expr), Code_Marker);
         result = ll_typer_type_expression(cc, typer, &cf->expr, expected_type, NULL);
         LL_Eval_Value const_value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr);
         (*expr)->has_const = true;
         (*expr)->const_value = const_value;
     } break;
-    case AST_KIND_RETURN: {
-        Ast_Control_Flow* cf = AST_AS((*expr), Ast_Control_Flow);
+    case CODE_KIND_RETURN: {
+        Code_Control_Flow* cf = CODE_AS((*expr), Code_Control_Flow);
         LL_Scope* current_scope = typer->current_scope;
         cf->referenced_scope = NULL;
 
@@ -2351,14 +2351,14 @@ TRY_MEMBER_FUNCTION_CALL:
             switch (current_scope->kind) {
             case LL_SCOPE_KIND_FUNCTION:
                 cf->referenced_scope = current_scope;
-                goto AST_RETURN_EXIT_SCOPE;
+                goto CODE_RETURN_EXIT_SCOPE;
                 oc_todo("");
             case LL_SCOPE_KIND_STRUCT:
             case LL_SCOPE_KIND_TYPENAME:
             case LL_SCOPE_KIND_PACKAGE:
                 ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried returning out of a function");
                 ll_typer_report_error_done(cc, typer);
-                goto AST_RETURN_EXIT_SCOPE;
+                goto CODE_RETURN_EXIT_SCOPE;
             case LL_SCOPE_KIND_FIELD:
             case LL_SCOPE_KIND_LOCAL:
             case LL_SCOPE_KIND_BLOCK_VALUE:
@@ -2372,12 +2372,12 @@ TRY_MEMBER_FUNCTION_CALL:
             current_scope = current_scope->parent;
         }
 
-AST_RETURN_EXIT_SCOPE:
+CODE_RETURN_EXIT_SCOPE:
         if (cf->expr) ll_typer_type_expression(cc, typer, &cf->expr, typer->current_fn->return_type, NULL);
         result = NULL;
     } break;
-    case AST_KIND_BREAK: {
-        Ast_Control_Flow* cf = AST_AS((*expr), Ast_Control_Flow);
+    case CODE_KIND_BREAK: {
+        Code_Control_Flow* cf = CODE_AS((*expr), Code_Control_Flow);
 
         LL_Scope* current_scope = typer->current_scope;
         cf->referenced_scope = NULL;
@@ -2387,33 +2387,33 @@ AST_RETURN_EXIT_SCOPE:
         while (current_scope) {
             switch (current_scope->kind) {
             case LL_SCOPE_KIND_LOOP:
-                if (cf->target == AST_CONTROL_FLOW_TARGET_ANY || cf->target == AST_CONTROL_FLOW_TARGET_FOR) {
+                if (cf->target == CODE_CONTROL_FLOW_TARGET_ANY || cf->target == CODE_CONTROL_FLOW_TARGET_FOR) {
                     cf->referenced_scope = current_scope;
                     break_type = current_scope->decl->type;
-                    goto AST_BREAK_EXIT_SCOPE;
+                    goto CODE_BREAK_EXIT_SCOPE;
                 } else break;
             case LL_SCOPE_KIND_BLOCK:
-                if (cf->target == AST_CONTROL_FLOW_TARGET_ANY) {
+                if (cf->target == CODE_CONTROL_FLOW_TARGET_ANY) {
                     cf->referenced_scope = current_scope;
                     break_type = current_scope->decl->type;
-                    goto AST_BREAK_EXIT_SCOPE;
+                    goto CODE_BREAK_EXIT_SCOPE;
                 } else break;
             case LL_SCOPE_KIND_BLOCK_VALUE:
-                if (cf->target == AST_CONTROL_FLOW_TARGET_ANY || cf->target == AST_CONTROL_FLOW_TARGET_DO) {
+                if (cf->target == CODE_CONTROL_FLOW_TARGET_ANY || cf->target == CODE_CONTROL_FLOW_TARGET_DO) {
                     cf->referenced_scope = current_scope;
                     break_type = current_scope->decl->type;
-                    goto AST_BREAK_EXIT_SCOPE;
+                    goto CODE_BREAK_EXIT_SCOPE;
                 } else break;
             case LL_SCOPE_KIND_FUNCTION:
                 ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried breaking without a block to break out of");
                 ll_typer_report_error_done(cc, typer);
-                goto AST_BREAK_EXIT_SCOPE;
+                goto CODE_BREAK_EXIT_SCOPE;
             case LL_SCOPE_KIND_STRUCT:
             case LL_SCOPE_KIND_TYPENAME:
             case LL_SCOPE_KIND_PACKAGE:
                 ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried breaking without a block to break out of");
                 ll_typer_report_error_done(cc, typer);
-                goto AST_BREAK_EXIT_SCOPE;
+                goto CODE_BREAK_EXIT_SCOPE;
             case LL_SCOPE_KIND_FIELD:
             case LL_SCOPE_KIND_LOCAL:
             case LL_SCOPE_KIND_PARAMETER:
@@ -2424,11 +2424,11 @@ AST_RETURN_EXIT_SCOPE:
             current_scope = current_scope->parent;
         }
 
-AST_BREAK_EXIT_SCOPE:
+CODE_BREAK_EXIT_SCOPE:
         if (cf->expr) {
             if (cf->referenced_scope->kind == LL_SCOPE_KIND_BLOCK) {
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value, but scope to break from didn't expect a value");
-                Ast_Block* blk = AST_AS(cf->referenced_scope->decl, Ast_Block);
+                Code_Block* blk = CODE_AS(cf->referenced_scope->decl, Code_Block);
                 ll_typer_report_error_note(((LL_Error){ .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Breaking from this block");
                 ll_typer_report_error_done(cc, typer);
             }
@@ -2498,8 +2498,8 @@ AST_BREAK_EXIT_SCOPE:
 
         result = NULL;
     } break;
-    case AST_KIND_IF: {
-        Ast_If* iff = AST_AS((*expr), Ast_If);
+    case CODE_KIND_IF: {
+        Code_If* iff = CODE_AS((*expr), Code_If);
         result = ll_typer_type_expression(cc, typer, &iff->cond, typer->ty_bool, NULL);
         switch (result->kind) {
         case LL_TYPE_ANYBOOL:
@@ -2528,9 +2528,9 @@ AST_BREAK_EXIT_SCOPE:
 
         result = NULL;
     } break;
-    case AST_KIND_WHILE:
-    case AST_KIND_FOR: {
-        Ast_Loop* loop = AST_AS((*expr), Ast_Loop);
+    case CODE_KIND_WHILE:
+    case CODE_KIND_FOR: {
+        Code_Loop* loop = CODE_AS((*expr), Code_Loop);
 
         LL_Scope* loop_scope = create_scope(LL_SCOPE_KIND_LOOP, *expr);
         ll_typer_scope_put(cc, typer, loop_scope, false);
@@ -2577,18 +2577,18 @@ AST_BREAK_EXIT_SCOPE:
     return result;
 }
 
-LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Ast_Base* typename) {
+LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename) {
     LL_Type* result = NULL;
 
     switch (typename->kind) {
-    case AST_KIND_GENERIC:
+    case CODE_KIND_GENERIC:
         break;
-    case AST_KIND_IDENT:
-        if (AST_AS(typename, Ast_Ident)->str.ptr == LL_KEYWORD_LET.ptr) return NULL;
+    case CODE_KIND_IDENT:
+        if (CODE_AS(typename, Code_Ident)->str.ptr == LL_KEYWORD_LET.ptr) return NULL;
 
-        LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, AST_AS(typename, Ast_Ident));
+        LL_Scope* scope = ll_typer_find_symbol_up_scope(cc, typer, CODE_AS(typename, Code_Ident));
         if (!scope) {
-            ll_typer_report_error(((LL_Error){ .main_token = AST_AS(typename, Ast_Ident)->base.token_info }), "Type '{}' not found", AST_AS(typename, Ast_Ident)->str);
+            ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(typename, Code_Ident)->base.token_info }), "Type '{}' not found", CODE_AS(typename, Code_Ident)->str);
             ll_typer_report_error_done(cc, typer);
         }
 
@@ -2606,37 +2606,37 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
             // fallthrough
 
         default:
-            ll_typer_report_error(((LL_Error){ .main_token = AST_AS(typename, Ast_Ident)->base.token_info }), "Expected '{}' to be a type, but it's not", AST_AS(typename, Ast_Ident)->str);
+            ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(typename, Code_Ident)->base.token_info }), "Expected '{}' to be a type, but it's not", CODE_AS(typename, Code_Ident)->str);
             ll_typer_report_error_done(cc, typer);
             break;
         }
 
         break;
-    case AST_KIND_TYPE_POINTER: {
-        result = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Type_Pointer)->element);
+    case CODE_KIND_TYPE_POINTER: {
+        result = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Type_Pointer)->element);
         if (!result) return NULL;
         result = ll_typer_get_ptr_type(cc, typer, result);
         break;
     }
-    case AST_KIND_INDEX: {
-        oc_assert(AST_AS(typename, Ast_Slice)->stop == NULL);
-        LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Slice)->ptr);
+    case CODE_KIND_INDEX: {
+        oc_assert(CODE_AS(typename, Code_Slice)->stop == NULL);
+        LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Slice)->ptr);
         if (!element_type) return NULL;
-        ll_typer_type_expression(cc, typer, &AST_AS(typename, Ast_Slice)->start, NULL, NULL);
+        ll_typer_type_expression(cc, typer, &CODE_AS(typename, Code_Slice)->start, NULL, NULL);
 
         uint64_t array_width;
-        if (AST_AS(typename, Ast_Slice)->start->has_const) {
-            array_width = AST_AS(typename, Ast_Slice)->start->const_value.as_u64;
+        if (CODE_AS(typename, Code_Slice)->start->has_const) {
+            array_width = CODE_AS(typename, Code_Slice)->start->const_value.as_u64;
         } else {
-            LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, AST_AS(typename, Ast_Slice)->start);
+            LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, CODE_AS(typename, Code_Slice)->start);
             array_width = value.as_u64;
         }
 
         result = ll_typer_get_array_type(cc, typer, element_type, array_width);
         break;
     }
-    case AST_KIND_SLICE: {
-        LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, AST_AS(typename, Ast_Slice)->ptr);
+    case CODE_KIND_SLICE: {
+        LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Slice)->ptr);
         if (!element_type) return NULL;
         result = ll_typer_get_slice_type(cc, typer, element_type);
         break;
@@ -2649,24 +2649,24 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
     return result;
 }
 
-bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base* type_decl, LL_Type* provided_type, Ast_Base* site, bool is_top_level_this_arg) {
+bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* type_decl, LL_Type* provided_type, Code* site, bool is_top_level_this_arg) {
     LL_Type* expected_type = ll_typer_get_type_from_typename(cc, typer, type_decl);
     if (expected_type == provided_type) return true;
 
     switch (type_decl->kind) {
-    case AST_KIND_GENERIC: {
-        Ast_Base* cloned_generic = ast_clone_node_deep(cc, type_decl, (LL_Ast_Clone_Params) { 0 });
+    case CODE_KIND_GENERIC: {
+        Code* cloned_generic = ast_clone_node_deep(cc, type_decl, (LL_Code_Clone_Params) { 0 });
         cloned_generic->type = provided_type;
 
         LL_Scope_Simple* scope = create_scope_simple(LL_SCOPE_KIND_STRUCT, cloned_generic);
-        scope->ident = AST_AS(cloned_generic, Ast_Generic)->ident;
+        scope->ident = CODE_AS(cloned_generic, Code_Generic)->ident;
         scope->declared_type = provided_type;
 
         ll_typer_scope_put(cc, typer, (LL_Scope*)scope, false);
         return true;
     }
 
-    case AST_KIND_TYPE_POINTER: {
+    case CODE_KIND_TYPE_POINTER: {
         bool result = true;
         if (provided_type->kind != LL_TYPE_POINTER) {
             if (is_top_level_this_arg) {
@@ -2674,7 +2674,7 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
                 // int a;
                 // a.func(); <- can pass this as pointer; autoderef
                 result = ll_typer_match_polymorphic(cc, typer,
-                    AST_AS(type_decl, Ast_Type_Pointer)->element,
+                    CODE_AS(type_decl, Code_Type_Pointer)->element,
                     provided_type,
                     site,
                     false
@@ -2695,14 +2695,14 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
         }
 
         return ll_typer_match_polymorphic(cc, typer,
-            AST_AS(type_decl, Ast_Type_Pointer)->element,
+            CODE_AS(type_decl, Code_Type_Pointer)->element,
             ((LL_Type_Pointer*)provided_type)->element_type,
             site,
             false
         );
     } break;
-    case AST_KIND_INDEX: {
-        Ast_Slice* slice = AST_AS(type_decl, Ast_Slice);
+    case CODE_KIND_INDEX: {
+        Code_Slice* slice = CODE_AS(type_decl, Code_Slice);
         if (provided_type->kind != LL_TYPE_ARRAY) {
             ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected an array type");
             ll_typer_report_error_no_src("    you provided the type ");
@@ -2713,13 +2713,13 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
             return false;
         }
 
-        if (slice->start->kind == AST_KIND_GENERIC) {
-            Ast_Base* cloned_generic = ast_clone_node_deep(cc, slice->start, (LL_Ast_Clone_Params) { 0 });
+        if (slice->start->kind == CODE_KIND_GENERIC) {
+            Code* cloned_generic = ast_clone_node_deep(cc, slice->start, (LL_Code_Clone_Params) { 0 });
             cloned_generic->has_const = 1;
 
-            // is it fine if SCOPE LOCAL doesn't use an Ast_Variable_Decl?
+            // is it fine if SCOPE LOCAL doesn't use an Code_Variable_Decl?
             LL_Scope_Simple* scope = create_scope_simple(LL_SCOPE_KIND_LOCAL, cloned_generic);
-            scope->ident = AST_AS(cloned_generic, Ast_Generic)->ident;
+            scope->ident = CODE_AS(cloned_generic, Code_Generic)->ident;
             scope->ident->base.has_const = 1;
             scope->ident->base.const_value.as_u64 = provided_type->width;
             scope->ident->base.type = typer->ty_uint64;
@@ -2752,8 +2752,8 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Ast_Base*
         );
         return result;
     } break;
-    case AST_KIND_SLICE: {
-        Ast_Slice* slice = AST_AS(type_decl, Ast_Slice);
+    case CODE_KIND_SLICE: {
+        Code_Slice* slice = CODE_AS(type_decl, Code_Slice);
         if (provided_type->kind != LL_TYPE_SLICE) {
             ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected a slice type");
             ll_typer_report_error_no_src("    you provided the type ");
@@ -2851,7 +2851,7 @@ void ll_print_type(LL_Type* type) {
     print("\n");
 }
 
-LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Ast_Function_Declaration* fn_decl, LL_Function_Instantiation inst) {
+LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Function_Instantiation inst) {
     (void)cc;
     (void)typer;
     size_t hash;
@@ -2871,7 +2871,7 @@ LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, 
     return new_entry;
 }
 
-LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Ast_Function_Declaration* fn_decl, LL_Type_Function* fn_type) {
+LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Type_Function* fn_type) {
     (void)cc;
     (void)typer;
     size_t hash;
@@ -2974,8 +2974,8 @@ LL_Scope* ll_typer_find_symbol_up_scope_string(Compiler_Context* cc, LL_Typer* t
     return NULL;
 }
 
-LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Ast_Ident* ident) {
-    return ll_typer_find_symbol_up_scope_string(cc, typer, ident->str, ident->flags & AST_IDENT_FLAG_EXPAND);
+LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Ident* ident) {
+    return ll_typer_find_symbol_up_scope_string(cc, typer, ident->str, ident->flags & CODE_IDENT_FLAG_EXPAND);
 }
 
 void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w) {

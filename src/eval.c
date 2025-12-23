@@ -903,7 +903,7 @@ void ll_eval_init(Compiler_Context* cc, LL_Eval_Context* b) {
 }
 
 
-LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, Ast_Base* expr) {
+LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, Code* expr) {
     LL_Eval_Value result;
     LL_Ir_Operand result_op;
     LL_Ir_Block_Ref entry_block_ref = bir->free_block ? bir->free_block : bir->blocks.count;
