@@ -17,20 +17,29 @@ inline bool is_eql(void* a, void* b, size_t size) {
 
 #define LL_DEFAULT_MAP_ENTRY_COUNT (256u)
 #define Hash_Map(K, V) struct { struct { K _key; V _value; uint32 filled; }* entries; uint32 count_filled, capacity; }
+#define Array(I, V) struct { V* items; I count, capacity; }
 
 #define hash_map_get(arena, hm, key) ({                                             \
-        uint32 index = MAP_DEFAULT_HASH_FN(key, MAP_DEFAULT_SEED) % (hm)->capacity; \
-        uint32 until_index = index;                                                 \
         __typeof__((hm)->entries[0]._value)* result = NULL;                          \
-        do {                                                                        \
-            if (MAP_DEFAULT_EQL_FN((hm)->entries[index]._key, key)) {                \
-                result = &(hm)->entries[index]._value;                               \
-                break;                                                              \
-            }                                                                       \
-            index = (index + 1) % (hm)->capacity;                                   \
-        } while ((hm)->entries[index].filled && index != until_index);              \
+        if ((hm)->capacity) { \
+            uint32 index = MAP_DEFAULT_HASH_FN(key, MAP_DEFAULT_SEED) % (hm)->capacity; \
+            uint32 until_index = index;                                                 \
+            do {                                                                        \
+                if ((hm)->entries[index].filled && MAP_DEFAULT_EQL_FN((hm)->entries[index]._key, key)) {                \
+                    result = &(hm)->entries[index]._value;                               \
+                    break;                                                              \
+                }                                                                       \
+                index = (index + 1) % (hm)->capacity;                                   \
+            } while ((hm)->entries[index].filled && index != until_index);              \
+        } \
         result;                                                                     \
     })
+
+#define hash_map_reserve(arena, hm, reserve_capacity) do {                                                                                                 \
+        void* new_ptr = oc_arena_realloc((arena), (hm)->entries, (hm)->capacity * sizeof(*(hm)->entries), (reserve_capacity) * sizeof(*(hm)->entries)); \
+        (hm)->entries = new_ptr;                                                                                                               \
+        (hm)->capacity = (reserve_capacity);                                                                                                            \
+    } while (0)
 
 #define hash_map_put(arena, hm, key, value) do {                                                                                                 \
         if ((hm)->count_filled >= (hm)->capacity / 2) {                                                                                          \
@@ -48,6 +57,7 @@ inline bool is_eql(void* a, void* b, size_t size) {
         }                                                                                                                                        \
         (hm)->entries[index]._key = key;                                                                                               \
         (hm)->entries[index]._value = value;                                                                                               \
+        (hm)->entries[index].filled = 1;                                                                                               \
         (hm)->count_filled++; \
     } while(0)
 
@@ -159,12 +169,12 @@ extern string LL_KEYWORD_CHAR;
 
 #define MAP_DEFAULT &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED
 #define MAP_DEFAULT_HASH_FN(key, value) _Generic((key),	\
-        string : stbds_hash_string,					\
+        string : stbds_hash_string_atom,					\
         struct ll_type* : ll_type_hash 						\
     )(key, value)
 
 #define MAP_DEFAULT_EQL_FN(a, b) _Generic((a),				\
-        string : string_eql,						\
+        string : string_atom_eql,						\
         struct ll_type* : ll_type_eql 						\
     )(a, b)
 
@@ -175,10 +185,8 @@ extern string LL_KEYWORD_CHAR;
 #define STBDS_ROTATE_RIGHT(val, n)  (((val) >> (n)) | ((val) << (STBDS_SIZE_T_BITS - (n))))
 
 size_t stbds_hash_string(string str, size_t seed);
+size_t stbds_hash_string_atom(string str, size_t seed);
 size_t stbds_siphash_bytes(void *p, size_t len, size_t seed);
-
-bool string_eql(string a, string b);
-bool string_starts_with(string haystack, string needle);
 
 Compiler_Context ll_compiler_context_create(void);
 string ll_intern_string(Compiler_Context* cc, string str);

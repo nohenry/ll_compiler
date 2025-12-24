@@ -622,120 +622,108 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
 
     switch ((*stmt)->kind) {
     case CODE_KIND_BLOCK: {
-        Code_Block* blk = CODE_AS((*stmt), Code_Block);
-        LL_Scope* block_scope = NULL;
+        Code_Scope* blk = CODE_AS((*stmt), Code_Scope);
 
-        if (
-            typer->current_scope->kind != LL_SCOPE_KIND_LOOP
-            && typer->current_scope->kind != LL_SCOPE_KIND_PACKAGE
-        ) {
-            if (blk->flags & CODE_BLOCK_FLAG_MACRO_EXPANSION) {
-                block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *stmt);
-            } else {
-                block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *stmt);
+        // if (
+        //     typer->current_scope->kind != LL_SCOPE_KIND_LOOP
+        //     && typer->current_scope->kind != LL_SCOPE_KIND_PACKAGE
+        // ) {
+        //     if (blk->flags & CODE_BLOCK_FLAG_MACRO_EXPANSION) {
+        //         block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *stmt);
+        //     } else {
+        //         block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *stmt);
+        //     }
+
+        //     ll_typer_scope_put(cc, typer, block_scope, false);
+        //     typer->current_scope = block_scope;
+        // }
+
+        typer->current_scope = blk;
+        for (i = 0; i < blk->declarations.capacity; ++i) {
+            if (blk->declarations.entries[i].filled) {
+                ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value);
             }
-
-            ll_typer_scope_put(cc, typer, block_scope, false);
-            typer->current_scope = block_scope;
         }
-
-        blk->scope = block_scope;
-
-        for (i = 0; i < blk->count; ++i) {
-            ll_typer_type_statement(cc, typer, &blk->items[i]);
+        for (i = 0; i < blk->statements.count; ++i) {
+            ll_typer_type_statement(cc, typer, &blk->statements.items[i]);
         }
+        typer->current_scope = blk->parent_scope;
 
-        if (block_scope) {
-            typer->current_scope = block_scope->parent;
-        }
     } break;
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS((*stmt), Code_Variable_Declaration);
-        LL_Type* declared_type = ll_typer_get_type_from_typename(cc, typer, var_decl->type);
-        var_decl->ident->base.type = declared_type;
+        LL_Type* declared_type = ll_typer_get_type_from_typename(cc, typer, var_decl->base.type);
+        var_decl->base.ident->base.type = declared_type;
 
-		LL_Scope* var_scope;
-		if (typer->current_scope->kind == LL_SCOPE_KIND_STRUCT) {
-			var_scope = create_scope(LL_SCOPE_KIND_FIELD, var_decl);
-		} else {
-			var_scope = create_scope(LL_SCOPE_KIND_LOCAL, var_decl);
-		}
-        var_scope->ident = var_decl->ident;
-        if (var_decl->ident->flags & CODE_IDENT_FLAG_EXPAND) {
-            ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope, true);
-        } else {
-            ll_typer_scope_put(cc, typer, (LL_Scope*)var_scope, false);
-        }
+        // if (var_decl->initializer) {
+        //     LL_Type* init_type;
+        //     if (var_decl->base.ident->flags & CODE_IDENT_FLAG_EXPAND) {
+        //         init_type = ll_typer_type_expression(cc, typer, &var_decl->initializer, declared_type, NULL);
+        //     } else {
+        //         typer->current_scope = (LL_Scope*)var_scope;
+        //         init_type = ll_typer_type_expression(cc, typer, &var_decl->initializer, declared_type, NULL);
+        //         typer->current_scope = var_scope->parent;
+        //     }
 
-        if (var_decl->initializer) {
-            LL_Type* init_type;
-            if (var_decl->ident->flags & CODE_IDENT_FLAG_EXPAND) {
-                init_type = ll_typer_type_expression(cc, typer, &var_decl->initializer, declared_type, NULL);
-            } else {
-                typer->current_scope = (LL_Scope*)var_scope;
-                init_type = ll_typer_type_expression(cc, typer, &var_decl->initializer, declared_type, NULL);
-                typer->current_scope = var_scope->parent;
-            }
+        //     if (declared_type) {
+        //         if (!ll_typer_can_implicitly_cast_expression(cc, typer, var_decl->initializer, declared_type)) {
+        //             oc_assert(init_type != NULL);
+        //             oc_assert(declared_type != NULL);
+        //             ll_typer_report_error(((LL_Error){ .main_token = var_decl->base.base.token_info }), "Can't assign value to variable");
 
-            if (declared_type) {
-                if (!ll_typer_can_implicitly_cast_expression(cc, typer, var_decl->initializer, declared_type)) {
-                    oc_assert(init_type != NULL);
-                    oc_assert(declared_type != NULL);
-                    ll_typer_report_error(((LL_Error){ .main_token = var_decl->base.token_info }), "Can't assign value to variable");
+        //             ll_typer_report_error_no_src("    variable is declared with type ");
+        //             ll_typer_report_error_type(cc, typer, declared_type);
+        //             ll_typer_report_error_no_src(", but tried to initialize it with type ");
+        //             ll_typer_report_error_type(cc, typer, init_type);
+        //             ll_typer_report_error_no_src("\n");
 
-                    ll_typer_report_error_no_src("    variable is declared with type ");
-                    ll_typer_report_error_type(cc, typer, declared_type);
-                    ll_typer_report_error_no_src(", but tried to initialize it with type ");
-                    ll_typer_report_error_type(cc, typer, init_type);
-                    ll_typer_report_error_no_src("\n");
+        //             ll_typer_report_error_done(cc, typer);
+        //         }
 
-                    ll_typer_report_error_done(cc, typer);
-                }
+        //         ll_typer_add_implicit_cast(cc, typer, &var_decl->initializer, declared_type);
+        //     } else {
+        //         var_decl->base.ident->base.type = init_type;
+        //     }
 
-                ll_typer_add_implicit_cast(cc, typer, &var_decl->initializer, declared_type);
-            } else {
-                var_decl->ident->base.type = init_type;
-            }
+        //     if (var_decl->storage_class & LL_STORAGE_CLASS_CONST) {
+        //         if (!var_decl->initializer->has_const) {
+        //             ll_typer_report_error(((LL_Error){ .main_token = var_decl->initializer->token_info }), "Can't assign runtime value to constant variable.");
+        //             ll_typer_report_error_no_src("    try wrapping initializer with `const` keyword\n");
+        //             ll_typer_report_error_done(cc, typer);
+        //         }
 
-            if (var_decl->storage_class & LL_STORAGE_CLASS_CONST) {
-                if (!var_decl->initializer->has_const) {
-                    ll_typer_report_error(((LL_Error){ .main_token = var_decl->initializer->token_info }), "Can't assign runtime value to constant variable.");
-                    ll_typer_report_error_no_src("    try wrapping initializer with `const` keyword\n");
-                    ll_typer_report_error_done(cc, typer);
-                }
+        //         var_decl->base.ident->base.has_const = true;
+        //         var_decl->base.ident->base.const_value = var_decl->initializer->const_value;
+        //         var_decl->base.base.has_const = true;
+        //         var_decl->base.base.const_value = var_decl->initializer->const_value;
+        //     }
+        // }
 
-                var_decl->ident->base.has_const = true;
-                var_decl->ident->base.const_value = var_decl->initializer->const_value;
-                var_decl->base.has_const = true;
-                var_decl->base.const_value = var_decl->initializer->const_value;
-            }
-        }
-
-		if (typer->current_scope->kind == LL_SCOPE_KIND_STRUCT) {
-            var_decl->ir_index = typer->current_record->count;
-			oc_array_append(&cc->arena, typer->current_record, declared_type);
-			if (var_decl->initializer) {
-				LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, var_decl->initializer);
-				oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .field_scope = var_scope, .value = value, .has_init = true }));
-			} else {
-				oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .has_init = false }));
-			}
-		}
+		// if (typer->current_scope->kind == LL_SCOPE_KIND_STRUCT) {
+        //     var_decl->ir_index = typer->current_record->count;
+		// 	oc_array_append(&cc->arena, typer->current_record, declared_type);
+		// 	if (var_decl->initializer) {
+		// 		LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, var_decl->initializer);
+		// 		oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .field_scope = var_scope, .value = value, .has_init = true }));
+		// 	} else {
+		// 		oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .has_init = false }));
+		// 	}
+		// }
 
         break;
     }
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS((*stmt), Code_Function_Declaration);
 
-        LL_Scope* fn_scope = create_scope(LL_SCOPE_KIND_FUNCTION, fn_decl);
-        fn_scope->ident = fn_decl->ident;
-        fn_decl->ident->resolved_scope = fn_scope;
+        // LL_Scope* fn_scope = create_scope(LL_SCOPE_KIND_FUNCTION, fn_decl);
+        // fn_scope->ident = fn_decl->base.ident;
+        // fn_decl->base.ident->resolved_scope = fn_scope;
 
-        ll_typer_scope_put(cc, typer, fn_scope, false);
+        // ll_typer_scope_put(cc, typer, fn_scope, false);
         bool did_variadic = false;
         bool did_default = false;
 
-        typer->current_scope = fn_scope;
+        typer->current_scope = fn_decl->body;
         if (fn_decl->parameters.count) {
             types = alloca(sizeof(*types) * fn_decl->parameters.count);
             for (i = 0; i < fn_decl->parameters.count; ++i) {
@@ -796,23 +784,23 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
         } else types = NULL;
 
         LL_Type* return_type;
-        if (fn_decl->return_type) {
-            return_type = ll_typer_get_type_from_typename(cc, typer, fn_decl->return_type);
+        if (fn_decl->base.type) {
+            return_type = ll_typer_get_type_from_typename(cc, typer, fn_decl->base.type);
         } else {
             return_type = typer->ty_void;
         }
 
         LL_Type* fn_type = ll_typer_get_fn_type(cc, typer, return_type, types, fn_decl->parameters.count, did_variadic);
         (*stmt)->type = fn_type;
-        fn_decl->ident->base.type = fn_type;
-        fn_decl->ident->resolved_scope = fn_scope;
+        fn_decl->base.ident->base.type = fn_type;
+        fn_decl->base.ident->resolved_scope = fn_scope;
 
         LL_Type_Function* last_fn = typer->current_fn;
         typer->current_fn = (LL_Type_Function*)fn_type;
 
         if (fn_decl->body) {
             if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
-                Code_Block* blk = CODE_AS(fn_decl->body, Code_Block);
+                Code_Scope* blk = CODE_AS(fn_decl->body, Code_Scope);
                 ll_typer_report_error(((LL_Error) { .main_token = blk->c_open, .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Extern function shouldn't have a body");
                 ll_typer_report_error_done(cc, typer);
             }
@@ -853,8 +841,12 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
         typer->current_record_values = &record_values;
         typer->current_scope = struct_scope;
 
-        for (i = 0; i < strct->body.count; ++i) {
-            ll_typer_type_statement(cc, typer, &strct->body.items[i]);
+        for (i = 0; i < strct->block->declarations.capacity; ++i) {
+            if (strct->block->declarations.entries[i].filled)
+                ll_typer_type_statement(cc, typer, (Code**)&strct->block->declarations.entries[i]._value);
+        }
+        for (i = 0; i < strct->block->statements.count; ++i) {
+            ll_typer_type_statement(cc, typer, &strct->block->statements.items[i]);
         }
 
         typer->current_scope = struct_scope->parent;
@@ -1146,7 +1138,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
     case CODE_KIND_BLOCK: {
         LL_Type* last_block_type = typer->block_type;
         typer->block_type = expected_type;
-        Code_Block* blk = CODE_AS((*expr), Code_Block);
+        Code_Scope* blk = CODE_AS((*expr), Code_Scope);
         blk->base.type = expected_type;
 
         LL_Scope* block_scope = NULL; 
@@ -1163,8 +1155,12 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
 
         blk->scope = block_scope;
 
-        for (i = 0; i < CODE_AS((*expr), Code_Block)->count; ++i) {
-            ll_typer_type_statement(cc, typer, &CODE_AS((*expr), Code_Block)->items[i]);
+        for (i = 0; i < CODE_AS((*expr), Code_Scope)->declarations.capacity; ++i) {
+            if (CODE_AS((*expr), Code_Scope)->declarations.entries[i].filled)
+                ll_typer_type_statement(cc, typer, (Code**)&CODE_AS((*expr), Code_Scope)->declarations.entries[i]._value);
+        }
+        for (i = 0; i < CODE_AS((*expr), Code_Scope)->statements.count; ++i) {
+            ll_typer_type_statement(cc, typer, &CODE_AS((*expr), Code_Scope)->statements.items[i]);
         }
 
         if (block_scope) {
@@ -1673,7 +1669,7 @@ TRY_MEMBER_FUNCTION_CALL:
             break;
         default: 
             eprint("Error: Invalid binary operation '");
-            lexer_print_token_raw_to_writer(&opr->op, &stderr_writer);
+            lexer_print_token_info_raw_to_writer(&opr->op, &stderr_writer);
             eprint("'\n");
             exit(-1);
             break;
@@ -1823,7 +1819,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
         if (!result) {
             eprint("\x1b[31;1mTODO:\x1b[0m operator '");
-            lexer_print_token_raw_to_writer(&CODE_AS((*expr), Code_Operation)->op, &stderr_writer);
+            lexer_print_token_info_raw_to_writer(&CODE_AS((*expr), Code_Operation)->op, &stderr_writer);
             eprint("' cannot be applied to expression of type \n");
             ll_typer_report_error_type(cc, typer, expr_type);
             eprint("\n");
@@ -2154,7 +2150,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
 
                     Code_Function_Declaration* new_fn_decl = (Code_Function_Declaration*)ast_clone_node_deep(cc, (Code*)fn_decl, (LL_Code_Clone_Params) { 0 });
-                    oc_assert(new_fn_decl->base.kind == CODE_KIND_FUNCTION_DECLARATION);
+                    oc_assert(new_fn_decl->base.base.kind == CODE_KIND_FUNCTION_DECLARATION);
 
                     /*
                         scope
@@ -2428,7 +2424,7 @@ CODE_BREAK_EXIT_SCOPE:
         if (cf->expr) {
             if (cf->referenced_scope->kind == LL_SCOPE_KIND_BLOCK) {
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value, but scope to break from didn't expect a value");
-                Code_Block* blk = CODE_AS(cf->referenced_scope->decl, Code_Block);
+                Code_Scope* blk = CODE_AS(cf->referenced_scope->decl, Code_Scope);
                 ll_typer_report_error_note(((LL_Error){ .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Breaking from this block");
                 ll_typer_report_error_done(cc, typer);
             }
@@ -2936,46 +2932,46 @@ LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name) {
     return NULL;
 }
 
-LL_Scope* ll_typer_find_symbol_up_scope_string(Compiler_Context* cc, LL_Typer* typer, string symbol_name, bool expansion) {
+LL_Scope* ll_typer_find_symbol_up_scope_string(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, string symbol_name, bool expansion) {
     (void)cc;
-    LL_Scope* found_scope;
-    LL_Scope* current = typer->current_scope;
+    Code_Declaration* found_decl;
+    Code_Scope* current = scope;
 
     int out_of_macro_expansion = 0;
 
     while (current) {
-        switch (current->kind) {
-        case LL_SCOPE_KIND_MACRO_EXPANSION:
-            found_scope = ll_scope_get(current, symbol_name);
-            out_of_macro_expansion = 1;
-            if (found_scope) return found_scope;
-            current = current->parent;
-            continue;
-        case LL_SCOPE_KIND_PACKAGE:
-            found_scope = ll_scope_get(current, symbol_name);
-            break;
-        case LL_SCOPE_KIND_BLOCK:
+        switch (current->base.kind) {
+        // case LL_SCOPE_KIND_MACRO_EXPANSION:
+        //     found_scope = ll_scope_get(current, symbol_name);
+        //     out_of_macro_expansion = 1;
+        //     if (found_scope) return found_scope;
+        //     current = current->parent;
+        //     continue;
+        // case LL_SCOPE_KIND_PACKAGE:
+        //     found_scope = ll_scope_get(current, symbol_name);
+        //     break;
+        case CODE_KIND_BLOCK:
             if (out_of_macro_expansion == 1 || !out_of_macro_expansion || expansion) {
-                found_scope = ll_scope_get(current, symbol_name);
+                found_decl = hash_map_get(&cc->arena, &current->declarations, symbol_name);
             }
             break;
-        case LL_SCOPE_KIND_FUNCTION:
-        case LL_SCOPE_KIND_BLOCK_VALUE:
-        case LL_SCOPE_KIND_LOOP:
-            if (!out_of_macro_expansion || expansion)
-                found_scope = ll_scope_get(current, symbol_name);
-            break;
-        default: found_scope = NULL; break;
+        // case LL_SCOPE_KIND_FUNCTION:
+        // case LL_SCOPE_KIND_BLOCK_VALUE:
+        // case LL_SCOPE_KIND_LOOP:
+        //     if (!out_of_macro_expansion || expansion)
+        //         found_decl = ll_scope_get(current, symbol_name);
+        //     break;
+        default: found_decl = NULL; break;
         }
-        if (found_scope) return found_scope;
-        current = current->parent;
+        if (found_decl) return found_decl;
+        current = current->parent_scope;
     }
 
     return NULL;
 }
 
-LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Ident* ident) {
-    return ll_typer_find_symbol_up_scope_string(cc, typer, ident->str, ident->flags & CODE_IDENT_FLAG_EXPAND);
+LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, Code_Ident* ident) {
+    return ll_typer_find_symbol_up_scope_string(cc, typer, scope, ident->str, ident->flags & CODE_IDENT_FLAG_EXPAND);
 }
 
 void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w) {

@@ -173,7 +173,7 @@ typedef struct ll_typer {
     
     LL_Type_Function* current_fn;
     LL_Type* block_type;
-    LL_Scope* current_scope, *root_scope;
+    Code_Scope* current_scope, *root_scope;
 
     LL_Type_Named* current_named;
     LL_Typer_Current_Record* current_record;
@@ -204,7 +204,7 @@ bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typ
 
 void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist);
 LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
-LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Ident* ident);
+LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, Code_Ident* ident);
 
 void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
 

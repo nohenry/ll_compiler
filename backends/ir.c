@@ -400,8 +400,12 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
     uint32_t i;
     switch (stmt->kind) {
     case CODE_KIND_BLOCK:
-        for (i = 0; i < CODE_AS(stmt, Code_Block)->count; ++i) {
-            ir_generate_statement(cc, b, CODE_AS(stmt, Code_Block)->items[i]);
+        for (i = 0; i < CODE_AS(stmt, Code_Scope)->declarations.capacity; ++i) {
+            if (CODE_AS(stmt, Code_Scope)->declarations.entries[i].filled)
+                ir_generate_statement(cc, b, (Code*)CODE_AS(stmt, Code_Scope)->declarations.entries[i]._value);
+        }
+        for (i = 0; i < CODE_AS(stmt, Code_Scope)->statements.count; ++i) {
+            ir_generate_statement(cc, b, CODE_AS(stmt, Code_Scope)->statements.items[i]);
         }
         break;
     case CODE_KIND_VARIABLE_DECLARATION: {
@@ -411,7 +415,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
         oc_assert(b->current_function != IR_INVALID_FUNCTION);
 
         LL_Ir_Local var = {
-            .ident = var_decl->ident,
+            .ident = var_decl->base.ident,
         };
         var_decl->ir_index = FUNCTION()->locals.count;
         oc_array_append(&cc->arena, &FUNCTION()->locals, var);
@@ -440,8 +444,8 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
         oc_array_append(&cc->arena, &b->blocks, entry_block);
 
         LL_Ir_Function fn = {
-            .ident = fn_decl->ident,
-            .fn_type = (LL_Type_Function*)fn_decl->ident->base.type,
+            .ident = fn_decl->base.ident,
+            .fn_type = (LL_Type_Function*)fn_decl->base.ident->base.type,
             .entry = entry_block_ref,
             .exit = entry_block_ref,
             .flags = 0,
@@ -575,7 +579,7 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
 
         ir_calculate_struct_offsets(&struct_type->base);
         Code_Variable_Declaration* field_decl = CODE_AS(field_scope->decl, Code_Variable_Declaration);
-        oc_assert(field_decl->base.kind == CODE_KIND_VARIABLE_DECLARATION);
+        oc_assert(field_decl->base.base.kind == CODE_KIND_VARIABLE_DECLARATION);
 
         uint32_t field_offset = struct_type->offsets[field_decl->ir_index];
 
@@ -669,7 +673,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
 
     switch (expr->kind) {
     case CODE_KIND_BLOCK: {
-        Code_Block* blk = CODE_AS(expr, Code_Block);
+        Code_Scope* blk = CODE_AS(expr, Code_Scope);
 
         LL_Ir_Block_Ref break_block;
         if (blk->flags & CODE_BLOCK_FLAG_EXPR) {
@@ -686,8 +690,12 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
         break_block = ir_create_block(cc, b, true);
         blk->scope->break_block_ref = break_block;
 
-        for (i = 0; i < CODE_AS(expr, Code_Block)->count; ++i) {
-            ir_generate_statement(cc, b, CODE_AS(expr, Code_Block)->items[i]);
+        for (i = 0; i < CODE_AS(expr, Code_Scope)->declarations.capacity; ++i) {
+            if (CODE_AS(expr, Code_Scope)->declarations.entries[i].filled)
+                ir_generate_statement(cc, b, (Code*)CODE_AS(expr, Code_Scope)->declarations.entries[i]._value);
+        }
+        for (i = 0; i < CODE_AS(expr, Code_Scope)->statements.count; ++i) {
+            ir_generate_statement(cc, b, CODE_AS(expr, Code_Scope)->statements.items[i]);
         }
 
         b->current_block = break_block;

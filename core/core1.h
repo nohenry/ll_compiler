@@ -419,6 +419,19 @@ static inline string string_slice_count(string s, sword start, sword count) {
     return s;
 }
 
+static inline bool string_atom_eql(string a, string b) {
+    return a.ptr == b.ptr;
+}
+
+static inline bool string_eql(string a, string b) {
+    if (a.len != b.len) return false;
+    return strncmp(a.ptr, b.ptr, a.len) == 0;
+}
+
+static inline bool string_starts_with(string haystack, string needle) {
+    if (needle.len > haystack.len) return false;
+    return memcmp(haystack.ptr, needle.ptr, needle.len) == 0;
+}
 
 
 extern Oc_Writer stdout_writer;

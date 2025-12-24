@@ -19,6 +19,18 @@ size_t stbds_hash_string(string str, size_t seed)
     return hash+seed;
 }
 
+size_t stbds_hash_string_atom(string str, size_t seed) {
+    size_t key = (size_t)str.ptr;
+    key = (~key) + (key << 21); // key = (key << 21) - key - 1;
+    key = key ^ (key >> 24);
+    key = (key + (key << 3)) + (key << 8); // key * 265
+    key = key ^ (key >> 14);
+    key = (key + (key << 2)) + (key << 4); // key * 21
+    key = key ^ (key >> 28);
+    key = key + (key << 31);
+    return key;
+}
+
 #define STBDS_SIPHASH_C_ROUNDS 1
 #define STBDS_SIPHASH_D_ROUNDS 1
 
@@ -73,15 +85,6 @@ size_t stbds_siphash_bytes(void *p, size_t len, size_t seed)
     STBDS_SIPROUND();
 
   return v1^v2^v3; // slightly stronger since v0^v3 in above cancels out final round operation? I tweeted at the authors of SipHash about this but they didn't reply
-}
-
-bool string_eql(string a, string b) {
-    return strncmp(a.ptr, b.ptr, min(a.len, b.len)) == 0;
-}
-
-bool string_starts_with(string haystack, string needle) {
-    if (needle.len > haystack.len) return false;
-    return memcmp(haystack.ptr, needle.ptr, needle.len) == 0;
 }
 
 string LL_KEYWORD_CONST;

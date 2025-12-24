@@ -124,19 +124,25 @@ typedef struct {
 typedef enum {
     CODE_BLOCK_FLAG_EXPR            = (1u << 0u),
     CODE_BLOCK_FLAG_MACRO_EXPANSION = (1u << 1u),
-} Code_Block_Flags;
+} Code_Scope_Flags;
 
 typedef struct {
     Code base;
-    Code_Block_Flags flags;
+    Code* type;
+    Code_Ident* ident;
+} Code_Declaration;
 
-	struct scope_map* scope;
+typedef struct Code_Scope {
+    Code base;
+    Code_Scope_Flags flags;
 
-    uint32_t count;
-    uint32_t capacity;
-    Code** items;
+    struct Code_Scope* parent_scope;
+
+    Array(uint32, Code*)    statements;
+    Hash_Map(string, Code_Declaration*) declarations;
+
     LL_Token_Info c_open, c_close;
-} Code_Block;
+} Code_Scope;
 
 typedef struct {
     Code base;
@@ -151,7 +157,7 @@ typedef struct {
     Code base;
     Code* left;
     Code* right;
-    LL_Token op;
+    LL_Token_Info op;
 } Code_Operation;
 
 typedef struct {
@@ -215,9 +221,8 @@ typedef struct {
 } Code_If;
 
 typedef struct {
-    Code base;
-    Code* type;
-    Code_Ident* ident;
+    Code_Declaration base;
+
     Code* initializer optional;
     LL_Storage_Class storage_class;
     uint32_t ir_index; // for locals, it's the locals index
@@ -225,11 +230,10 @@ typedef struct {
 } Code_Variable_Declaration;
 
 typedef struct {
-    Code base;
-    Code* return_type;
-    Code_Ident* ident;
+    Code_Declaration base;
+
     Code_Parameter_List parameters;
-    Code* body optional;
+    Code_Scope* body optional;
     LL_Storage_Class storage_class;
     uint32_t ir_index;
     LL_Token_Info p_open, p_close;
@@ -251,8 +255,7 @@ typedef struct {
 typedef struct {
     Code base;
     Code_Ident* ident;
-    Code_List body;
-    LL_Token_Info c_open, c_close;
+    Code_Scope* block;
 } Code_Struct;
 
 typedef struct {

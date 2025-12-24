@@ -366,21 +366,8 @@ void lexer_print_token_kind(LL_Token_Kind kind, Oc_Writer* w) {
     }
 }
 
-void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w) {
+void lexer_print_token_info_raw_to_writer(LL_Token_Info* token, Oc_Writer* w) {
     switch (token->kind) {
-    case LL_TOKEN_KIND_IDENT:
-        wprint(w, "{}", token->str);
-        break;
-    case LL_TOKEN_KIND_BUILTIN:
-        wprint(w, "{}", token->str);
-        break;
-    case LL_TOKEN_KIND_INT:
-        wprint(w, "{}", token->u64);
-        break;
-    case LL_TOKEN_KIND_STRING:
-        wprint(w, "{}", token->str);
-        break;
-
     case LL_TOKEN_KIND_ASSIGN_PLUS: wprint(w, "+="); break;
     case LL_TOKEN_KIND_ASSIGN_MINUS: wprint(w, "-="); break;
     case LL_TOKEN_KIND_ASSIGN_TIMES: wprint(w, "*="); break;
@@ -398,6 +385,28 @@ void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w) {
     
     default:
         wprint(w, "{}", (char)token->kind);
+        break;
+    }
+}
+
+void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w) {
+    LL_Token_Info ti = { .kind = token->kind, .position = token->position };
+    switch (token->kind) {
+    case LL_TOKEN_KIND_IDENT:
+        wprint(w, "{}", token->str);
+        break;
+    case LL_TOKEN_KIND_BUILTIN:
+        wprint(w, "{}", token->str);
+        break;
+    case LL_TOKEN_KIND_INT:
+        wprint(w, "{}", token->u64);
+        break;
+    case LL_TOKEN_KIND_STRING:
+        wprint(w, "{}", token->str);
+        break;
+    
+    default:
+        lexer_print_token_info_raw_to_writer(&ti, w);
         break;
     }
 }

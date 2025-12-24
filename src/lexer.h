@@ -67,6 +67,7 @@ bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out);
 void lexer_print_token_raw(LL_Token* token);
 void lexer_print_token_kind(LL_Token_Kind, Oc_Writer* w);
 void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w);
+void lexer_print_token_info_raw_to_writer(LL_Token_Info* token, Oc_Writer* w);
 void lexer_print_token(LL_Token* token);
 
 LL_Line_Info lexer_get_line_info(LL_Lexer* lexer, LL_Token_Info token_info);
