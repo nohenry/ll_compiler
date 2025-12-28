@@ -57,7 +57,7 @@ LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename) {
 #define CONSUME() lexer_consume(cc, &(parser)->lexer)
 #define UNEXPECTED() unexpected_token(cc, parser, __FILE__, __LINE__)
 #define EXPECT(kind, out) expect_token(cc, parser, kind, out, __FILE__, __LINE__)
-#define CREATE_NODE(_kind, value) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), v); create_node(cc, (Code*)&v, sizeof(v)); })
+#define CREATE_NODE(_kind, value, ...) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), v); Code* node = create_node(cc, (Code*)&v, sizeof(v)); ((Parse_Result) { .code = node, __VA_ARGS__ }); })
 
 #define _CREATE_ASSIGN_KIND(_kind, type) _Generic((type), \
         Code : (void)0,                                   \
@@ -71,7 +71,8 @@ static Code* create_node(Compiler_Context* cc, Code* node, size_t size) {
 }
 
 static Code_Ident* create_ident(Compiler_Context* cc, string sym) {
-    Code_Ident* ident = (Code_Ident*)CREATE_NODE(CODE_KIND_IDENT, ((Code_Ident){ .str = sym, .symbol_index = CODE_IDENT_SYMBOL_INVALID }));
+	Parse_Result result = CREATE_NODE(CODE_KIND_IDENT, ((Code_Ident){ .str = sym, .symbol_index = CODE_IDENT_SYMBOL_INVALID }));
+    Code_Ident* ident = (Code_Ident*)result.code;
     if (ident->str.ptr[0] == '$') {
         ident->str.ptr++;
         ident->str.len--;
@@ -115,19 +116,21 @@ static bool expect_token(Compiler_Context* cc, LL_Parser* parser, LL_Token_Kind 
     }
 }
 
-static inline void insert_into_block(Compiler_Context* cc, Code_Scope* block, Code* stmt) {
-    switch (stmt->kind) {
+static inline void insert_into_block(Compiler_Context* cc, Code_Scope* block, Parse_Result stmt) {
+	if (!stmt.code) return;
+
+    switch (stmt.code->kind) {
     case CODE_KIND_VARIABLE_DECLARATION: {
-        Code *assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
-            .left = (Code*)CODE_AS(stmt, Code_Variable_Declaration)->base.ident,
-            .right = CODE_AS(stmt, Code_Variable_Declaration)->initializer,
-            .op = CODE_AS(stmt, Code_Variable_Declaration)->base.base.token_info, // eql
+		Parse_Result assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
+            .left = (Code*)CODE_AS(stmt.code, Code_Variable_Declaration)->base.ident,
+            .right = CODE_AS(stmt.code, Code_Variable_Declaration)->initializer,
+            .op = CODE_AS(stmt.code, Code_Variable_Declaration)->base.base.token_info, // eql
         }));
 
-        oc_array_append(&cc->arena, &block->statements, assign);
+        oc_array_append(&cc->arena, &block->statements, assign.code);
     } // fallthrough
     case CODE_KIND_FUNCTION_DECLARATION: {
-        Code_Declaration* decl = CODE_AS(stmt, Code_Declaration);
+        Code_Declaration* decl = CODE_AS(stmt.code, Code_Declaration);
         string name = decl->ident->str;
         print("name: {}\n", name);
         oc_assert(hash_map_get(&cc->arena, &block->declarations, name) == NULL);
@@ -135,42 +138,43 @@ static inline void insert_into_block(Compiler_Context* cc, Code_Scope* block, Co
     } break;
     default:
         print("append\n");
-        oc_array_append(&cc->arena, &block->statements, stmt);
+        oc_array_append(&cc->arena, &block->statements, stmt.code);
         break;
     }
 }
 
-Code* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
-    Code_Scope* block = (Code_Scope*)CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope){ .base.kind = CODE_KIND_BLOCK }));
+Parse_Result parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
+	Parse_Result block_result = CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope){ .base.kind = CODE_KIND_BLOCK }));
+    Code_Scope* block = (Code_Scope*)block_result.code;
     LL_Token token;
 
     parser->current_scope = block;
     while (parser->lexer.pos < parser->lexer.source.len) {
-        Code* stmt = parser_parse_statement(cc, parser);
-        print_node(stmt, 0, &stdout_writer);
-        insert_into_block(cc, block, stmt);
+        Parse_Result stmt = parser_parse_statement(cc, parser);
+        print_node(stmt.code, 0, &stdout_writer);
+        /* insert_into_block(cc, block, stmt); */
         PEEK(&token);
     }
 
-    return (Code*)block;
+    return (Parse_Result) { .code = (Code*)block };
 }
 
-Code* parser_parse_statement(Compiler_Context* cc, LL_Parser* parser) {
-    Code* result;
+Parse_Result parser_parse_statement(Compiler_Context* cc, LL_Parser* parser) {
+    Parse_Result result;
     LL_Token token;
     LL_Storage_Class storage_class = 0;
     PEEK(&token);
 
 START_SWITCH:
     if (!PEEK(&token)) {
-        return NULL;
+        return (Parse_Result) { 0 };
     }
     switch (token.kind) {
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
         case '{':
-            result = (Code*)parser_parse_block(cc, parser);
+            result.code = (Code*)parser_parse_block(cc, parser);
             break;
 #pragma GCC diagnostic pop
         case LL_TOKEN_KIND_IDENT:
@@ -184,14 +188,14 @@ START_SWITCH:
                     CONSUME();
                     PEEK(&token);
                     if (token.kind == '{') {
-                        result = (Code*)parser_parse_block(cc, parser);
-                        result = CREATE_NODE(CODE_KIND_CONST, ((Code_Marker){ .expr = result }));
-                        result->token_info = kw;
+                        result.code = (Code*)parser_parse_block(cc, parser);
+                        result = CREATE_NODE(CODE_KIND_CONST, ((Code_Marker){ .expr = result.code }));
+                        result.code->token_info = kw;
                         return result;
                     } else if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
                         result = parser_parse_expression(cc, parser, NULL, 0, false);
-                        result = CREATE_NODE(CODE_KIND_CONST, ((Code_Marker){ .expr = result }));
-                        result->token_info = kw;
+                        result = CREATE_NODE(CODE_KIND_CONST, ((Code_Marker){ .expr = result.code }));
+                        result.code->token_info = kw;
                         goto HANDLE_TRY_DECL;
                     } else {
                         storage_class |= LL_STORAGE_CLASS_CONST;
@@ -216,11 +220,11 @@ HANDLE_IDENT:
             }
 
             result = parser_parse_expression(cc, parser, NULL, 0, true);
-            if (result && (result->kind == CODE_KIND_IF || result->kind == CODE_KIND_FOR  || result->kind == CODE_KIND_WHILE)) break;
+            /* if (result && (result->code->kind == CODE_KIND_IF || result-->kind == CODE_KIND_FOR  || result->kind == CODE_KIND_WHILE)) break; */
 HANDLE_TRY_DECL:
             PEEK(&token);
             if (token.kind == LL_TOKEN_KIND_IDENT) // this includes macro keyword
-                result = parser_parse_declaration(cc, parser, result, storage_class);
+                result = parser_parse_declaration(cc, parser, &result, storage_class);
             else
                 EXPECT(';', &token);
 
@@ -231,7 +235,8 @@ HANDLE_TRY_DECL:
 
 Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
-    Code_Scope* block = (Code_Scope*)CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope){ .base.kind = CODE_KIND_BLOCK }));
+	Parse_Result block_result = CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope){ .base.kind = CODE_KIND_BLOCK }));
+    Code_Scope* block = (Code_Scope*)block_result.code;
 
     PEEK(&token);
     if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
@@ -250,8 +255,8 @@ Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
     block->parent_scope = parser->current_scope;
     parser->current_scope = block;
     while (token.kind != '}') {
-        Code* stmt = parser_parse_statement(cc, parser);
-        insert_into_block(cc, block, stmt);
+        Parse_Result stmt = parser_parse_statement(cc, parser);
+        /* insert_into_block(cc, block, stmt); */
         PEEK(&token);
     }
     parser->current_scope = block->parent_scope;
@@ -264,12 +269,12 @@ Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser) {
 Code_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
     PEEK(&token);
-    Code* type, *init;
+    Parse_Result type, init;
     LL_Parameter_Flags flags = 0;
 
     if (token.kind == LL_TOKEN_KIND_RANGE) {
         CONSUME();
-        type = NULL;
+        type.code = NULL;
         flags |= LL_PARAMETER_FLAG_VARIADIC;	
     } else if (token.kind == '%') {
         CONSUME();
@@ -278,7 +283,7 @@ Code_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         ident->base.token_info = TOKEN_INFO(token);
 
         type = CREATE_NODE(CODE_KIND_GENERIC, ((Code_Generic) { .ident = ident }));
-        type = parser_parse_expression(cc, parser, type, 0, true);
+        type = parser_parse_expression(cc, parser, &type, 0, true);
     } else {
         type = parser_parse_expression(cc, parser, NULL, 0, true);
     }
@@ -298,20 +303,20 @@ Code_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         eql_info = TOKEN_INFO(token);
         init = parser_parse_expression(cc, parser, NULL, 0, false);
     } else {
-        init = NULL;
+        init.code = NULL;
     }
 
     return (Code_Parameter) {
         .base.kind = CODE_KIND_PARAMETER,
         .base.token_info = eql_info,
-        .type = type,
+        .type = type.code,
         .ident = ident,
-        .initializer = init,
+        .initializer = init.code,
         .flags = flags,
     };
 }
 
-Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
+Parse_Result parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
     PEEK(&token);
     LL_Token_Info struct_kw = TOKEN_INFO(token);
@@ -327,18 +332,20 @@ Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
     }
 
     Code_Scope* block = parser_parse_block(cc, parser);
-    Code* result = CREATE_NODE(CODE_KIND_STRUCT, ((Code_Struct){ .ident = ident, .block = block }));
-    result->token_info = struct_kw;
+    Parse_Result result = CREATE_NODE(CODE_KIND_STRUCT, ((Code_Struct){ .ident = ident, .block = block }));
+    result.code->token_info = struct_kw;
     return result;
 }
 
-Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* type, LL_Storage_Class storage_class) {
+Parse_Result parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Parse_Result* incoming_type, LL_Storage_Class storage_class) {
     LL_Token token;
-    if (!type) {
+	Parse_Result type;
+	if (incoming_type) type = *incoming_type;
+	else {
         type = parser_parse_expression(cc, parser, NULL, 0, true);
     }
 
-    if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return NULL;
+    if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Parse_Result) { 0 };
     if (token.str.ptr == LL_KEYWORD_MACRO.ptr) {
         storage_class |= LL_STORAGE_CLASS_MACRO;
         EXPECT(LL_TOKEN_KIND_IDENT, &token);
@@ -348,7 +355,7 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
 
     bool fn = false;
     Code_Parameter_List parameters = { 0 };
-    Code* body_or_init;
+    Parse_Result body_or_init;
     LL_Token_Info p_open, p_close, eql;
 
     PEEK(&token);
@@ -378,10 +385,10 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
 
             PEEK(&token);
             if (token.kind == '{') {
-                body_or_init = (Code*)parser_parse_block(cc, parser);
+                body_or_init.code = (Code*)parser_parse_block(cc, parser);
             } else {
                 EXPECT(';', &token);
-                body_or_init = NULL;
+                body_or_init.code = NULL;
             }
 
             break;
@@ -393,29 +400,35 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             break;
 #pragma GCC diagnostic pop
         default:
-            body_or_init = NULL;
+            body_or_init.code = NULL;
             EXPECT(';', &token);
             break;
     }
 
+	Parse_Result result;
     if (fn) {
-        return CREATE_NODE(CODE_KIND_FUNCTION_DECLARATION, ((Code_Function_Declaration){
-            .base.type = type,
+        result = CREATE_NODE(CODE_KIND_FUNCTION_DECLARATION, ((Code_Function_Declaration){
+            .base.type = type.code,
             .base.ident = ident,
             .parameters = parameters,
-            .body = body_or_init,
+            .body = (Code_Scope*)body_or_init.code,
             .storage_class = storage_class,
             .p_open = p_open, .p_close = p_close,
         }));
     } else {
-        return CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
+		result = CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
             .base.base.token_info = eql,
-            .base.type = type,
+            .base.type = type.code,
             .base.ident = ident,
-            .initializer = body_or_init,
+            .initializer = body_or_init.code,
             .storage_class = storage_class,
         }));
     }
+
+	oc_assert(hash_map_get(&cc->arena, &parser->current_scope->declarations, ident->str) == NULL);
+	hash_map_put(&cc->arena, &parser->current_scope->declarations, ident->str, (Code_Declaration*)result.code);
+
+	return result;
 }
 
 int get_binary_precedence(LL_Token token, bool from_statement) {
@@ -472,9 +485,9 @@ int get_postfix_precedence(LL_Token token) {
     }
 }
 
-Code* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
+Parse_Result parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
-    Code *expr1, *expr2;
+    Parse_Result expr1, expr2;
     Code_Initializer result = { 0 };
     PEEK(&token);
     result.base.token_info = TOKEN_INFO(token);
@@ -487,11 +500,13 @@ Code* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
         if (token.kind == '=') {
             CONSUME();
             expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
-            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1, .value = expr2 }));
-            expr1->token_info = TOKEN_INFO(token);
+			oc_todo("handle non Codes");
+            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1.code, .value = expr2.code }));
+            expr1.code->token_info = TOKEN_INFO(token);
         }
 
-        oc_array_append(&cc->arena, &result, expr1);
+		oc_todo("handle non Codes");
+        oc_array_append(&cc->arena, &result, expr1.code);
         
         PEEK(&token);
         if (token.kind != '}') {
@@ -506,9 +521,9 @@ Code* parser_parse_initializer(Compiler_Context* cc, LL_Parser* parser) {
     return CREATE_NODE(CODE_KIND_INITIALIZER, result);
 }
 
-Code* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser) {
+Parse_Result parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser) {
     LL_Token token;
-    Code *expr1, *expr2;
+    Parse_Result expr1, expr2;
     Code_Initializer result = { 0 };
     PEEK(&token);
     result.base.token_info = TOKEN_INFO(token);
@@ -520,10 +535,12 @@ Code* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser) {
         if (token.kind == '=') {
             CONSUME();
             expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
-            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1, .value = expr2 }));
-            expr1->token_info = TOKEN_INFO(token);
+			oc_todo("handle resutl non Codes");
+            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1.code, .value = expr2.code }));
+            expr1.code->token_info = TOKEN_INFO(token);
         }
-        oc_array_append(&cc->arena, &result, expr1);
+		oc_todo("handle resutl non Codes");
+        oc_array_append(&cc->arena, &result, expr1.code);
         
         PEEK(&token);
         if (token.kind != ']') {
@@ -538,10 +555,11 @@ Code* parser_parse_array_initializer(Compiler_Context* cc, LL_Parser* parser) {
     return CREATE_NODE(CODE_KIND_ARRAY_INITIALIZER, result);
 }
 
-Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* left, int last_precedence, bool from_statement) {
+Parse_Result parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Parse_Result* incoming_left, int last_precedence, bool from_statement) {
     LL_Token token;
-    Code *right;
-    if (left == NULL) {
+	Parse_Result left, right;
+	if (incoming_left) left = *incoming_left;
+	else {
         PEEK(&token);
         switch (token.kind) {
         case LL_TOKEN_KIND_IDENT:
@@ -587,8 +605,8 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
             case '.':
             case ',':
 #pragma GCC diagnostic pop
-                left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
-                left->token_info = TOKEN_INFO(op_tok);
+                left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left.code }));
+                left.code->token_info = TOKEN_INFO(op_tok);
                 continue;
             default: break;
             }
@@ -602,16 +620,32 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                 int next_bin_precedence = get_binary_precedence(token, false);
                 int next_post_precedence = get_postfix_precedence(token);
                 if (next_bin_precedence != 0 && next_bin_precedence > bin_precedence) {
-                    right = parser_parse_expression(cc, parser, right, bin_precedence + 1, false);
+                    right = parser_parse_expression(cc, parser, &right, bin_precedence + 1, false);
                 } else if (next_post_precedence != 0 && next_post_precedence > bin_precedence) {
-                    Code* new_right = parser_parse_expression(cc, parser, right, next_post_precedence, false);
-                    if (new_right == right) break;
+                    Parse_Result new_right = parser_parse_expression(cc, parser, &right, next_post_precedence, false);
+                    if (new_right.code == right.code) break;
                     right = new_right;
                 } else break;
             }
 
-            left = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){ .left = left, .right = right, .op = TOKEN_INFO(op_tok) }));
-            left->token_info = TOKEN_INFO(op_tok);
+            /* left = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){ .left = left.code, .right= right.code, .op = TOKEN_INFO(op_tok) })); */
+            /* left.code->token_info = TOKEN_INFO(op_tok); */
+			LL_Operation_Kind op_kind;
+			switch (token.kind) {
+			case '+': op_kind = LL_OPERATION_ADD;
+			case '=': op_kind = LL_OPERATION_ASSIGN;
+			default: oc_todo("uniplented");
+			}
+
+			LL_Typecheck_Value* tval = parser->ops_values->items + parser->ops_values->count;
+			oc_array_extend_count_unint(&cc->arena, &parser->ops_values[op_kind], 2);
+			tval[0].type = parser->linear_grid[left.kind].items[left.value].type;
+			tval[1].type = parser->linear_grid[right.kind].items[right.value].type;
+
+			left.kind = op_kind;
+			left.value = (uint32)parser->ops[op_kind].count;
+			oc_array_append(&cc->arena, &parser->ops[op_kind], ((LL_Typecheck_Value) { .type = tval[0].type }));
+
             from_statement = false;
         } else if (post_precedence != 0 && post_precedence >= last_precedence) {
             switch (token.kind) {
@@ -622,7 +656,7 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                     CONSUME();
 
                     Code_List arguments = { 0 };
-                    Code *expr1, *expr2;
+                    Parse_Result expr1, expr2;
                     PEEK(&token);
                     while (token.kind != ')') {
                         expr1 = parser_parse_expression(cc, parser, NULL, 30, false);
@@ -630,9 +664,11 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                         if (token.kind == '=') {
                             CONSUME();
                             expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
-                            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1, .value = expr2 }));
+							oc_todo("handle non Codes");
+                            expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1.code, .value = expr2.code }));
                         }
-                        oc_array_append(&cc->arena, &arguments, expr1);
+						oc_todo("handle non Codes");
+                        oc_array_append(&cc->arena, &arguments, expr1.code);
 
                         PEEK(&token);
                         if (token.kind != ')') {
@@ -644,8 +680,9 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
 
                     CONSUME();
 
-                    left = CREATE_NODE(CODE_KIND_INVOKE, ((Code_Invoke){ .expr = left, .arguments = arguments, .p_close = TOKEN_INFO(token) }));
-                    left->token_info = ti;
+					oc_todo("handle non Codes");
+                    left = CREATE_NODE(CODE_KIND_INVOKE, ((Code_Invoke){ .expr = left.code, .arguments = arguments, .p_close = TOKEN_INFO(token) }));
+                    left.code->token_info = ti;
 
                     break;
                 }
@@ -653,13 +690,14 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                     if (!from_statement) return left;
                     CONSUME();
                     
-                    left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
-                    left->token_info = TOKEN_INFO(token);
+					oc_todo("handle non Codes");
+                    left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left.code }));
+                    left.code->token_info = TOKEN_INFO(token);
 
                     break;
                 }
                 case '[': {
-                    Code *start = NULL, *stop = NULL;
+                    Parse_Result start = { 0 }, stop = { 0 };
                     LL_Token_Info ti = TOKEN_INFO(token);
                     CONSUME();
                     Code_Kind kind = CODE_KIND_INDEX;
@@ -696,8 +734,8 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                     }
                     EXPECT(']', &token);
 
-                    left = CREATE_NODE(kind, ((Code_Slice){ .ptr = left, .start = start, .stop = stop }));
-                    left->token_info = ti;
+                    left = CREATE_NODE(kind, ((Code_Slice){ .ptr = left.code, .start = start.code, .stop = stop.code }));
+                    left.code->token_info = ti;
                     break;
                 }
 #pragma GCC diagnostic pop
@@ -710,9 +748,9 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
     return left;
 }
 
-Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_statement) {
+Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_statement) {
     LL_Token token;
-    Code *result, *right, *body, *update;
+    Parse_Result result, right, body, update;
     PEEK(&token);
 
     switch (token.kind) {
@@ -729,6 +767,7 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
     case '[':
         result = parser_parse_array_initializer(cc, parser);
         break;
+	#if 0
     case '-':
         CONSUME();
         result = CREATE_NODE(CODE_KIND_PRE_OP, ((Code_Operation){ .op = TOKEN_INFO(token), .right = parser_parse_expression(cc, parser, NULL, 140, false) }));
@@ -751,26 +790,38 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
         result = parser_parse_expression(cc, parser, result, 0, true);
         break;
 #pragma GCC diagnostic pop
+	#endif
     
     case LL_TOKEN_KIND_INT:
-        result = CREATE_NODE(CODE_KIND_LITERAL_INT, ((Code_Literal){ .u64 = token.u64 }));
-        result->token_info = TOKEN_INFO(token);
         CONSUME();
+        result = CREATE_NODE(CODE_KIND_LITERAL_INT, ((Code_Literal){ .u64 = token.u64 }));
+        result.code->token_info = TOKEN_INFO(token);
+
+		result.kind = RESULT_KIND_INT;
+		result.value = (uint32)parser->ints.count;
+		oc_array_extend_count_unint(&cc->arena, &parser->ints, 1);
         break;
 
     case LL_TOKEN_KIND_FLOAT:
-        result = CREATE_NODE(CODE_KIND_LITERAL_FLOAT, ((Code_Literal){ .f64 = token.f64 }));
-        result->token_info = TOKEN_INFO(token);
         CONSUME();
+        result = CREATE_NODE(CODE_KIND_LITERAL_FLOAT, ((Code_Literal){ .f64 = token.f64 }));
+        result.code->token_info = TOKEN_INFO(token);
+
+		result.kind = RESULT_KIND_FLOAT;
+		result.value = (uint32)parser->floats.count;
+		oc_array_extend_count_unint(&cc->arena, &parser->floats, 1);
         break;
 
+#if 0
     case LL_TOKEN_KIND_STRING:
         result = CREATE_NODE(CODE_KIND_LITERAL_STRING, ((Code_Literal){ .str = token.str }));
         result->token_info = TOKEN_INFO(token);
         CONSUME();
         break;
+	#endif
 
     case LL_TOKEN_KIND_IDENT:
+	#if 0
         if (token.str.ptr == LL_KEYWORD_IF.ptr) {
             LL_Token_Info if_kw = TOKEN_INFO(token);
             CONSUME();
@@ -938,14 +989,19 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
             result->token_info = kw;
             break;
         }
+	#endif
         CONSUME();
-        result = (Code*)create_ident(cc, token.str);
-        result->token_info = TOKEN_INFO(token);
+		result.kind = RESULT_KIND_INT;
+		result.value = (uint32)parser->idents.count;
+		oc_array_extend_count_unint(&cc->arena, &parser->idents, 1);
+
+        result.code = (Code*)create_ident(cc, token.str);
+        result.code->token_info = TOKEN_INFO(token);
         break;
 
     default:
         UNEXPECTED();
-        result = NULL;
+        result.code = NULL;
         break;
     }
 
@@ -1020,7 +1076,7 @@ void print_node_value(Code* node, Oc_Writer* w) {
         case CODE_KIND_GENERIC: break;
         case CODE_KIND_CAST:
             if (node->type)
-                ll_print_type_raw(node->type, &stdout_writer);
+                /* ll_print_type_raw(node->type, &stdout_writer); */
             break;
         case CODE_KIND_STRUCT:
             print_node_value(&CODE_AS(node, Code_Struct)->ident->base, w);
@@ -1050,7 +1106,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             }
         }
         wprint(w, "\t\t\t");
-        ll_print_type_raw(node->type, w);
+        /* ll_print_type_raw(node->type, w); */
     }
     wprint(w, "\n");
     switch (node->kind) {
@@ -1099,7 +1155,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             for (i = 0; i < CODE_AS(node, Code_Function_Declaration)->parameters.count; ++i) {
                 print_node((Code*)&CODE_AS(node, Code_Function_Declaration)->parameters.items[i], indent + 1, w);
             }
-            if (CODE_AS(node, Code_Function_Declaration)->body) print_node(CODE_AS(node, Code_Function_Declaration)->body, indent + 1, w);
+            if (CODE_AS(node, Code_Function_Declaration)->body) print_node((Code*)CODE_AS(node, Code_Function_Declaration)->body, indent + 1, w);
             break;
 
         case CODE_KIND_PARAMETER:
@@ -1178,7 +1234,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
 
 Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params params) {
     uint32_t i;
-    Code* result;
+    Parse_Result result;
     if (!node) return NULL;
 
     switch (node->kind) {
@@ -1271,7 +1327,7 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
             .base.base.token_info = node->token_info,
             .base.type = ast_clone_node_deep(cc, CODE_AS(node, Code_Function_Declaration)->base.type, params),
             .base.ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Function_Declaration)->base.ident, params),
-            .body = ast_clone_node_deep(cc, CODE_AS(node, Code_Function_Declaration)->body, params),
+            .body = (Code_Scope*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Function_Declaration)->body, params),
             .storage_class = CODE_AS(node, Code_Function_Declaration)->storage_class,
             .parameters = newargs,
         }));
@@ -1410,5 +1466,5 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
     } break;
     // default: oc_unreachable(""); break;
     }
-    return result;
+    return result.code;
 }

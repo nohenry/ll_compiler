@@ -19,6 +19,8 @@ inline bool is_eql(void* a, void* b, size_t size) {
 #define Hash_Map(K, V) struct { struct { K _key; V _value; uint32 filled; }* entries; uint32 count_filled, capacity; }
 #define Array(I, V) struct { V* items; I count, capacity; }
 
+#define Enum(_name, _type, ...) typedef _type _name; enum { __VA_ARGS__ }
+
 #define hash_map_get(arena, hm, key) ({                                             \
         __typeof__((hm)->entries[0]._value)* result = NULL;                          \
         if ((hm)->capacity) { \

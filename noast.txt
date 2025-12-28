@@ -1,0 +1,48 @@
+
+void main() {
+    int a = 10;
+    int b = 20;
+    let c = a + b;
+
+    if c > 45 {
+
+    }
+}
+
+idents:
+	a:
+		defns:
+			0006
+
+0000:   void   type
+0001:   main   function
+0002:   (
+0003:   )
+0004:   {      scope_start
+0005:   int    type
+0006:   a      var_decl
+0007:   =
+0008:   10
+0009:   ;
+0010:   int    type
+0011:   b      var_decl
+0012:   =
+0013:   20
+0014:   ;
+0015:   let    type
+0016:   c      var_decl
+0017:   =
+0018:   a      usage
+0019:   + 
+0020:   b      usage
+0021:   ;
+0022:   }      scope_end
+
+______|______|___
+=     | a    | int
+      | 10   |
+	  | b    | int
+	  | 10   |
+______|______|___
++     | a    |
+      | b    |

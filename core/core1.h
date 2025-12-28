@@ -334,6 +334,16 @@ typedef struct {
         }                                                                                          \
         (array)->count = (_count);                                                                 \
     } while (0)
+#define oc_array_extend_count_unint(arena, array, plus_count)                                                     \
+	do {                                                                                           \
+		if ((array)->count + (plus_count) > (array)->capacity) {                                                        \
+			uword new_cap = ((array)->count + (plus_count)) * 2;                                                           \
+			void* new_ptr = oc_arena_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items));   \
+			(array)->items = new_ptr;                                                              \
+			(array)->capacity = new_cap;                                                           \
+		}                                                                                          \
+		(array)->count += (plus_count);                                                                 \
+	} while (0)
 
 #define oc_breakpoint() __asm__("int3")
 

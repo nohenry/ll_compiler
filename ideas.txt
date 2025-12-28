@@ -1,0 +1,6 @@
+
+- Parsing constructs only scope nodes, not ast nodes
+- Parsing directly outputs ir
+- Parsing constructs typechecking info in arrays
+
+- macros: store tokens in fn decl, then re parse them

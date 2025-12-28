@@ -48,7 +48,9 @@ int main(int argc, char** argv) {
     cc.exit_0 = exit_0;
 
     LL_Parser parser = parser_create_from_file(&cc, filename);
-    Code* root = parser_parse_file(&cc, &parser);
+    Parse_Result root = parser_parse_file(&cc, &parser);
+    if (!cc.quiet) print_node(root.code, 0, &stdout_writer);
+#if 0
     LL_Typer typer = ll_typer_create(&cc);
     LL_Eval_Context eval_context = { 0 };
     ll_eval_init(&cc, &eval_context);
@@ -82,6 +84,7 @@ int main(int argc, char** argv) {
     ll_backend_generate_statement_from_ir(&cc, &backend_elf, backend_ir.backend);
     ll_backend_write_to_file(&cc, &backend_elf, "out.bin");
     if (run) ll_backend_execute(&cc, &backend_elf, backend_ir.backend);
+#endif
 
     /* x86_64_run_tests(&cc, backend_elf.backend); */
 
