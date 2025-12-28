@@ -1,8 +1,8 @@
 #include "common.h"
 #include "parser.h"
-#include "typer.h"
-#include "eval.h"
-#include "backend.h"
+#include "typer2.h"
+/* #include "eval.h" */
+/* #include "backend.h" */
 
 #define shift(xs, xs_sz) (oc_assert((xs_sz) > 0), (xs_sz)--, *(xs)++)
 
@@ -47,11 +47,25 @@ int main(int argc, char** argv) {
 	cc.quiet = quiet;
     cc.exit_0 = exit_0;
 
+    LL_Typer typer = ll_typer_create(&cc);
+    cc.typer = &typer;
+
     LL_Parser parser = parser_create_from_file(&cc, filename);
+    cc.lexer = &parser.lexer;
+
     Parse_Result root = parser_parse_file(&cc, &parser);
     if (!cc.quiet) print_node(root.code, 0, &stdout_writer);
+
+	for (int i = 0; i < COUNT_OF_AST_RESULT; i++) {
+		print("{}:\n", i);
+		for (int j = 0; j < parser.linear_grid[i].count; j++) {
+			print("    ");
+			ll_print_type(&parser.linear_grid[i].items[j].type);
+		}
+	}
+
+    ll_typer_run(&cc, &typer, &parser, root.code);
 #if 0
-    LL_Typer typer = ll_typer_create(&cc);
     LL_Eval_Context eval_context = { 0 };
     ll_eval_init(&cc, &eval_context);
 

@@ -423,6 +423,24 @@ Parse_Result parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, P
             .initializer = body_or_init.code,
             .storage_class = storage_class,
         }));
+
+		result.kind = RESULT_KIND_IDENT;
+		result.value = (uint32)parser->idents.count;
+		oc_array_extend_count_unint(&cc->arena, &parser->idents, 1);
+
+		if (body_or_init.code) {
+			oc_array_extend_count_unint(&cc->arena, &parser->ops_values[LL_OPERATION_ASSIGN], 2);
+			LL_Typecheck_Value* tval = parser->ops_values[LL_OPERATION_ASSIGN].items + parser->ops_values[LL_OPERATION_ASSIGN].count - 2;
+
+			if (type.code) {
+				tval[0].type = parser->linear_grid[result.kind].items[result.value].type;
+			} else {
+				tval[0].type = parser->linear_grid[result.kind].items[result.value].type;
+			}
+			tval[1].type = parser->linear_grid[body_or_init.kind].items[body_or_init.value].type;
+
+			oc_array_append(&cc->arena, &parser->ops[LL_OPERATION_ASSIGN], ((LL_Typecheck_Value) { .type = tval[0].type }));
+		}
     }
 
 	oc_assert(hash_map_get(&cc->arena, &parser->current_scope->declarations, ident->str) == NULL);
@@ -637,8 +655,8 @@ Parse_Result parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Pa
 			default: oc_todo("uniplented");
 			}
 
-			LL_Typecheck_Value* tval = parser->ops_values->items + parser->ops_values->count;
 			oc_array_extend_count_unint(&cc->arena, &parser->ops_values[op_kind], 2);
+			LL_Typecheck_Value* tval = parser->ops_values[op_kind].items + parser->ops_values[op_kind].count - 2;
 			tval[0].type = parser->linear_grid[left.kind].items[left.value].type;
 			tval[1].type = parser->linear_grid[right.kind].items[right.value].type;
 
@@ -800,6 +818,8 @@ Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool 
 		result.kind = RESULT_KIND_INT;
 		result.value = (uint32)parser->ints.count;
 		oc_array_extend_count_unint(&cc->arena, &parser->ints, 1);
+		parser->ints.items[result.value].type = cc->typer->types.items[LL_TYPE_INT64];
+
         break;
 
     case LL_TOKEN_KIND_FLOAT:
@@ -810,6 +830,8 @@ Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool 
 		result.kind = RESULT_KIND_FLOAT;
 		result.value = (uint32)parser->floats.count;
 		oc_array_extend_count_unint(&cc->arena, &parser->floats, 1);
+		parser->floats.items[result.value].type = cc->typer->types.items[LL_TYPE_FLOAT64];
+
         break;
 
 #if 0
@@ -991,7 +1013,7 @@ Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool 
         }
 	#endif
         CONSUME();
-		result.kind = RESULT_KIND_INT;
+		result.kind = RESULT_KIND_IDENT;
 		result.value = (uint32)parser->idents.count;
 		oc_array_extend_count_unint(&cc->arena, &parser->idents, 1);
 

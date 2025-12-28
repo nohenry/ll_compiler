@@ -2,28 +2,29 @@
 
 #include "lexer.h"
 #include "ast.h"
+#include "typer2.h"
 
 Enum(LL_Operation_Kind, uint32_t,
-		LL_OPERATION_ADD,
-		LL_OPERATION_ASSIGN,
-		COUNT_OF_LL_OPERATION,
-	);
+	LL_OPERATION_ADD,
+	LL_OPERATION_ASSIGN,
+	COUNT_OF_LL_OPERATION,
+);
 
 Enum(Ast_Result_Kind, uint32,
-		FIRST_RESULT_KIND = COUNT_OF_LL_OPERATION * 2,
-		RESULT_KIND_DECL = FIRST_RESULT_KIND,
-		RESULT_KIND_IDENT,
-		RESULT_KIND_INT,
-		RESULT_KIND_FLOAT,
-		COUNT_OF_AST_RESULT,
-	);
+	FIRST_RESULT_KIND = COUNT_OF_LL_OPERATION * 2,
+	RESULT_KIND_IDENT = FIRST_RESULT_KIND,
+	RESULT_KIND_DECL,
+	RESULT_KIND_INT,
+	RESULT_KIND_FLOAT,
+	COUNT_OF_AST_RESULT,
+);
 
 typedef struct {
-	struct ll_type* type;
+	LL_Type type;
 } LL_Typecheck_Value;
 
 
-typedef struct {
+typedef struct ll_parser {
     LL_Lexer lexer;
 
 	union {
