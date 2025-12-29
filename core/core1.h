@@ -72,7 +72,12 @@ typedef struct {
 #elif OC_PLATFORM_UNIX
     #include <sys/mman.h>
     #include <unistd.h>
-    #define MAP_UNINITIALIZED 0x4000000
+
+    #ifdef __linux__
+        #define MAP_UNINITIALIZED 0x4000000
+    #else
+        #define MAP_UNINITIALIZED 0x0000000
+    #endif
 #else
     #error "invalid platform"
 #endif
@@ -290,6 +295,13 @@ typedef struct {
 #define OC_FD_OUTPUT (1u)
 #define OC_FD_ERROR  (2u)
 
+// #ifdef __x86_64__
+//     #define oc_breakpoint() __asm__("int3")
+// #elif __aarch64__
+//     #define oc_breakpoint() __asm__("trap")
+// #endif
+#define oc_breakpoint() __builtin_debugtrap()
+
 #ifndef _NDEBUG
 #define oc_assert(expr) ((expr) ? 1 : _oc_assert_fail(#expr, __FILE__, __LINE__, __func__))
 #else
@@ -299,7 +311,7 @@ typedef struct {
 #define wprint(writer, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); _oc_printw((writer), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 #define print(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); _oc_printw(&stdout_writer, fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 #define eprint(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); _oc_printw(&stderr_writer, fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
-#define oc_todo(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); print("oc_todo - {}:{} - ", __FILE__, __LINE__); _oc_printw(&stdout_writer, fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); __asm__("int3"); oc_exit(-1); } while (0)
+#define oc_todo(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); print("oc_todo - {}:{} - ", __FILE__, __LINE__); _oc_printw(&stdout_writer, fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); oc_breakpoint(); oc_exit(-1); } while (0)
 #define oc_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #define oc_pun(value, type) ({ __typeof__(value) _v = (value); *(type*)&_v; })
 #define oc_oom() do { print("Out of memory: {}:{}\n", __FILE__, __LINE__); oc_exit(-1); } while (0)
@@ -344,8 +356,6 @@ typedef struct {
 		}                                                                                          \
 		(array)->count += (plus_count);                                                                 \
 	} while (0)
-
-#define oc_breakpoint() __asm__("int3")
 
 static inline uword oc_align_forward(uword value, uword alignment_in_bytes) {
     return (value + alignment_in_bytes - 1) & ~(alignment_in_bytes - 1);
@@ -554,7 +564,8 @@ extern Oc_Writer stderr_writer;
 _Noreturn int _oc_assert_fail(const char *assertion, const char *file, unsigned int line, const char *function)  {
     (void)function;
     print("assert fail({}:{}): {}\n", file, line, assertion);
-    __asm__("int3");
+
+    oc_breakpoint();
     exit(1);
 }
 

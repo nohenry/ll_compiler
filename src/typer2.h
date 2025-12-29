@@ -56,7 +56,7 @@ typedef struct ll_type {
 	};
 } LL_Type;
 
-static_assert(sizeof(LL_Type) == 1, "expected to be packed");
+_Static_assert(sizeof(LL_Type) == 1, "expected to be packed");
 
 typedef struct {
     size_t capacity;

@@ -195,8 +195,6 @@ string ll_intern_string(Compiler_Context* cc, string str);
 size_t ll_type_hash(struct ll_type* type, size_t seed);
 bool ll_type_eql(struct ll_type* a, struct ll_type* b);
 
-#if defined(__x86_64__)
 uint32_t log2_u32(uint32_t x);
-#endif
 
 size_t hash_combine(size_t lhs, size_t rhs);

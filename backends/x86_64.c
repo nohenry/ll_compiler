@@ -170,7 +170,8 @@ void x86_64_assert_abort(void* w, const char* fmt, ...) {
     va_start(f, fmt);
     vfprintf(stderr, fmt, f);
     va_end(f);
-    __asm__("int3");
+
+    oc_breakpoint();
     oc_exit(-1);
     // abort();
 }

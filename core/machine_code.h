@@ -2226,7 +2226,8 @@ void oc_x86_64_write_instruction(OC_Machine_Code_Writer* w, X86_64_Variant_Kind 
 
     if (instruction.opcode == 0) {
         w->log_error(w, "invalid opcode: %d");
-        __asm__("int3");
+
+        oc_breakpoint();
         return;
     }
 

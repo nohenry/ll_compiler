@@ -1586,6 +1586,6 @@ void* native_realloc(void* ptr, uword u) {
 }
 
 void native_breakpoint(void) {
-    __asm__ volatile ("int3");
+    oc_breakpoint();
 }
 

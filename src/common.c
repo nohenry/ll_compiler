@@ -190,10 +190,18 @@ string ll_intern_string(Compiler_Context* cc, string str) {
 
 uint32_t log2_u32(uint32_t x) {
     uint32_t y;
-    __asm__ ( "\tbsr %1, %0\n"
+    #ifdef __x86_64__
+        __asm__ ( "\tbsr %1, %0\n"
             : "=r"(y)
             : "r" (x)
         );
+    #elif __aarch64__   
+        __asm__( "\tclz %w0, %w1\n"
+            : "=r"(y)
+            : "r"(x)
+        );
+        y = 31 - y;
+    #endif
     return y;
 }
 
