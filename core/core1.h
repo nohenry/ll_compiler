@@ -284,12 +284,30 @@ typedef struct {
 #define OC_MAP_SEQ_16(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16)  OC_MAP_SEQ_15(transform_macro, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15)  transform_macro(a16, 16)
 
 
+#define OC_MAP_SEPARATOR(transform_macro, sep, ...) OC_CONCAT(OC_MAP_SEPARATOR_, OC_VA_NARGS(__VA_ARGS__))(transform_macro, sep, ##__VA_ARGS__)
+#define OC_MAP_SEPARATOR_0(transform_macro, sep, ...)
+#define OC_MAP_SEPARATOR_1(transform_macro, sep, a1)                                                                      OC_MAP_SEPARATOR_0(transform_macro, sep) transform_macro(a1, 1)
+#define OC_MAP_SEPARATOR_2(transform_macro, sep, a1, a2)                                                                  OC_MAP_SEPARATOR_1(transform_macro, sep, a1) sep transform_macro(a2, 2)
+#define OC_MAP_SEPARATOR_3(transform_macro, sep, a1, a2, a3)                                                              OC_MAP_SEPARATOR_2(transform_macro, sep, a1, a2) sep transform_macro(a3, 3)
+#define OC_MAP_SEPARATOR_4(transform_macro, sep, a1, a2, a3, a4)                                                          OC_MAP_SEPARATOR_3(transform_macro, sep, a1, a2, a3) sep transform_macro(a4, 4)
+#define OC_MAP_SEPARATOR_5(transform_macro, sep, a1, a2, a3, a4, a5)                                                      OC_MAP_SEPARATOR_4(transform_macro, sep, a1, a2, a3, a4) sep transform_macro(a5, 5)
+#define OC_MAP_SEPARATOR_6(transform_macro, sep, a1, a2, a3, a4, a5, a6)                                                  OC_MAP_SEPARATOR_5(transform_macro, sep, a1, a2, a3, a4, a5) sep transform_macro(a6, 6)
+#define OC_MAP_SEPARATOR_7(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7)                                              OC_MAP_SEPARATOR_6(transform_macro, sep, a1, a2, a3, a4, a5, a6) sep transform_macro(a7, 7)
+#define OC_MAP_SEPARATOR_8(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8)                                          OC_MAP_SEPARATOR_7(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7) sep transform_macro(a8, 8)
+#define OC_MAP_SEPARATOR_9(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9)                                      OC_MAP_SEPARATOR_8(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8) sep transform_macro(a9, 9)
+#define OC_MAP_SEPARATOR_10(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)                                OC_MAP_SEPARATOR_9(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9) sep transform_macro(a10, 10)
+#define OC_MAP_SEPARATOR_11(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11)                           OC_MAP_SEPARATOR_10(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) sep transform_macro(a11, 11)
+#define OC_MAP_SEPARATOR_12(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12)                      OC_MAP_SEPARATOR_11(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) sep transform_macro(a12, 12)
+#define OC_MAP_SEPARATOR_13(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13)                 OC_MAP_SEPARATOR_12(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) sep transform_macro(a13, 13)
+#define OC_MAP_SEPARATOR_14(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14)            OC_MAP_SEPARATOR_13(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) sep transform_macro(a14, 14)
+#define OC_MAP_SEPARATOR_15(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15)       OC_MAP_SEPARATOR_14(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) sep transform_macro(a15, 15)
+#define OC_MAP_SEPARATOR_16(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16)  OC_MAP_SEPARATOR_15(transform_macro, sep, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) sep transform_macro(a16, 16)
 
 /* --------  macro api -------- */
 
 #define OC_DEFAULT_MAP_ENTRY_COUNT 512
 #define OC_DEFAULT_MAP_SEED 0xf8abc103ba79eb85LLu
-#define OC_ARENA_CHUNK_SIZE (4096)
+#define OC_ARENA_CHUNK_SIZE (4096 * 8)
 
 #define OC_FD_INPUT  (0u)
 #define OC_FD_OUTPUT (1u)
@@ -315,6 +333,49 @@ typedef struct {
 #define oc_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #define oc_pun(value, type) ({ __typeof__(value) _v = (value); *(type*)&_v; })
 #define oc_oom() do { print("Out of memory: {}:{}\n", __FILE__, __LINE__); oc_exit(-1); } while (0)
+
+#define oc_array_aligned_append(arena, array, alignment, value)                                                     \
+    do {                                                                                         \
+        if ((array)->count + 1 > (array)->capacity) {                                            \
+            uword new_cap = (array)->capacity ? (array)->capacity * 2 : 16;                      \
+            void* new_ptr = oc_arena_aligned_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items), (alignment)); \
+            (array)->items = new_ptr;                                                            \
+            (array)->capacity = new_cap;                                                         \
+        }                                                                                        \
+        (array)->items[(array)->count++] = value;                                                \
+    } while (0)
+#define oc_array_aligned_append_many(arena, array, alignment, ptr, len)                                             \
+    do {                                                                                         \
+        if ((array)->count + (len) > (array)->capacity) {                                            \
+            uword new_cap = (array)->capacity ? ((array)->count + (len) + (array)->capacity * 2) : (((array)->count + (len)) * 8); \
+            void* new_ptr = oc_arena_aligned_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items), (alignment)); \
+            (array)->items = new_ptr;                                                            \
+            (array)->capacity = new_cap;                                                         \
+        }                                                                                        \
+        memcpy((array)->items + (array)->count, ptr, (len) * sizeof(*(array)->items));  \
+        (array)->count += (len);                              \
+    } while (0)
+#define oc_array_aligned_reserve(arena, array, alignment, _count)                                                     \
+    do {                                                                                           \
+        if ((_count) > (array)->capacity) {                                                        \
+            uword new_cap = (_count) * 2;                                                           \
+            void* new_ptr = oc_arena_aligned_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items), (alignment));   \
+            (array)->items = new_ptr;                                                              \
+            (array)->capacity = new_cap;                                                           \
+        }                                                                                          \
+        (array)->count = (_count);                                                                 \
+    } while (0)
+#define oc_array_aligned_extend_count_unint(arena, array, alignment, plus_count)                                                     \
+	do {                                                                                           \
+		if ((array)->count + (plus_count) > (array)->capacity) {                                                        \
+			uword new_cap = ((array)->count + (plus_count)) * 2;                                                           \
+			void* new_ptr = oc_arena_aligned_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items), (alignment));   \
+			(array)->items = new_ptr;                                                              \
+			(array)->capacity = new_cap;                                                           \
+		}                                                                                          \
+		(array)->count += (plus_count);                                                                 \
+	} while (0)
+
 #define oc_array_append(arena, array, value)                                                     \
     do {                                                                                         \
         if ((array)->count + 1 > (array)->capacity) {                                            \
@@ -399,6 +460,7 @@ Oc_Arena_Save oc_arena_save(Oc_Arena* arena);
 void oc_arena_restore(Oc_Arena* arena, Oc_Arena_Save restore_point);
 void oc_arena_reset(Oc_Arena* arena);
 void* oc_arena_alloc_aligned(Oc_Arena* arena, uint64 size, uint64 alignment);
+void* oc_arena_aligned_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 size, uint64 alignment);
 void* oc_arena_alloc(Oc_Arena* arena, uint64 size);
 void* oc_arena_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 size);
 void* oc_arena_dup(Oc_Arena* arena, void* data, uword size);
@@ -540,10 +602,12 @@ extern Oc_Writer stderr_writer;
         }
 
         uword stdout_write(void* writer, const uint8* data, uword data_size) {
+            (void)writer;
             return write(STDOUT_FILENO, data, (size_t)data_size);
         }
 
         uword stderr_write(void* writer, const uint8* data, uword data_size) {
+            (void)writer;
             return write(STDERR_FILENO, data, (size_t)data_size);
         }
 
@@ -619,6 +683,14 @@ void* oc_arena_alloc_aligned(Oc_Arena* arena, uint64 size, uint64 alignment) {
 
     void *result, *aligned_result;
     do {
+        if (arena->current->used + words > arena->current->size) {
+            if (arena->current->next == NULL) {
+                arena->current->next = oc_arena_new_chunk(arena, size);
+                if (!arena->current->next) oc_oom();
+            }
+            arena->current = arena->current->next;
+        }
+
         result = arena->current->data + arena->current->used;
         aligned_result = (void*)oc_align_forward((uword)result, (uword)alignment);
     } while ((arena->current->used + words + ((aligned_result - result) / sizeof(uword))) > arena->current->size);
@@ -652,6 +724,51 @@ void* oc_arena_alloc(Oc_Arena* arena, uint64 size) {
     void* result = arena->current->data + arena->current->used;
     arena->current->used += words;
     return result;
+}
+
+void* oc_arena_aligned_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 size, uint64 alignment) {
+    oc_assert(arena != NULL);
+    // oc_assert(old_ptr != NULL);
+    if (old_ptr == NULL)  return oc_arena_alloc_aligned(arena, size, alignment);
+    if (size <= old_size) return old_ptr;
+
+    uword old_words = (old_size - 1) / sizeof(uword) + 1;
+    uword new_words = (size - 1) / sizeof(uword) + 1;
+
+    // print("oc_arena_realloc: old_ptr = {}, old_size = {}, size = {}\n", old_ptr, old_size, size);
+    oc_assert(arena->current);
+    if ((uint8*)old_ptr + old_size == (uint8*)(arena->current->data + arena->current->used)) {
+        if (arena->current->used + (new_words - old_words) <= arena->current->size) {
+            // print("oc_arena_realloc: Reusing memory :)\n");
+            // reuse memory
+            arena->current->used += new_words - old_words;
+            return old_ptr;
+        }
+    } else if (arena->current->used + new_words <= arena->current->size) {
+        // print("oc_arena_realloc: Reusing chunk, but copying old data :|\n");
+        // copy old data
+        void* new_ptr = arena->current->data + arena->current->used;
+        memcpy(new_ptr, old_ptr, old_size);
+        arena->current->used += new_words;
+        return new_ptr;
+    }
+
+
+    void* new_ptr = oc_arena_alloc_aligned(arena, size, alignment);
+    if (!new_ptr) oc_oom();
+
+    void* end_of_last_used = arena->current->data + arena->current->used;
+    if ((uint8*)old_ptr + old_size == end_of_last_used && new_ptr == (uint8*)old_ptr + old_size) {
+        // print("oc_arena_realloc: Reusing extended chunk :)\n");
+        // If the new pointer is right after the old pointer, we can just extend it
+        arena->current->used += new_words - old_words;
+        return old_ptr;
+    } else {
+        // print("oc_arena_realloc: New chunk, copying data :(\n");
+        memcpy(new_ptr, old_ptr, old_size);
+        arena->current->used += new_words;
+        return new_ptr;
+    }
 }
 
 void* oc_arena_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 size) {

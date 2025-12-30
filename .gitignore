@@ -16,3 +16,4 @@ tags
 *.dll
 /tests/**/*.out
 /tests/**/*.err
+/main.exe.dSYM

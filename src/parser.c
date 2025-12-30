@@ -425,21 +425,25 @@ Parse_Result parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, P
         }));
 
 		result.kind = RESULT_KIND_IDENT;
-		result.value = (uint32)parser->idents.count;
-		oc_array_extend_count_unint(&cc->arena, &parser->idents, 1);
+		result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
 
 		if (body_or_init.code) {
-			oc_array_extend_count_unint(&cc->arena, &parser->ops_values[LL_OPERATION_ASSIGN], 2);
-			LL_Typecheck_Value* tval = parser->ops_values[LL_OPERATION_ASSIGN].items + parser->ops_values[LL_OPERATION_ASSIGN].count - 2;
+			// oc_array_extend_count_unint(&cc->arena, &parser->ops_values[LL_OPERATION_ASSIGN], TC_ALIGNMENT, 2);
+			// LL_Typecheck_Value* tval = parser->ops_values[LL_OPERATION_ASSIGN].items + parser->ops_values[LL_OPERATION_ASSIGN].count - 2;
+            
 
-			if (type.code) {
-				tval[0].type = parser->linear_grid[result.kind].items[result.value].type;
-			} else {
-				tval[0].type = parser->linear_grid[result.kind].items[result.value].type;
-			}
-			tval[1].type = parser->linear_grid[body_or_init.kind].items[body_or_init.value].type;
+            parser_append_typecheck_value(cc,
+                &parser->ops_lhs[LL_OPERATION_ASSIGN],
+                parser->linear_grid[result.kind].types.items[result.value],
+                result.kind, result.value
+            );
+            parser_append_typecheck_value(cc,
+                &parser->ops_rhs[LL_OPERATION_ASSIGN],
+                parser->linear_grid[body_or_init.kind].types.items[body_or_init.value],
+                body_or_init.kind, body_or_init.value
+            );
 
-			oc_array_append(&cc->arena, &parser->ops[LL_OPERATION_ASSIGN], ((LL_Typecheck_Value) { .type = tval[0].type }));
+			parser_append_typecheck_value(cc, &parser->ops[LL_OPERATION_ASSIGN], LL_TYPE_UNKNOWN, 0, 0);
 		}
     }
 
@@ -655,14 +659,22 @@ Parse_Result parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Pa
 			default: oc_todo("uniplented");
 			}
 
-			oc_array_extend_count_unint(&cc->arena, &parser->ops_values[op_kind], 2);
-			LL_Typecheck_Value* tval = parser->ops_values[op_kind].items + parser->ops_values[op_kind].count - 2;
-			tval[0].type = parser->linear_grid[left.kind].items[left.value].type;
-			tval[1].type = parser->linear_grid[right.kind].items[right.value].type;
+            parser_append_typecheck_value(cc,
+                &parser->ops_lhs[op_kind],
+                parser->linear_grid[left.kind].types.items[left.value],
+                left.kind, left.value
+            );
+            parser_append_typecheck_value(cc,
+                &parser->ops_rhs[op_kind],
+                parser->linear_grid[right.kind].types.items[right.value],
+                right.kind, right.value
+            );
+			// LL_Typecheck_Value* tval = parser->ops_values[op_kind].items + parser->ops_values[op_kind].count - 2;
+			// tval[0].type = parser->linear_grid[left.kind].items[left.value].type;
+			// tval[1].type = parser->linear_grid[right.kind].items[right.value].type;
 
 			left.kind = op_kind;
-			left.value = (uint32)parser->ops[op_kind].count;
-			oc_array_append(&cc->arena, &parser->ops[op_kind], ((LL_Typecheck_Value) { .type = tval[0].type }));
+			left.value = parser_append_typecheck_value(cc, &parser->ops[op_kind], LL_TYPE_UNKNOWN, 0, 0);
 
             from_statement = false;
         } else if (post_precedence != 0 && post_precedence >= last_precedence) {
@@ -816,9 +828,7 @@ Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool 
         result.code->token_info = TOKEN_INFO(token);
 
 		result.kind = RESULT_KIND_INT;
-		result.value = (uint32)parser->ints.count;
-		oc_array_extend_count_unint(&cc->arena, &parser->ints, 1);
-		parser->ints.items[result.value].type = cc->typer->types.items[LL_TYPE_INT64];
+		result.value = parser_append_typecheck_value(cc, &parser->ints, LL_TYPE_INT64, 0, 0);
 
         break;
 
@@ -828,9 +838,7 @@ Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool 
         result.code->token_info = TOKEN_INFO(token);
 
 		result.kind = RESULT_KIND_FLOAT;
-		result.value = (uint32)parser->floats.count;
-		oc_array_extend_count_unint(&cc->arena, &parser->floats, 1);
-		parser->floats.items[result.value].type = cc->typer->types.items[LL_TYPE_FLOAT64];
+		result.value = parser_append_typecheck_value(cc, &parser->floats, LL_TYPE_FLOAT64, 0, 0);
 
         break;
 
@@ -1014,8 +1022,7 @@ Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool 
 	#endif
         CONSUME();
 		result.kind = RESULT_KIND_IDENT;
-		result.value = (uint32)parser->idents.count;
-		oc_array_extend_count_unint(&cc->arena, &parser->idents, 1);
+		result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
 
         result.code = (Code*)create_ident(cc, token.str);
         result.code->token_info = TOKEN_INFO(token);

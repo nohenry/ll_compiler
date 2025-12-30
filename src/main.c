@@ -6,6 +6,50 @@
 
 #define shift(xs, xs_sz) (oc_assert((xs_sz) > 0), (xs_sz)--, *(xs)++)
 
+void print_things(Compiler_Context* cc, LL_Parser* parser) {
+
+    Oc_String_Builder sb;
+    oc_sb_init(&sb, &cc->arena);
+	for (int i = 0; i < COUNT_OF_AST_RESULT; i++) {
+        switch (i) {
+        case 0:
+            print("=== Operations ===\n");
+            break;
+        case COUNT_OF_LL_OPERATION:
+            print("=== LHS ===\n");
+            break;
+        case COUNT_OF_LL_OPERATION * 2:
+            print("=== RHS ===\n");
+            break;
+        case RESULT_KIND_IDENT:
+            print("=== Identifiers ===\n");
+            break;
+        case RESULT_KIND_DECL:
+            print("=== Declarations ===\n");
+            break;
+        case RESULT_KIND_INT:
+            print("=== Integers ===\n");
+            break;
+        case RESULT_KIND_FLOAT:
+            print("=== Floats ===\n");
+            break;
+        default:
+            break;
+        }
+
+        sb.count = 0;
+        wprint(&sb.writer, "{}:", i);
+        print("{}", oc_sb_to_string(&sb));
+
+		for (uint32 j = 0; j < parser->linear_grid[i].types.count; j++) {
+            if (j == 0)  for (uint32 ws = 0; ws <= 4 - sb.count; ws++) print(" ");
+            else print("    ");
+			ll_print_type(&cc->typer->types.items[parser->linear_grid[i].types.items[j]]);
+		}
+        if (!parser->linear_grid[i].types.count) print("\n");
+	}
+}
+
 int main(int argc, char** argv) {
 	bool quiet = false;
 	bool run = false;
@@ -56,14 +100,7 @@ int main(int argc, char** argv) {
     Parse_Result root = parser_parse_file(&cc, &parser);
     if (!cc.quiet) print_node(root.code, 0, &stdout_writer);
 
-	for (int i = 0; i < COUNT_OF_AST_RESULT; i++) {
-		print("{}:\n", i);
-		for (int j = 0; j < parser.linear_grid[i].count; j++) {
-			print("    ");
-			ll_print_type(&parser.linear_grid[i].items[j].type);
-		}
-	}
-
+    print_things(&cc, &parser);
     ll_typer_run(&cc, &typer, &parser, root.code);
 #if 0
     LL_Eval_Context eval_context = { 0 };

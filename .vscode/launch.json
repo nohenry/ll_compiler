@@ -11,7 +11,7 @@
             "program": "${workspaceRoot}/main.exe",
             "args": ["test.t"],
             "stopAtEntry": false,
-            "cwd": "${fileDirname}",
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb"

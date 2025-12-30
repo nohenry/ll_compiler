@@ -17,14 +17,9 @@ Enum(LL_Type_Kind, uint8,
     LL_TYPE_UINT64,
     LL_TYPE_CHAR8,
     LL_TYPE_CHAR16,
-    LL_TYPE_CHAR32,
-    LL_TYPE_CHAR64,
     LL_TYPE_BOOL1,
     LL_TYPE_BOOL8,
-    LL_TYPE_BOOL16,
     LL_TYPE_BOOL32,
-    LL_TYPE_BOOL64,
-    LL_TYPE_FLOAT16,
     LL_TYPE_FLOAT32,
     LL_TYPE_FLOAT64,
 
@@ -49,14 +44,20 @@ Enum(LL_Type_Group, uint8,
 	LL_TYPE_GROUP_OTHER,
 );
 
+typedef uint32 LL_Type_Index;
+
 typedef struct ll_type {
     struct {
 		LL_Type_Kind  kind  : 5;
 		LL_Type_Group group : 3;
 	};
+    uint8 padding;
+    uint16 cast;
+    uint16 implicit_cast;
+    uint16 a;
 } LL_Type;
 
-_Static_assert(sizeof(LL_Type) == 1, "expected to be packed");
+_Static_assert(sizeof(LL_Type) == 8, "expected to be packed");
 
 typedef struct {
     size_t capacity;
@@ -131,9 +132,29 @@ typedef struct ll_typer {
 	Array(uint32, LL_Type) types;
 } LL_Typer;
 
+typedef struct {
+    LL_Type *expected, *actual;
+    LL_Token_Info main_token;
+    LL_Token_Info highlight_start, highlight_end;
+} LL_Error;
+
+#define ll_typer_report_error(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_info(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_info_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_note(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_note_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_no_src(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_no_src_raw((cc), (typer), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+
 LL_Typer ll_typer_create(Compiler_Context* cc);
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, struct ll_parser* parser, Code* node);
+LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename);
 
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);
 
+void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_Info line_info, LL_Token_Info start_info, LL_Token_Info end_info, bool print_dot_dot_dot, bool print_underline);
+void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...);
+void ll_typer_report_error_note_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...);
+void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...);
+void ll_typer_report_error_no_src_raw(Compiler_Context* cc, LL_Typer* typer, const char* fmt, ...);
+void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
+void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
+void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer);
