@@ -54,8 +54,8 @@ uint32_t x86_64_call_convention_next_mem(X86_64_Call_Convention* cc, LL_Type* ty
     return stack_offset;
 }
 
-X86_64_Parameter x86_64_call_convention_next(X86_64_Call_Convention* cc, LL_Type* type, uint32_t* stack_used_for_args) {
-    X86_64_Parameter result;
+Call_Convention_Parameter x86_64_call_convention_next(X86_64_Call_Convention* cc, LL_Type* type, uint32_t* stack_used_for_args) {
+    Call_Convention_Parameter result;
     result.reg = x86_64_call_convention_next_reg(cc, type);
     if (result.reg != X86_64_OPERAND_REGISTER_invalid) {
         result.is_reg = true;
@@ -66,3 +66,40 @@ X86_64_Parameter x86_64_call_convention_next(X86_64_Call_Convention* cc, LL_Type
     return result;
 }
 
+
+AArch64_Call_Convention aarch64_call_convention_systemv(void) {
+    return (AArch64_Call_Convention) { 0 };
+}
+
+uint32 aarch64_call_convention_next_mem(AArch64_Call_Convention* cc, LL_Type* type, uint32* stack_used_for_args) {
+    (void)type;
+    uint32_t stack_offset = cc->stack_offset;
+    cc->stack_offset += 8;
+    if (cc->stack_offset > *stack_used_for_args) {
+        *stack_used_for_args = cc->stack_offset;
+    }
+    return stack_offset;
+}
+
+Call_Convention_Parameter aarch64_call_convention_next(AArch64_Call_Convention* cc, LL_Type* type, uint32* stack_used_for_args) {
+    Call_Convention_Parameter result;
+    if (type->kind == LL_TYPE_FLOAT) {
+        if (cc->next_vector_register >= 32) {
+            result.is_reg = false;
+            result.stack_offset = aarch64_call_convention_next_mem(cc, type, stack_used_for_args);
+        } else {
+            result.is_reg = true;
+            result.reg = cc->next_vector_register++;
+        }
+    } else {
+        if (cc->next_register >= 32) {
+            result.is_reg = false;
+            result.stack_offset = aarch64_call_convention_next_mem(cc, type, stack_used_for_args);
+        } else {
+            result.is_reg = true;
+            result.reg = cc->next_register++;
+        }
+    }
+
+    return result;
+}

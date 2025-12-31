@@ -30,26 +30,26 @@
 Examples compared to intel asm:
 
     mov rbp, rax
-        OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_MOV, rm64_r64, ((X86_64_Instruction_Parameters) {
+        OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_MOV, rm64_r64, ((X86_64_Instruction_Parameters) {
             .reg0 = X86_64_OPERAND_REGISTER_rbp,
             .reg1 = X86_64_OPERAND_REGISTER_rax,
         }));
 
     mov rdx, 0x78
-        OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_MOV, r16_i16, ((X86_64_Instruction_Parameters) {
+        OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_MOV, r16_i16, ((X86_64_Instruction_Parameters) {
             .reg0 = X86_64_OPERAND_REGISTER_rdx,
             .immediate = 0x78
         }));
 
     mov BYTE [rbp + 0x10], al
-        OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_MOV, rm8_r8, ((X86_64_Instruction_Parameters) {
+        OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_MOV, rm8_r8, ((X86_64_Instruction_Parameters) {
             .reg0 = X86_64_REG_BASE | X86_64_OPERAND_REGISTER_rbp,
             .reg1 = X86_64_OPERAND_REGISTER_rax,
             .displacement = 0x10
         }));
 
     mov ecx, DWORD [RBP + 0x10]
-        OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_MOV, r32_rm32, ((X86_64_Instruction_Parameters) {
+        OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_MOV, r32_rm32, ((X86_64_Instruction_Parameters) {
             .reg0 = X86_64_OPERAND_REGISTER_rcx,
             .reg1 = X86_64_REG_BASE | X86_64_OPERAND_REGISTER_rbp,
             .displacement = 0x10, .immediate = 0x78
@@ -61,7 +61,7 @@ Examples compared to intel asm:
                     base ^ index  |
                             ^ scale
                                     ^ displacement
-        OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_MOV, r32_rm32, ((X86_64_Instruction_Parameters) {
+        OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_MOV, r32_rm32, ((X86_64_Instruction_Parameters) {
             .reg0 = X86_64_OPERAND_REGISTER_rax,
             .reg1 = X86_64_REG_BASE | X86_64_OPERAND_REGISTER_rdi,
             .use_sib = 1 | X86_64_SIB_INDEX | X86_64_SIB_SCALE,
@@ -83,14 +83,14 @@ Vector Examples:
 
 
     movss xmm0, xmm1
-        OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_MOVSS, r128_rm128, ((X86_64_Instruction_Parameters) {
+        OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_MOVSS, r128_rm128, ((X86_64_Instruction_Parameters) {
             .reg0 = X86_64_OPERAND_REGISTER_xmm(0),
             .reg1 = X86_64_OPERAND_REGISTER_xmm(1)
         }));
 
 
     vcvtsi2sd xmm1, xmm2, rdx
-        OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_VCVTSI2SD, r128_vvvv_rm64, ((X86_64_Instruction_Parameters) {
+        OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_VCVTSI2SD, r128_vvvv_rm64, ((X86_64_Instruction_Parameters) {
             .reg0 = X86_64_OPERAND_REGISTER_xmm(1),
             .reg1 = X86_64_OPERAND_REGISTER_xmm(2),
             .reg2 = X86_64_OPERAND_REGISTER_rdx
@@ -98,9 +98,9 @@ Vector Examples:
 
 No arguments:
 
-    OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_CPUID, noarg, ((X86_64_Instruction_Parameters) {}));
-    OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_CLI  , noarg, ((X86_64_Instruction_Parameters) {}));
-    OC_X86_64_WRITE_INSTRUCTION(w, OPCODE_INT3 , noarg, ((X86_64_Instruction_Parameters) {}));
+    OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_CPUID, noarg, ((X86_64_Instruction_Parameters) {}));
+    OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_CLI  , noarg, ((X86_64_Instruction_Parameters) {}));
+    OC_X86_64_WRITE_INSTRUCTION(w, X86_64_OPCODE_INT3 , noarg, ((X86_64_Instruction_Parameters) {}));
 */
 
 // #include "core1.h"
@@ -198,491 +198,491 @@ typedef enum {
 #define vex_vvvv (((unsigned int)OPERANDS_TYPE_vex_vvvv) << 5)
 
 enum {
-    OPCODE_ADD,
-    OPCODE_ADC,
-    OPCODE_AND,
-    OPCODE_CALL,
-    OPCODE_CBW,
-    OPCODE_CWDE,
-    OPCODE_CDQE,
-    OPCODE_CWD,
-    OPCODE_CDQ,
-    OPCODE_CQO,
-    OPCODE_CLC,
-    OPCODE_CLI,
-    OPCODE_CLD,
-    OPCODE_CMC,
+    X86_64_OPCODE_ADD,
+    X86_64_OPCODE_ADC,
+    X86_64_OPCODE_AND,
+    X86_64_OPCODE_CALL,
+    X86_64_OPCODE_CBW,
+    X86_64_OPCODE_CWDE,
+    X86_64_OPCODE_CDQE,
+    X86_64_OPCODE_CWD,
+    X86_64_OPCODE_CDQ,
+    X86_64_OPCODE_CQO,
+    X86_64_OPCODE_CLC,
+    X86_64_OPCODE_CLI,
+    X86_64_OPCODE_CLD,
+    X86_64_OPCODE_CMC,
 
-    OPCODE_CMOVO,
-    OPCODE_CMOVNO,
-    OPCODE_CMOVB,
-    OPCODE_CMOVAE,
-    OPCODE_CMOVE,
-    OPCODE_CMOVNE,
-    OPCODE_CMOVBE,
-    OPCODE_CMOVA,
-    OPCODE_CMOVS,
-    OPCODE_CMOVNS,
-    OPCODE_CMOVPE,
-    OPCODE_CMOVPO,
-    OPCODE_CMOVL,
-    OPCODE_CMOVGE,
-    OPCODE_CMOVLE,
-    OPCODE_CMOVG,
+    X86_64_OPCODE_CMOVO,
+    X86_64_OPCODE_CMOVNO,
+    X86_64_OPCODE_CMOVB,
+    X86_64_OPCODE_CMOVAE,
+    X86_64_OPCODE_CMOVE,
+    X86_64_OPCODE_CMOVNE,
+    X86_64_OPCODE_CMOVBE,
+    X86_64_OPCODE_CMOVA,
+    X86_64_OPCODE_CMOVS,
+    X86_64_OPCODE_CMOVNS,
+    X86_64_OPCODE_CMOVPE,
+    X86_64_OPCODE_CMOVPO,
+    X86_64_OPCODE_CMOVL,
+    X86_64_OPCODE_CMOVGE,
+    X86_64_OPCODE_CMOVLE,
+    X86_64_OPCODE_CMOVG,
 
-    OPCODE_CMP,
-    OPCODE_CMPSB,
-    OPCODE_CMPSW,
-    OPCODE_CMPSD,
-    OPCODE_CMPSQ,
-    OPCODE_CPUID,
-    OPCODE_DEC,
-    OPCODE_DIV,
-    OPCODE_FWAIT,
-    OPCODE_HLT,
-    OPCODE_IDIV,
-    OPCODE_IN,
-    OPCODE_INSB,
-    OPCODE_INSW,
-    OPCODE_INSD,
-    OPCODE_INC,
-    OPCODE_INT,
-    OPCODE_INT1,
-    OPCODE_INT3,
-    OPCODE_INTO,
-    OPCODE_IMUL,
-    OPCODE_IRET,
-    OPCODE_IRETD,
-    OPCODE_IRETQ,
+    X86_64_OPCODE_CMP,
+    X86_64_OPCODE_CMPSB,
+    X86_64_OPCODE_CMPSW,
+    X86_64_OPCODE_CMPSD,
+    X86_64_OPCODE_CMPSQ,
+    X86_64_OPCODE_CPUID,
+    X86_64_OPCODE_DEC,
+    X86_64_OPCODE_DIV,
+    X86_64_OPCODE_FWAIT,
+    X86_64_OPCODE_HLT,
+    X86_64_OPCODE_IDIV,
+    X86_64_OPCODE_IN,
+    X86_64_OPCODE_INSB,
+    X86_64_OPCODE_INSW,
+    X86_64_OPCODE_INSD,
+    X86_64_OPCODE_INC,
+    X86_64_OPCODE_INT,
+    X86_64_OPCODE_INT1,
+    X86_64_OPCODE_INT3,
+    X86_64_OPCODE_INTO,
+    X86_64_OPCODE_IMUL,
+    X86_64_OPCODE_IRET,
+    X86_64_OPCODE_IRETD,
+    X86_64_OPCODE_IRETQ,
 
-    OPCODE_JMP,
-    OPCODE_JO,
-    OPCODE_JNO,
-    OPCODE_JA,
-    OPCODE_JAE,
-    OPCODE_JB,
-    OPCODE_JBE,
-    OPCODE_JC,
-    OPCODE_JCXZ,
-    OPCODE_JECXZ,
-    OPCODE_JRCXZ,
-    OPCODE_JE,
-    OPCODE_JNE,
-    OPCODE_JS,
-    OPCODE_JNS,
-    OPCODE_JPE,
-    OPCODE_JPO,
-    OPCODE_JG,
-    OPCODE_JGE,
-    OPCODE_JL,
-    OPCODE_JLE,
+    X86_64_OPCODE_JMP,
+    X86_64_OPCODE_JO,
+    X86_64_OPCODE_JNO,
+    X86_64_OPCODE_JA,
+    X86_64_OPCODE_JAE,
+    X86_64_OPCODE_JB,
+    X86_64_OPCODE_JBE,
+    X86_64_OPCODE_JC,
+    X86_64_OPCODE_JCXZ,
+    X86_64_OPCODE_JECXZ,
+    X86_64_OPCODE_JRCXZ,
+    X86_64_OPCODE_JE,
+    X86_64_OPCODE_JNE,
+    X86_64_OPCODE_JS,
+    X86_64_OPCODE_JNS,
+    X86_64_OPCODE_JPE,
+    X86_64_OPCODE_JPO,
+    X86_64_OPCODE_JG,
+    X86_64_OPCODE_JGE,
+    X86_64_OPCODE_JL,
+    X86_64_OPCODE_JLE,
 
-    OPCODE_LAHF,
-    OPCODE_LEA,
-    OPCODE_LODSB,
-    OPCODE_LODSW,
-    OPCODE_LODSD,
-    OPCODE_LODSQ,
-    OPCODE_LOOP,
-    OPCODE_LOOPE,
-    OPCODE_LOOPNE,
+    X86_64_OPCODE_LAHF,
+    X86_64_OPCODE_LEA,
+    X86_64_OPCODE_LODSB,
+    X86_64_OPCODE_LODSW,
+    X86_64_OPCODE_LODSD,
+    X86_64_OPCODE_LODSQ,
+    X86_64_OPCODE_LOOP,
+    X86_64_OPCODE_LOOPE,
+    X86_64_OPCODE_LOOPNE,
 
-    OPCODE_MOV,
-    OPCODE_MOVSB,
-    OPCODE_MOVSW,
-    OPCODE_MOVSD,
-    OPCODE_MOVSQ,
-    OPCODE_MOVSX,
-    OPCODE_MOVSXD,
-    OPCODE_MOVZX,
+    X86_64_OPCODE_MOV,
+    X86_64_OPCODE_MOVSB,
+    X86_64_OPCODE_MOVSW,
+    X86_64_OPCODE_MOVSD,
+    X86_64_OPCODE_MOVSQ,
+    X86_64_OPCODE_MOVSX,
+    X86_64_OPCODE_MOVSXD,
+    X86_64_OPCODE_MOVZX,
 
-    OPCODE_MUL,
-    OPCODE_NEG,
-    OPCODE_NOT,
+    X86_64_OPCODE_MUL,
+    X86_64_OPCODE_NEG,
+    X86_64_OPCODE_NOT,
 
-    OPCODE_OR,
-    OPCODE_OUT,
-    OPCODE_OUTSB,
-    OPCODE_OUTSW,
-    OPCODE_OUTSD,
-    OPCODE_POP,
-    OPCODE_POPF,
-    OPCODE_POPFQ,
-    OPCODE_PUSH,
-    OPCODE_PUSHF,
-    OPCODE_PUSHFQ,
-    OPCODE_RET,
-    OPCODE_RET_FAR,
-    OPCODE_RCL,
-    OPCODE_RCR,
-    OPCODE_ROL,
-    OPCODE_ROR,
-    OPCODE_SAHF,
-    OPCODE_SAL,
-    OPCODE_SAR,
-    OPCODE_SBB,
-    OPCODE_SCASB,
-    OPCODE_SCASW,
-    OPCODE_SCASD,
-    OPCODE_SCASQ,
-    OPCODE_SHL,
-    OPCODE_SHR,
-    OPCODE_STC,
-    OPCODE_STI,
-    OPCODE_STD,
-    OPCODE_STOSB,
-    OPCODE_STOSW,
-    OPCODE_STOSD,
-    OPCODE_STOSQ,
-    OPCODE_SUB,
-    OPCODE_SYSCALL,
+    X86_64_OPCODE_OR,
+    X86_64_OPCODE_OUT,
+    X86_64_OPCODE_OUTSB,
+    X86_64_OPCODE_OUTSW,
+    X86_64_OPCODE_OUTSD,
+    X86_64_OPCODE_POP,
+    X86_64_OPCODE_POPF,
+    X86_64_OPCODE_POPFQ,
+    X86_64_OPCODE_PUSH,
+    X86_64_OPCODE_PUSHF,
+    X86_64_OPCODE_PUSHFQ,
+    X86_64_OPCODE_RET,
+    X86_64_OPCODE_RET_FAR,
+    X86_64_OPCODE_RCL,
+    X86_64_OPCODE_RCR,
+    X86_64_OPCODE_ROL,
+    X86_64_OPCODE_ROR,
+    X86_64_OPCODE_SAHF,
+    X86_64_OPCODE_SAL,
+    X86_64_OPCODE_SAR,
+    X86_64_OPCODE_SBB,
+    X86_64_OPCODE_SCASB,
+    X86_64_OPCODE_SCASW,
+    X86_64_OPCODE_SCASD,
+    X86_64_OPCODE_SCASQ,
+    X86_64_OPCODE_SHL,
+    X86_64_OPCODE_SHR,
+    X86_64_OPCODE_STC,
+    X86_64_OPCODE_STI,
+    X86_64_OPCODE_STD,
+    X86_64_OPCODE_STOSB,
+    X86_64_OPCODE_STOSW,
+    X86_64_OPCODE_STOSD,
+    X86_64_OPCODE_STOSQ,
+    X86_64_OPCODE_SUB,
+    X86_64_OPCODE_SYSCALL,
 
-    OPCODE_SETO,
-    OPCODE_SETNO,
-    OPCODE_SETB,
-    OPCODE_SETAE,
-    OPCODE_SETE,
-    OPCODE_SETNE,
-    OPCODE_SETBE,
-    OPCODE_SETA,
-    OPCODE_SETS,
-    OPCODE_SETNS,
-    OPCODE_SETPE,
-    OPCODE_SETPO,
-    OPCODE_SETL,
-    OPCODE_SETGE,
-    OPCODE_SETLE,
-    OPCODE_SETG,
+    X86_64_OPCODE_SETO,
+    X86_64_OPCODE_SETNO,
+    X86_64_OPCODE_SETB,
+    X86_64_OPCODE_SETAE,
+    X86_64_OPCODE_SETE,
+    X86_64_OPCODE_SETNE,
+    X86_64_OPCODE_SETBE,
+    X86_64_OPCODE_SETA,
+    X86_64_OPCODE_SETS,
+    X86_64_OPCODE_SETNS,
+    X86_64_OPCODE_SETPE,
+    X86_64_OPCODE_SETPO,
+    X86_64_OPCODE_SETL,
+    X86_64_OPCODE_SETGE,
+    X86_64_OPCODE_SETLE,
+    X86_64_OPCODE_SETG,
 
-    OPCODE_TEST,
-    OPCODE_XCHG,
-    OPCODE_XLAT,
-    OPCODE_XOR,
+    X86_64_OPCODE_TEST,
+    X86_64_OPCODE_XCHG,
+    X86_64_OPCODE_XLAT,
+    X86_64_OPCODE_XOR,
 
 
-    OPCODE_LDMXCSR,
-    OPCODE_STMXCSR,
+    X86_64_OPCODE_LDMXCSR,
+    X86_64_OPCODE_STMXCSR,
 
-    OPCODE_ADDPS,
-    OPCODE_ADDPD,
-    OPCODE_ADDSS,
-    OPCODE_ADDSD,
-    OPCODE_MULPS,
-    OPCODE_MULPD,
-    OPCODE_MULSS,
-    OPCODE_MULSD,
-    OPCODE_SUBPS,
-    OPCODE_SUBPD,
-    OPCODE_SUBSS,
-    OPCODE_SUBSD,
-    OPCODE_MINPS,
-    OPCODE_MINPD,
-    OPCODE_MINSS,
-    OPCODE_MINSD,
-    OPCODE_DIVPS,
-    OPCODE_DIVPD,
-    OPCODE_DIVSS,
-    OPCODE_DIVSD,
-    OPCODE_MAXPS,
-    OPCODE_MAXPD,
-    OPCODE_MAXSS,
-    OPCODE_MAXSD,
-    OPCODE_SQRTPS,
-    OPCODE_SQRTPD,
-    OPCODE_SQRTSS,
-    OPCODE_SQRTSD,
-    OPCODE_RSQRTPS,
-    OPCODE_RSQRTSS,
-    OPCODE_RCPPS,
-    OPCODE_RCPSS,
+    X86_64_OPCODE_ADDPS,
+    X86_64_OPCODE_ADDPD,
+    X86_64_OPCODE_ADDSS,
+    X86_64_OPCODE_ADDSD,
+    X86_64_OPCODE_MULPS,
+    X86_64_OPCODE_MULPD,
+    X86_64_OPCODE_MULSS,
+    X86_64_OPCODE_MULSD,
+    X86_64_OPCODE_SUBPS,
+    X86_64_OPCODE_SUBPD,
+    X86_64_OPCODE_SUBSS,
+    X86_64_OPCODE_SUBSD,
+    X86_64_OPCODE_MINPS,
+    X86_64_OPCODE_MINPD,
+    X86_64_OPCODE_MINSS,
+    X86_64_OPCODE_MINSD,
+    X86_64_OPCODE_DIVPS,
+    X86_64_OPCODE_DIVPD,
+    X86_64_OPCODE_DIVSS,
+    X86_64_OPCODE_DIVSD,
+    X86_64_OPCODE_MAXPS,
+    X86_64_OPCODE_MAXPD,
+    X86_64_OPCODE_MAXSS,
+    X86_64_OPCODE_MAXSD,
+    X86_64_OPCODE_SQRTPS,
+    X86_64_OPCODE_SQRTPD,
+    X86_64_OPCODE_SQRTSS,
+    X86_64_OPCODE_SQRTSD,
+    X86_64_OPCODE_RSQRTPS,
+    X86_64_OPCODE_RSQRTSS,
+    X86_64_OPCODE_RCPPS,
+    X86_64_OPCODE_RCPSS,
 
-    OPCODE_ANDPS,
-    OPCODE_ANDPD,
-    OPCODE_ANDNPS,
-    OPCODE_ANDNPD,
-    OPCODE_ORPS,
-    OPCODE_ORPD,
-    OPCODE_XORPS,
-    OPCODE_XORPD,
+    X86_64_OPCODE_ANDPS,
+    X86_64_OPCODE_ANDPD,
+    X86_64_OPCODE_ANDNPS,
+    X86_64_OPCODE_ANDNPD,
+    X86_64_OPCODE_ORPS,
+    X86_64_OPCODE_ORPD,
+    X86_64_OPCODE_XORPS,
+    X86_64_OPCODE_XORPD,
 
-    OPCODE_PUNPCKLBW,
-    OPCODE_PUNPCKLWD,
-    OPCODE_PUNPCKLDQ,
-    OPCODE_PUNPCKLQDQ,
-    OPCODE_PACKSSWB,
-    OPCODE_PCMPGTB,
-    OPCODE_PCMPGTW,
-    OPCODE_PCMPGTD,
-    OPCODE_PACKUSWB,
-    OPCODE_PUNPCKHBW,
-    OPCODE_PUNPCKHWD,
-    OPCODE_PUNPCKHDQ,
-    OPCODE_PUNPCKHQDQ,
-    OPCODE_PACKSSDW,
+    X86_64_OPCODE_PUNPCKLBW,
+    X86_64_OPCODE_PUNPCKLWD,
+    X86_64_OPCODE_PUNPCKLDQ,
+    X86_64_OPCODE_PUNPCKLQDQ,
+    X86_64_OPCODE_PACKSSWB,
+    X86_64_OPCODE_PCMPGTB,
+    X86_64_OPCODE_PCMPGTW,
+    X86_64_OPCODE_PCMPGTD,
+    X86_64_OPCODE_PACKUSWB,
+    X86_64_OPCODE_PUNPCKHBW,
+    X86_64_OPCODE_PUNPCKHWD,
+    X86_64_OPCODE_PUNPCKHDQ,
+    X86_64_OPCODE_PUNPCKHQDQ,
+    X86_64_OPCODE_PACKSSDW,
 
-    OPCODE_PSHUFB,
-    OPCODE_PSHUFW,
-    OPCODE_PSHUFD,
-    OPCODE_PSHUFHW,
-    OPCODE_PSHUFLW,
+    X86_64_OPCODE_PSHUFB,
+    X86_64_OPCODE_PSHUFW,
+    X86_64_OPCODE_PSHUFD,
+    X86_64_OPCODE_PSHUFHW,
+    X86_64_OPCODE_PSHUFLW,
 
-    OPCODE_PSRLW,
-    OPCODE_PSRLD,
-    OPCODE_PSRLQ,
-    OPCODE_PADDQ,
-    OPCODE_PMULLW,
-    OPCODE_PAVGB,
-    OPCODE_PSRAW,
-    OPCODE_PSRAD,
-    OPCODE_PAVGW,
-    OPCODE_PMULHUW,
-    OPCODE_PMULHW,
-    OPCODE_PSLLW,
-    OPCODE_PSLLD,
-    OPCODE_PSLLQ,
-    OPCODE_PMULUDQ,
-    OPCODE_PMADDWD,
-    OPCODE_PSADBW,
-    OPCODE_PSUBUSB,
-    OPCODE_PSUBUSW,
-    OPCODE_PMINUB,
-    OPCODE_PAND,
-    OPCODE_PADDUSB,
-    OPCODE_PADDUSW,
-    OPCODE_PMAXUB,
-    OPCODE_PANDN,
-    OPCODE_PSUBSB,
-    OPCODE_PSUBSW,
-    OPCODE_PMINSW,
-    OPCODE_POR,
-    OPCODE_PADDSB,
-    OPCODE_PADDSW,
-    OPCODE_PMAXSW,
-    OPCODE_PXOR,
-    OPCODE_PSUBB,
-    OPCODE_PSUBW,
-    OPCODE_PSUBD,
-    OPCODE_PSUBQ,
-    OPCODE_PADDB,
-    OPCODE_PADDW,
-    OPCODE_PADDD,
+    X86_64_OPCODE_PSRLW,
+    X86_64_OPCODE_PSRLD,
+    X86_64_OPCODE_PSRLQ,
+    X86_64_OPCODE_PADDQ,
+    X86_64_OPCODE_PMULLW,
+    X86_64_OPCODE_PAVGB,
+    X86_64_OPCODE_PSRAW,
+    X86_64_OPCODE_PSRAD,
+    X86_64_OPCODE_PAVGW,
+    X86_64_OPCODE_PMULHUW,
+    X86_64_OPCODE_PMULHW,
+    X86_64_OPCODE_PSLLW,
+    X86_64_OPCODE_PSLLD,
+    X86_64_OPCODE_PSLLQ,
+    X86_64_OPCODE_PMULUDQ,
+    X86_64_OPCODE_PMADDWD,
+    X86_64_OPCODE_PSADBW,
+    X86_64_OPCODE_PSUBUSB,
+    X86_64_OPCODE_PSUBUSW,
+    X86_64_OPCODE_PMINUB,
+    X86_64_OPCODE_PAND,
+    X86_64_OPCODE_PADDUSB,
+    X86_64_OPCODE_PADDUSW,
+    X86_64_OPCODE_PMAXUB,
+    X86_64_OPCODE_PANDN,
+    X86_64_OPCODE_PSUBSB,
+    X86_64_OPCODE_PSUBSW,
+    X86_64_OPCODE_PMINSW,
+    X86_64_OPCODE_POR,
+    X86_64_OPCODE_PADDSB,
+    X86_64_OPCODE_PADDSW,
+    X86_64_OPCODE_PMAXSW,
+    X86_64_OPCODE_PXOR,
+    X86_64_OPCODE_PSUBB,
+    X86_64_OPCODE_PSUBW,
+    X86_64_OPCODE_PSUBD,
+    X86_64_OPCODE_PSUBQ,
+    X86_64_OPCODE_PADDB,
+    X86_64_OPCODE_PADDW,
+    X86_64_OPCODE_PADDD,
 
-    OPCODE_CMPEQB,
-    OPCODE_CMPEQW,
-    OPCODE_CMPEQD,
-    OPCODE_COMISS,
-    OPCODE_COMISD,
+    X86_64_OPCODE_CMPEQB,
+    X86_64_OPCODE_CMPEQW,
+    X86_64_OPCODE_CMPEQD,
+    X86_64_OPCODE_COMISS,
+    X86_64_OPCODE_COMISD,
 
-    OPCODE_CVTDQ2PD,
-    OPCODE_CVTDQ2PS,
-    OPCODE_CVTPD2DQ,
-    OPCODE_CVTPD2PI,
-    OPCODE_CVTPD2PS,
-    OPCODE_CVTPI2PD,
-    OPCODE_CVTPI2PS,
-    OPCODE_CVTPS2DQ,
-    OPCODE_CVTPS2PD,
-    OPCODE_CVTPS2PI,
-    OPCODE_CVTSD2SI,
-    OPCODE_CVTSD2SS,
-    OPCODE_CVTSI2SD,
-    OPCODE_CVTSI2SS,
-    OPCODE_CVTSS2SD,
-    OPCODE_CVTSS2SI,
-    OPCODE_CVTTPD2DQ,
-    OPCODE_CVTTPD2PI,
-    OPCODE_CVTTPS2DQ,
-    OPCODE_CVTTPS2PI,
-    OPCODE_CVTTSD2SI,
-    OPCODE_CVTTSS2SI,
+    X86_64_OPCODE_CVTDQ2PD,
+    X86_64_OPCODE_CVTDQ2PS,
+    X86_64_OPCODE_CVTPD2DQ,
+    X86_64_OPCODE_CVTPD2PI,
+    X86_64_OPCODE_CVTPD2PS,
+    X86_64_OPCODE_CVTPI2PD,
+    X86_64_OPCODE_CVTPI2PS,
+    X86_64_OPCODE_CVTPS2DQ,
+    X86_64_OPCODE_CVTPS2PD,
+    X86_64_OPCODE_CVTPS2PI,
+    X86_64_OPCODE_CVTSD2SI,
+    X86_64_OPCODE_CVTSD2SS,
+    X86_64_OPCODE_CVTSI2SD,
+    X86_64_OPCODE_CVTSI2SS,
+    X86_64_OPCODE_CVTSS2SD,
+    X86_64_OPCODE_CVTSS2SI,
+    X86_64_OPCODE_CVTTPD2DQ,
+    X86_64_OPCODE_CVTTPD2PI,
+    X86_64_OPCODE_CVTTPS2DQ,
+    X86_64_OPCODE_CVTTPS2PI,
+    X86_64_OPCODE_CVTTSD2SI,
+    X86_64_OPCODE_CVTTSS2SI,
 
-    OPCODE_EMMS,
-    OPCODE_HADDPD,
-    OPCODE_HADDPS,
-    OPCODE_HSUBPD,
-    OPCODE_HSUBPS,
+    X86_64_OPCODE_EMMS,
+    X86_64_OPCODE_HADDPD,
+    X86_64_OPCODE_HADDPS,
+    X86_64_OPCODE_HSUBPD,
+    X86_64_OPCODE_HSUBPS,
 
-    OPCODE_MOVAPS,
-    OPCODE_MOVAPD,
-    OPCODE_MOVLPS,
-    OPCODE_MOVHPS,
-    OPCODE_MOVHPD,
-    OPCODE_MOVHLPS,
-    OPCODE_MOVLHPS,
-    OPCODE_MOVLPD,
-    OPCODE_MOVMSKPS,
-    OPCODE_MOVMSKPD,
-    OPCODE_MOVNTPS,
-    OPCODE_MOVNTPD,
-    OPCODE_MOVUPS,
-    OPCODE_MOVUPD,
-    OPCODE_MOVSS,
-    /* OPCODE_MOVSD, */
-    OPCODE_MOVSLDUP,
-    OPCODE_MOVSHDUP,
-    OPCODE_MOVDDUP,
-    OPCODE_MOVD,
-    OPCODE_MOVQ,
-    OPCODE_MOVDQA,
-    OPCODE_MOVDQU,
-    OPCODE_UCOMISS,
-    OPCODE_UCOMISD,
-    OPCODE_UNPCKLPS,
-    OPCODE_UNPCKHPS,
+    X86_64_OPCODE_MOVAPS,
+    X86_64_OPCODE_MOVAPD,
+    X86_64_OPCODE_MOVLPS,
+    X86_64_OPCODE_MOVHPS,
+    X86_64_OPCODE_MOVHPD,
+    X86_64_OPCODE_MOVHLPS,
+    X86_64_OPCODE_MOVLHPS,
+    X86_64_OPCODE_MOVLPD,
+    X86_64_OPCODE_MOVMSKPS,
+    X86_64_OPCODE_MOVMSKPD,
+    X86_64_OPCODE_MOVNTPS,
+    X86_64_OPCODE_MOVNTPD,
+    X86_64_OPCODE_MOVUPS,
+    X86_64_OPCODE_MOVUPD,
+    X86_64_OPCODE_MOVSS,
+    /* X86_64_OPCODE_MOVSD, */
+    X86_64_OPCODE_MOVSLDUP,
+    X86_64_OPCODE_MOVSHDUP,
+    X86_64_OPCODE_MOVDDUP,
+    X86_64_OPCODE_MOVD,
+    X86_64_OPCODE_MOVQ,
+    X86_64_OPCODE_MOVDQA,
+    X86_64_OPCODE_MOVDQU,
+    X86_64_OPCODE_UCOMISS,
+    X86_64_OPCODE_UCOMISD,
+    X86_64_OPCODE_UNPCKLPS,
+    X86_64_OPCODE_UNPCKHPS,
 
-    OPCODE_VADDPS,
-    OPCODE_VADDPD,
-    OPCODE_VADDSS,
-    OPCODE_VADDSD,
-    OPCODE_VMULPS,
-    OPCODE_VMULPD,
-    OPCODE_VMULSS,
-    OPCODE_VMULSD,
-    OPCODE_VSUBPS,
-    OPCODE_VSUBPD,
-    OPCODE_VSUBSS,
-    OPCODE_VSUBSD,
-    OPCODE_VMINPS,
-    OPCODE_VMINPD,
-    OPCODE_VMINSS,
-    OPCODE_VMINSD,
-    OPCODE_VDIVPS,
-    OPCODE_VDIVPD,
-    OPCODE_VDIVSS,
-    OPCODE_VDIVSD,
-    OPCODE_VMAXPS,
-    OPCODE_VMAXPD,
-    OPCODE_VMAXSS,
-    OPCODE_VMAXSD,
-    OPCODE_VSQRTPS,
-    OPCODE_VSQRTPD,
-    OPCODE_VSQRTSS,
-    OPCODE_VSQRTSD,
-    OPCODE_VRSQRTPS,
-    OPCODE_VRSQRTSS,
-    OPCODE_VRCPPS,
-    OPCODE_VRCPSS,
+    X86_64_OPCODE_VADDPS,
+    X86_64_OPCODE_VADDPD,
+    X86_64_OPCODE_VADDSS,
+    X86_64_OPCODE_VADDSD,
+    X86_64_OPCODE_VMULPS,
+    X86_64_OPCODE_VMULPD,
+    X86_64_OPCODE_VMULSS,
+    X86_64_OPCODE_VMULSD,
+    X86_64_OPCODE_VSUBPS,
+    X86_64_OPCODE_VSUBPD,
+    X86_64_OPCODE_VSUBSS,
+    X86_64_OPCODE_VSUBSD,
+    X86_64_OPCODE_VMINPS,
+    X86_64_OPCODE_VMINPD,
+    X86_64_OPCODE_VMINSS,
+    X86_64_OPCODE_VMINSD,
+    X86_64_OPCODE_VDIVPS,
+    X86_64_OPCODE_VDIVPD,
+    X86_64_OPCODE_VDIVSS,
+    X86_64_OPCODE_VDIVSD,
+    X86_64_OPCODE_VMAXPS,
+    X86_64_OPCODE_VMAXPD,
+    X86_64_OPCODE_VMAXSS,
+    X86_64_OPCODE_VMAXSD,
+    X86_64_OPCODE_VSQRTPS,
+    X86_64_OPCODE_VSQRTPD,
+    X86_64_OPCODE_VSQRTSS,
+    X86_64_OPCODE_VSQRTSD,
+    X86_64_OPCODE_VRSQRTPS,
+    X86_64_OPCODE_VRSQRTSS,
+    X86_64_OPCODE_VRCPPS,
+    X86_64_OPCODE_VRCPSS,
 
-    OPCODE_VANDPS,
-    OPCODE_VANDPD,
-    OPCODE_VANDNPS,
-    OPCODE_VANDNPD,
-    OPCODE_VORPS,
-    OPCODE_VORPD,
-    OPCODE_VXORPS,
-    OPCODE_VXORPD,
+    X86_64_OPCODE_VANDPS,
+    X86_64_OPCODE_VANDPD,
+    X86_64_OPCODE_VANDNPS,
+    X86_64_OPCODE_VANDNPD,
+    X86_64_OPCODE_VORPS,
+    X86_64_OPCODE_VORPD,
+    X86_64_OPCODE_VXORPS,
+    X86_64_OPCODE_VXORPD,
 
-    OPCODE_VHADDPD,
-    OPCODE_VHADDPS,
-    OPCODE_VHSUBPD,
-    OPCODE_VHSUBPS,
+    X86_64_OPCODE_VHADDPD,
+    X86_64_OPCODE_VHADDPS,
+    X86_64_OPCODE_VHSUBPD,
+    X86_64_OPCODE_VHSUBPS,
 
-    OPCODE_VPUNPCKLBW,
-    OPCODE_VPUNPCKLWD,
-    OPCODE_VPUNPCKLDQ,
-    OPCODE_VPUNPCKLQDQ,
-    OPCODE_VPACKSSWB,
-    OPCODE_VPCMPGTB,
-    OPCODE_VPCMPGTW,
-    OPCODE_VPCMPGTD,
-    OPCODE_VPACKUSWB,
-    OPCODE_VPUNPCKHBW,
-    OPCODE_VPUNPCKHWD,
-    OPCODE_VPUNPCKHDQ,
-    OPCODE_VPUNPCKHQDQ,
-    OPCODE_VPACKSSDW,
-    OPCODE_VPSHUFD,
-    OPCODE_VPSHUFHW,
-    OPCODE_VPSHUFLW,
+    X86_64_OPCODE_VPUNPCKLBW,
+    X86_64_OPCODE_VPUNPCKLWD,
+    X86_64_OPCODE_VPUNPCKLDQ,
+    X86_64_OPCODE_VPUNPCKLQDQ,
+    X86_64_OPCODE_VPACKSSWB,
+    X86_64_OPCODE_VPCMPGTB,
+    X86_64_OPCODE_VPCMPGTW,
+    X86_64_OPCODE_VPCMPGTD,
+    X86_64_OPCODE_VPACKUSWB,
+    X86_64_OPCODE_VPUNPCKHBW,
+    X86_64_OPCODE_VPUNPCKHWD,
+    X86_64_OPCODE_VPUNPCKHDQ,
+    X86_64_OPCODE_VPUNPCKHQDQ,
+    X86_64_OPCODE_VPACKSSDW,
+    X86_64_OPCODE_VPSHUFD,
+    X86_64_OPCODE_VPSHUFHW,
+    X86_64_OPCODE_VPSHUFLW,
 
-    OPCODE_VPSRLW,
-    OPCODE_VPSRLD,
-    OPCODE_VPSRLQ,
-    OPCODE_VPADDQ,
-    OPCODE_VPMULLW,
-    OPCODE_VPAVGB,
-    OPCODE_VPSRAW,
-    OPCODE_VPSRAD,
-    OPCODE_VPAVGW,
-    OPCODE_VPMULHUW,
-    OPCODE_VPMULHW,
-    OPCODE_VPSLLW,
-    OPCODE_VPSLLD,
-    OPCODE_VPSLLQ,
-    OPCODE_VPMULUDQ,
-    OPCODE_VPMADDWD,
-    OPCODE_VPSADBW,
-    OPCODE_VPSUBUSB,
-    OPCODE_VPSUBUSW,
-    OPCODE_VPMINUB,
-    OPCODE_VPAND,
-    OPCODE_VPADDUSB,
-    OPCODE_VPADDUSW,
-    OPCODE_VPMAXUB,
-    OPCODE_VPANDN,
-    OPCODE_VPSUBSB,
-    OPCODE_VPSUBSW,
-    OPCODE_VPMINSW,
-    OPCODE_VPOR,
-    OPCODE_VPADDSB,
-    OPCODE_VPADDSW,
-    OPCODE_VPMAXSW,
-    OPCODE_VPXOR,
-    OPCODE_VPSUBB,
-    OPCODE_VPSUBW,
-    OPCODE_VPSUBD,
-    OPCODE_VPSUBQ,
-    OPCODE_VPADDB,
-    OPCODE_VPADDW,
-    OPCODE_VPADDD,
+    X86_64_OPCODE_VPSRLW,
+    X86_64_OPCODE_VPSRLD,
+    X86_64_OPCODE_VPSRLQ,
+    X86_64_OPCODE_VPADDQ,
+    X86_64_OPCODE_VPMULLW,
+    X86_64_OPCODE_VPAVGB,
+    X86_64_OPCODE_VPSRAW,
+    X86_64_OPCODE_VPSRAD,
+    X86_64_OPCODE_VPAVGW,
+    X86_64_OPCODE_VPMULHUW,
+    X86_64_OPCODE_VPMULHW,
+    X86_64_OPCODE_VPSLLW,
+    X86_64_OPCODE_VPSLLD,
+    X86_64_OPCODE_VPSLLQ,
+    X86_64_OPCODE_VPMULUDQ,
+    X86_64_OPCODE_VPMADDWD,
+    X86_64_OPCODE_VPSADBW,
+    X86_64_OPCODE_VPSUBUSB,
+    X86_64_OPCODE_VPSUBUSW,
+    X86_64_OPCODE_VPMINUB,
+    X86_64_OPCODE_VPAND,
+    X86_64_OPCODE_VPADDUSB,
+    X86_64_OPCODE_VPADDUSW,
+    X86_64_OPCODE_VPMAXUB,
+    X86_64_OPCODE_VPANDN,
+    X86_64_OPCODE_VPSUBSB,
+    X86_64_OPCODE_VPSUBSW,
+    X86_64_OPCODE_VPMINSW,
+    X86_64_OPCODE_VPOR,
+    X86_64_OPCODE_VPADDSB,
+    X86_64_OPCODE_VPADDSW,
+    X86_64_OPCODE_VPMAXSW,
+    X86_64_OPCODE_VPXOR,
+    X86_64_OPCODE_VPSUBB,
+    X86_64_OPCODE_VPSUBW,
+    X86_64_OPCODE_VPSUBD,
+    X86_64_OPCODE_VPSUBQ,
+    X86_64_OPCODE_VPADDB,
+    X86_64_OPCODE_VPADDW,
+    X86_64_OPCODE_VPADDD,
 
-    OPCODE_VCMPEQB,
-    OPCODE_VCMPEQW,
-    OPCODE_VCMPEQD,
-    OPCODE_VCOMISS,
-    OPCODE_VCOMISD,
-    OPCODE_VCVTSI2SD,
-    OPCODE_VCVTSI2SS,
-    OPCODE_VCVTSS2SI,
-    OPCODE_VCVTTSS2SI,
-    OPCODE_VCVTSD2SI,
-    OPCODE_VCVTTSD2SI,
-    OPCODE_VCVTPS2PD,
-    OPCODE_VCVTPD2PS,
-    OPCODE_VCVTSS2SD,
-    OPCODE_VCVTSD2SS,
-    OPCODE_VCVTDQ2PS,
-    OPCODE_VCVTPS2DQ,
-    OPCODE_VCVTTPS2DQ,
-    OPCODE_VMOVAPS,
-    OPCODE_VMOVAPD,
-    OPCODE_VMOVLPS,
-    OPCODE_VMOVHPS,
-    OPCODE_VMOVHPD,
-    OPCODE_VMOVHLPS,
-    OPCODE_VMOVLHPS,
-    OPCODE_VMOVLPD,
-    OPCODE_VMOVMSKPS,
-    OPCODE_VMOVMSKPD,
-    OPCODE_VMOVNTPS,
-    OPCODE_VMOVNTPD,
-    OPCODE_VMOVUPS,
-    OPCODE_VMOVUPD,
-    OPCODE_VMOVSS,
-    OPCODE_VMOVSD,
-    OPCODE_VMOVSLDUP,
-    OPCODE_VMOVSHDUP,
-    OPCODE_VMOVDDUP,
-    OPCODE_VMOVD,
-    OPCODE_VMOVQ,
-    OPCODE_VMOVDQA,
-    OPCODE_VMOVDQU,
-    OPCODE_VUCOMISS,
-    OPCODE_VUCOMISD,
-    OPCODE_VUNPCKLPS,
-    OPCODE_VUNPCKHPS,
-    OPCODE_VZEROALL,
-    OPCODE_VZEROUPPER,
+    X86_64_OPCODE_VCMPEQB,
+    X86_64_OPCODE_VCMPEQW,
+    X86_64_OPCODE_VCMPEQD,
+    X86_64_OPCODE_VCOMISS,
+    X86_64_OPCODE_VCOMISD,
+    X86_64_OPCODE_VCVTSI2SD,
+    X86_64_OPCODE_VCVTSI2SS,
+    X86_64_OPCODE_VCVTSS2SI,
+    X86_64_OPCODE_VCVTTSS2SI,
+    X86_64_OPCODE_VCVTSD2SI,
+    X86_64_OPCODE_VCVTTSD2SI,
+    X86_64_OPCODE_VCVTPS2PD,
+    X86_64_OPCODE_VCVTPD2PS,
+    X86_64_OPCODE_VCVTSS2SD,
+    X86_64_OPCODE_VCVTSD2SS,
+    X86_64_OPCODE_VCVTDQ2PS,
+    X86_64_OPCODE_VCVTPS2DQ,
+    X86_64_OPCODE_VCVTTPS2DQ,
+    X86_64_OPCODE_VMOVAPS,
+    X86_64_OPCODE_VMOVAPD,
+    X86_64_OPCODE_VMOVLPS,
+    X86_64_OPCODE_VMOVHPS,
+    X86_64_OPCODE_VMOVHPD,
+    X86_64_OPCODE_VMOVHLPS,
+    X86_64_OPCODE_VMOVLHPS,
+    X86_64_OPCODE_VMOVLPD,
+    X86_64_OPCODE_VMOVMSKPS,
+    X86_64_OPCODE_VMOVMSKPD,
+    X86_64_OPCODE_VMOVNTPS,
+    X86_64_OPCODE_VMOVNTPD,
+    X86_64_OPCODE_VMOVUPS,
+    X86_64_OPCODE_VMOVUPD,
+    X86_64_OPCODE_VMOVSS,
+    X86_64_OPCODE_VMOVSD,
+    X86_64_OPCODE_VMOVSLDUP,
+    X86_64_OPCODE_VMOVSHDUP,
+    X86_64_OPCODE_VMOVDDUP,
+    X86_64_OPCODE_VMOVD,
+    X86_64_OPCODE_VMOVQ,
+    X86_64_OPCODE_VMOVDQA,
+    X86_64_OPCODE_VMOVDQU,
+    X86_64_OPCODE_VUCOMISS,
+    X86_64_OPCODE_VUCOMISD,
+    X86_64_OPCODE_VUNPCKLPS,
+    X86_64_OPCODE_VUNPCKHPS,
+    X86_64_OPCODE_VZEROALL,
+    X86_64_OPCODE_VZEROUPPER,
 };
 
 typedef enum {
@@ -885,12 +885,27 @@ X86_64_Instruction_Variant oc_x86_64_get_variant(const X86_64_Instruction* inst,
 
 
 
+enum {
+    AARCH64_OPCODE_MOV,
+};
 
+typedef struct {
+    unsigned char reg0, reg1, reg2, reg3;
+    long long int displacement, immediate, relative;
+} AArch64_Instruction_Parameters;
 
+typedef struct {
 
+} Aarch64_Instruction_Variant;
 
+typedef struct {
+    Aarch64_Instruction_Variant
+        noarg;
+} Aarch64_Instruction;
 
-
+typedef enum {
+    X86_64_VARIANT_KIND_noarg,
+} AArch64_Variant_Kind;
 
 
 
@@ -1038,24 +1053,24 @@ const long long int x86_64_usable_gp_registers_count = sizeof(x86_64_usable_gp_r
         )(w, (segment))
 
 enum {
-    OPCODE_PREFIX_none = 0,
+    X86_64_OPCODE_PREFIX_none = 0,
 
-    OPCODE_PREFIX_1B = 0,
-    OPCODE_PREFIX_2B = 1,
-    OPCODE_PREFIX_3B = 2,
+    X86_64_OPCODE_PREFIX_1B = 0,
+    X86_64_OPCODE_PREFIX_2B = 1,
+    X86_64_OPCODE_PREFIX_3B = 2,
 
-    OPCODE_PREFIX_66 = 1,
-    OPCODE_PREFIX_F3 = 2,
-    OPCODE_PREFIX_F2 = 3,
+    X86_64_OPCODE_PREFIX_66 = 1,
+    X86_64_OPCODE_PREFIX_F3 = 2,
+    X86_64_OPCODE_PREFIX_F2 = 3,
 
-    OPCODE_PREFIX_vex = 1,
+    X86_64_OPCODE_PREFIX_vex = 1,
 };
 
-#define BUILD_OPCODE(vex, pre, bc, opcode) (((OPCODE_PREFIX_ ## vex) << 12) | ((OPCODE_PREFIX_ ## pre) << 10) | ((OPCODE_PREFIX_ ## bc) << 8) | (opcode))
+#define BUILD_OPCODE(vex, pre, bc, opcode) (((X86_64_OPCODE_PREFIX_ ## vex) << 12) | ((X86_64_OPCODE_PREFIX_ ## pre) << 10) | ((X86_64_OPCODE_PREFIX_ ## bc) << 8) | (opcode))
 
-#define OPCODE_GET_BYTECOUNT(op) (((op) >> 8) & 0x3)
-#define OPCODE_GET_PREFIX(op) (((op) >> 10) & 0x3)
-#define OPCODE_GET_VEX(op) (((op) >> 12) & 0x3)
+#define X86_64_OPCODE_GET_BYTECOUNT(op) (((op) >> 8) & 0x3)
+#define X86_64_OPCODE_GET_PREFIX(op) (((op) >> 10) & 0x3)
+#define X86_64_OPCODE_GET_VEX(op) (((op) >> 12) & 0x3)
 
 /* 00 00 */
 
@@ -1088,54 +1103,54 @@ enum {
 
 
 #define X86_64_OPCODE_MAKE_VECTOR_ARITHMETIC(op, _opcode) \
-    [OPCODE_ ## op ## PS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_ ## op ## PD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_ ## op ## SS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, F3, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_ ## op ## SD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, F2, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_V ## op ## PS] = { 																													\
+    [X86_64_OPCODE_ ## op ## PS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_ ## op ## PD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_ ## op ## SS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, F3, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_ ## op ## SD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, F2, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_V ## op ## PS] = { 																													\
         .r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
         .r256_vvvv_rm256 = { .opcode = BUILD_OPCODE(vex, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
     }, 																																			\
-    [OPCODE_V ## op ## PD] = { 																													\
+    [X86_64_OPCODE_V ## op ## PD] = { 																													\
         .r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
         .r256_vvvv_rm256 = { .opcode = BUILD_OPCODE(vex, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
     }, 																																			\
-    [OPCODE_V ## op ## SS] = { 																													\
+    [X86_64_OPCODE_V ## op ## SS] = { 																													\
         .r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, F3, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
     }, 																																			\
-    [OPCODE_V ## op ## SD] = { 																													\
+    [X86_64_OPCODE_V ## op ## SD] = { 																													\
         .r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, F2, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
     }
 
 #define X86_64_OPCODE_MAKE_VECTOR_LOGIC(op, _opcode) \
-    [OPCODE_ ## op ## PS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_ ## op ## PD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_V ## op ## PS] = { 																													\
+    [X86_64_OPCODE_ ## op ## PS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_ ## op ## PD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_V ## op ## PS] = { 																													\
         .r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
         .r256_vvvv_rm256 = { .opcode = BUILD_OPCODE(vex, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
     }, 																																			\
-    [OPCODE_V ## op ## PD] = { 																													\
+    [X86_64_OPCODE_V ## op ## PD] = { 																													\
         .r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
         .r256_vvvv_rm256 = { .opcode = BUILD_OPCODE(vex, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, 		\
     }	
 
 #define X86_64_OPCODE_MAKE_VECTOR_ARITHMETIC_UNARY(op, _opcode) \
-    [OPCODE_ ## op ## PS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_ ## op ## PD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_ ## op ## SS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, F3, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_ ## op ## SD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, F2, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
-    [OPCODE_V ## op ## PS] = { 																													\
+    [X86_64_OPCODE_ ## op ## PS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_ ## op ## PD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_ ## op ## SS] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, F3, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_ ## op ## SD] = { .r128_rm128	= { .opcode = BUILD_OPCODE(none, F2, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, }, 	\
+    [X86_64_OPCODE_V ## op ## PS] = { 																													\
         .r128_rm128 = { .opcode = BUILD_OPCODE(vex, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, 		\
         .r256_rm256 = { .opcode = BUILD_OPCODE(vex, none, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, 		\
     }, 																																			\
-    [OPCODE_V ## op ## PD] = { 																													\
+    [X86_64_OPCODE_V ## op ## PD] = { 																													\
         .r128_rm128 = { .opcode = BUILD_OPCODE(vex, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, 		\
         .r256_rm256 = { .opcode = BUILD_OPCODE(vex, 66, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, 		\
     }, 																																			\
-    [OPCODE_V ## op ## SS] = { 																													\
+    [X86_64_OPCODE_V ## op ## SS] = { 																													\
         .r128_rm128 = { .opcode = BUILD_OPCODE(vex, F3, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, 		\
     }, 																																			\
-    [OPCODE_V ## op ## SD] = { 																													\
+    [X86_64_OPCODE_V ## op ## SD] = { 																													\
         .r128_rm128 = { .opcode = BUILD_OPCODE(vex, F2, 2B, _opcode), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, 		\
     }
 
@@ -1185,75 +1200,75 @@ enum {
     }
 
 const X86_64_Instruction x86_64_instructions_table[] = {
-    X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_ADD, 0x00u, 0u),
-    X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_OR,  0x08u, 1u),
-    X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_ADC, 0x10u, 2u),
-    X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_SBB, 0x14u, 3u),
-    X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_AND, 0x20u, 4u),
-    X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_SUB, 0x28u, 5u),
-    X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_XOR, 0x30u, 6u),
-    X86_64_OPCODE_MAKE_ARITHMETIC(OPCODE_CMP, 0x38u, 7u),
-    [OPCODE_CALL] = {
+    X86_64_OPCODE_MAKE_ARITHMETIC(X86_64_OPCODE_ADD, 0x00u, 0u),
+    X86_64_OPCODE_MAKE_ARITHMETIC(X86_64_OPCODE_OR,  0x08u, 1u),
+    X86_64_OPCODE_MAKE_ARITHMETIC(X86_64_OPCODE_ADC, 0x10u, 2u),
+    X86_64_OPCODE_MAKE_ARITHMETIC(X86_64_OPCODE_SBB, 0x14u, 3u),
+    X86_64_OPCODE_MAKE_ARITHMETIC(X86_64_OPCODE_AND, 0x20u, 4u),
+    X86_64_OPCODE_MAKE_ARITHMETIC(X86_64_OPCODE_SUB, 0x28u, 5u),
+    X86_64_OPCODE_MAKE_ARITHMETIC(X86_64_OPCODE_XOR, 0x30u, 6u),
+    X86_64_OPCODE_MAKE_ARITHMETIC(X86_64_OPCODE_CMP, 0x38u, 7u),
+    [X86_64_OPCODE_CALL] = {
         .rel32		= { .opcode = 0xE8, .operands = MAKE_OPERANDS(imm) },
         .rm64		= { .opcode = 0xFF, .operands = MAKE_OPERANDS(mod_rm(2)) | 0x10u },
     },
-    [OPCODE_CBW] 	= { .noarg = { .opcode = 0x98, .operands = 0x20, }, },
-    [OPCODE_CWDE] 	= { .noarg = { .opcode = 0x98 }, },
-    [OPCODE_CDQE] 	= { .noarg = { .opcode = 0x98, .operands = 0x10 }, },
-    [OPCODE_CWD] 	= { .noarg = { .opcode = 0x99, .operands = 0x20, }, },
-    [OPCODE_CDQ] 	= { .noarg = { .opcode = 0x99 }, },
-    [OPCODE_CQO] 	= { .noarg = { .opcode = 0x99, .operands = 0x10 }, },
+    [X86_64_OPCODE_CBW] 	= { .noarg = { .opcode = 0x98, .operands = 0x20, }, },
+    [X86_64_OPCODE_CWDE] 	= { .noarg = { .opcode = 0x98 }, },
+    [X86_64_OPCODE_CDQE] 	= { .noarg = { .opcode = 0x98, .operands = 0x10 }, },
+    [X86_64_OPCODE_CWD] 	= { .noarg = { .opcode = 0x99, .operands = 0x20, }, },
+    [X86_64_OPCODE_CDQ] 	= { .noarg = { .opcode = 0x99 }, },
+    [X86_64_OPCODE_CQO] 	= { .noarg = { .opcode = 0x99, .operands = 0x10 }, },
 
-    [OPCODE_CLC]	= { .noarg = { .opcode = 0xF8 } },
-    [OPCODE_CLI]	= { .noarg = { .opcode = 0xFA } },
-    [OPCODE_CLD]	= { .noarg = { .opcode = 0xFC } },
-    [OPCODE_CMC]   	= { .noarg = { .opcode = 0xF5u }, },
+    [X86_64_OPCODE_CLC]	= { .noarg = { .opcode = 0xF8 } },
+    [X86_64_OPCODE_CLI]	= { .noarg = { .opcode = 0xFA } },
+    [X86_64_OPCODE_CLD]	= { .noarg = { .opcode = 0xFC } },
+    [X86_64_OPCODE_CMC]   	= { .noarg = { .opcode = 0xF5u }, },
 
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVO, BUILD_OPCODE(none, none, 2B, 0x40)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVNO, BUILD_OPCODE(none, none, 2B, 0x41)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVB, BUILD_OPCODE(none, none, 2B, 0x42)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVAE, BUILD_OPCODE(none, none, 2B, 0x43)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVE, BUILD_OPCODE(none, none, 2B, 0x44)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVNE, BUILD_OPCODE(none, none, 2B, 0x45)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVBE, BUILD_OPCODE(none, none, 2B, 0x46)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVA, BUILD_OPCODE(none, none, 2B, 0x47)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVS, BUILD_OPCODE(none, none, 2B, 0x48)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVNS, BUILD_OPCODE(none, none, 2B, 0x49)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVPE, BUILD_OPCODE(none, none, 2B, 0x4A)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVPO, BUILD_OPCODE(none, none, 2B, 0x4B)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVL, BUILD_OPCODE(none, none, 2B, 0x4C)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVGE, BUILD_OPCODE(none, none, 2B, 0x4D)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVLE, BUILD_OPCODE(none, none, 2B, 0x4E)),
-    X86_64_OPCODE_MAKE_CMOVcc(OPCODE_CMOVG, BUILD_OPCODE(none, none, 2B, 0x4F)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVO, BUILD_OPCODE(none, none, 2B, 0x40)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVNO, BUILD_OPCODE(none, none, 2B, 0x41)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVB, BUILD_OPCODE(none, none, 2B, 0x42)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVAE, BUILD_OPCODE(none, none, 2B, 0x43)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVE, BUILD_OPCODE(none, none, 2B, 0x44)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVNE, BUILD_OPCODE(none, none, 2B, 0x45)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVBE, BUILD_OPCODE(none, none, 2B, 0x46)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVA, BUILD_OPCODE(none, none, 2B, 0x47)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVS, BUILD_OPCODE(none, none, 2B, 0x48)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVNS, BUILD_OPCODE(none, none, 2B, 0x49)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVPE, BUILD_OPCODE(none, none, 2B, 0x4A)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVPO, BUILD_OPCODE(none, none, 2B, 0x4B)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVL, BUILD_OPCODE(none, none, 2B, 0x4C)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVGE, BUILD_OPCODE(none, none, 2B, 0x4D)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVLE, BUILD_OPCODE(none, none, 2B, 0x4E)),
+    X86_64_OPCODE_MAKE_CMOVcc(X86_64_OPCODE_CMOVG, BUILD_OPCODE(none, none, 2B, 0x4F)),
 
-    [OPCODE_CMPSB] 	= { .noarg = { .opcode = 0xA6u, .operands = 0x00u }, },
-    [OPCODE_CMPSW] 	= { .noarg = { .opcode = 0xA7u, .operands = 0x20u }, },
-    [OPCODE_CMPSD] 	= { .noarg = { .opcode = 0xA7u, .operands = 0x00u }, },
-    [OPCODE_CMPSQ] 	= { .noarg = { .opcode = 0xA7u, .operands = 0x10u }, },
-    [OPCODE_CPUID] 	= { .noarg = { .opcode = BUILD_OPCODE(none, none, 2B, 0xA2u) } },
-    [OPCODE_DEC] = {
+    [X86_64_OPCODE_CMPSB] 	= { .noarg = { .opcode = 0xA6u, .operands = 0x00u }, },
+    [X86_64_OPCODE_CMPSW] 	= { .noarg = { .opcode = 0xA7u, .operands = 0x20u }, },
+    [X86_64_OPCODE_CMPSD] 	= { .noarg = { .opcode = 0xA7u, .operands = 0x00u }, },
+    [X86_64_OPCODE_CMPSQ] 	= { .noarg = { .opcode = 0xA7u, .operands = 0x10u }, },
+    [X86_64_OPCODE_CPUID] 	= { .noarg = { .opcode = BUILD_OPCODE(none, none, 2B, 0xA2u) } },
+    [X86_64_OPCODE_DEC] = {
         .rm8  		= { .opcode = 0xFEu, .operands = MAKE_OPERANDS(mod_rm(1)) },
         .rm16  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(1)) },
         .rm32  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(1)) },
         .rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(1)) },
     },
-    [OPCODE_DIV] = {
+    [X86_64_OPCODE_DIV] = {
         .rm8 		= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(6)) }, 
         .rm16		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(6)) }, 
         .rm32 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(6)) }, 
         .rm64 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(6)) }, 
     },
-    [OPCODE_FWAIT] 	= { .noarg = { .opcode = 0x9bu } },
-    [OPCODE_HLT] = {
+    [X86_64_OPCODE_FWAIT] 	= { .noarg = { .opcode = 0x9bu } },
+    [X86_64_OPCODE_HLT] = {
         .noarg		= { .opcode = 0xF4u },
     },
-    [OPCODE_IDIV] = {
+    [X86_64_OPCODE_IDIV] = {
         .rm8 		= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(7)) }, 
         .rm16		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(7)) }, 
         .rm32 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(7)) }, 
         .rm64 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(7)) }, 
     },
-    [OPCODE_IMUL] = {
+    [X86_64_OPCODE_IMUL] = {
         .rm8  		= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(5)) },
         .rm16  		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(5)) },
         .rm32  		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(5)) },
@@ -1271,7 +1286,7 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .r32_rm32_i32  	= { .opcode = 0x69u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm64_i32  	= { .opcode = 0x69u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_IN] = {
+    [X86_64_OPCODE_IN] = {
         .al_i8 		= { .opcode = 0xE4u, .operands = MAKE_OPERANDS(imm) },
         .ax_i8 		= { .opcode = 0xE5u, .operands = MAKE_OPERANDS(imm) },
         .eax_i8		= { .opcode = 0xE5u, .operands = MAKE_OPERANDS(imm) },
@@ -1279,79 +1294,79 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .ax_dx 		= { .opcode = 0xEDu, .operands = 0x00u },
         .eax_dx		= { .opcode = 0xEDu, .operands = 0x00u },
     },
-    [OPCODE_INSB] 	= { .noarg	= { .opcode = 0x6Cu, } },
-    [OPCODE_INSW] 	= { .noarg	= { .opcode = 0x6Du, .operands = 0x20u } },
-    [OPCODE_INSD] 	= { .noarg	= { .opcode = 0x6Du, } },
-    [OPCODE_INC] = {
+    [X86_64_OPCODE_INSB] 	= { .noarg	= { .opcode = 0x6Cu, } },
+    [X86_64_OPCODE_INSW] 	= { .noarg	= { .opcode = 0x6Du, .operands = 0x20u } },
+    [X86_64_OPCODE_INSD] 	= { .noarg	= { .opcode = 0x6Du, } },
+    [X86_64_OPCODE_INC] = {
         .rm8  		= { .opcode = 0xFEu, .operands = MAKE_OPERANDS(mod_rm(0)) },
         .rm16  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(0)) },
         .rm32  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(0)) },
         .rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(0)) },
     },
 
-    [OPCODE_INT] = {
+    [X86_64_OPCODE_INT] = {
         .i8 		= { .opcode = 0xCDu, .operands = MAKE_OPERANDS(imm) },
     },
-    [OPCODE_INT1] = {
+    [X86_64_OPCODE_INT1] = {
         .noarg 		= { .opcode = 0xF1u, .operands = 0x00u },
     },
-    [OPCODE_INT3] = {
+    [X86_64_OPCODE_INT3] = {
         .noarg 		= { .opcode = 0xCCu, .operands = 0x00u },
     },
-    [OPCODE_INTO] = {
+    [X86_64_OPCODE_INTO] = {
         .noarg 		= { .opcode = 0xF1u, .operands = 0x00u },
     },
-    [OPCODE_IRET]	= { .noarg	= { .opcode = 0xCF, .operands = 0x20 } },
-    [OPCODE_IRETD]	= { .noarg 	= { .opcode = 0xCF } },
-    [OPCODE_IRETQ]	= { .noarg 	= { .opcode = 0xCF, .operands = 0x10 } },
-    [OPCODE_JMP] = {
+    [X86_64_OPCODE_IRET]	= { .noarg	= { .opcode = 0xCF, .operands = 0x20 } },
+    [X86_64_OPCODE_IRETD]	= { .noarg 	= { .opcode = 0xCF } },
+    [X86_64_OPCODE_IRETQ]	= { .noarg 	= { .opcode = 0xCF, .operands = 0x10 } },
+    [X86_64_OPCODE_JMP] = {
         .rel8  		= { .opcode = 0xEBu, .operands = MAKE_OPERANDS(imm) },
         .rel32 		= { .opcode = 0xE9u, .operands = MAKE_OPERANDS(imm) },
         .rm64  		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(4)) | 0x10 },
         // oc_todo: add far jumps
     },
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JO, 0x70, 0x80u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JNO, 0x71, 0x81u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JB, 0x72, 0x82u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JC, 0x72, 0x82u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JAE, 0x73, 0x83u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JE, 0x74, 0x84u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JNE, 0x75, 0x85u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JBE, 0x76, 0x86u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JA, 0x77, 0x87u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JS, 0x78, 0x88u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JNS, 0x79, 0x89u),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JPE, 0x7a, 0x8au),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JPO, 0x7b, 0x8bu),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JL, 0x7C, 0x8Cu),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JGE, 0x7D, 0x8Du),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JLE, 0x7E, 0x8Eu),
-    X86_64_OPCODE_MAKE_Jcc(OPCODE_JG, 0x7F, 0x8Fu),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JO, 0x70, 0x80u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JNO, 0x71, 0x81u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JB, 0x72, 0x82u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JC, 0x72, 0x82u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JAE, 0x73, 0x83u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JE, 0x74, 0x84u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JNE, 0x75, 0x85u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JBE, 0x76, 0x86u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JA, 0x77, 0x87u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JS, 0x78, 0x88u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JNS, 0x79, 0x89u),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JPE, 0x7a, 0x8au),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JPO, 0x7b, 0x8bu),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JL, 0x7C, 0x8Cu),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JGE, 0x7D, 0x8Du),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JLE, 0x7E, 0x8Eu),
+    X86_64_OPCODE_MAKE_Jcc(X86_64_OPCODE_JG, 0x7F, 0x8Fu),
 
-    [OPCODE_JCXZ] = {
+    [X86_64_OPCODE_JCXZ] = {
         .rel8  	= { .opcode = 0xE3, .operands = MAKE_OPERANDS(imm) },
     },
-    [OPCODE_JECXZ] = {
+    [X86_64_OPCODE_JECXZ] = {
         .rel8  	= { .opcode = 0x67E3, .operands = MAKE_OPERANDS(imm) },
     },
-    [OPCODE_JRCXZ] = {
+    [X86_64_OPCODE_JRCXZ] = {
         .rel8  	= { .opcode = 0xE3, .operands = MAKE_OPERANDS(imm) },
     },
 
-    [OPCODE_LAHF] 	= { .noarg	= { .opcode = 0x9F } },
-    [OPCODE_LEA] = {
+    [X86_64_OPCODE_LAHF] 	= { .noarg	= { .opcode = 0x9F } },
+    [X86_64_OPCODE_LEA] = {
         .r16_rm16	= { .opcode = 0x8D, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r32_rm32	= { .opcode = 0x8D, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm64	= { .opcode = 0x8D, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_LODSB] 	= { .noarg	= { .opcode = 0xACu } },
-    [OPCODE_LODSW] 	= { .noarg	= { .opcode = 0xADu, .operands = 0x20u, } },
-    [OPCODE_LODSD] 	= { .noarg	= { .opcode = 0xADu } },
-    [OPCODE_LODSQ] 	= { .noarg	= { .opcode = 0xADu, .operands = 0x10u, } },
-    [OPCODE_LOOP] 	= { .rel8 = { .opcode = 0xE2u, .operands = MAKE_OPERANDS(imm) } },
-    [OPCODE_LOOPE] 	= { .rel8 = { .opcode = 0xE1u, .operands = MAKE_OPERANDS(imm) } },
-    [OPCODE_LOOPNE] = { .rel8 = { .opcode = 0xE0u, .operands = MAKE_OPERANDS(imm) } },
-    [OPCODE_MOV] = {
+    [X86_64_OPCODE_LODSB] 	= { .noarg	= { .opcode = 0xACu } },
+    [X86_64_OPCODE_LODSW] 	= { .noarg	= { .opcode = 0xADu, .operands = 0x20u, } },
+    [X86_64_OPCODE_LODSD] 	= { .noarg	= { .opcode = 0xADu } },
+    [X86_64_OPCODE_LODSQ] 	= { .noarg	= { .opcode = 0xADu, .operands = 0x10u, } },
+    [X86_64_OPCODE_LOOP] 	= { .rel8 = { .opcode = 0xE2u, .operands = MAKE_OPERANDS(imm) } },
+    [X86_64_OPCODE_LOOPE] 	= { .rel8 = { .opcode = 0xE1u, .operands = MAKE_OPERANDS(imm) } },
+    [X86_64_OPCODE_LOOPNE] = { .rel8 = { .opcode = 0xE0u, .operands = MAKE_OPERANDS(imm) } },
+    [X86_64_OPCODE_MOV] = {
         .rm8_r8  	= { .opcode = 0x88u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
         .rm16_r16  	= { .opcode = 0x89u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
         .rm32_r32  	= { .opcode = 0x89u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
@@ -1372,51 +1387,51 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .rm32_i32 	= { .opcode = 0xC7u, .operands = MAKE_OPERANDS(mod_rm(0), imm) },
         .rm64_i32 	= { .opcode = 0xC7u, .operands = MAKE_OPERANDS(mod_rm(0), imm) },
     },
-    [OPCODE_MOVSB] 	= { .noarg = { .opcode = 0xA4u, .operands = 0x00u }, },
-    [OPCODE_MOVSW] 	= { .noarg = { .opcode = 0xA5u, .operands = 0x20u }, },
-    [OPCODE_MOVSD] 	= {
+    [X86_64_OPCODE_MOVSB] 	= { .noarg = { .opcode = 0xA4u, .operands = 0x00u }, },
+    [X86_64_OPCODE_MOVSW] 	= { .noarg = { .opcode = 0xA5u, .operands = 0x20u }, },
+    [X86_64_OPCODE_MOVSD] 	= {
         .noarg = { .opcode = 0xA5u, .operands = 0x00u },
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_MOVSQ] 	= { .noarg = { .opcode = 0xA5u, .operands = 0x10u }, },
-    [OPCODE_MOVSX] = {
+    [X86_64_OPCODE_MOVSQ] 	= { .noarg = { .opcode = 0xA5u, .operands = 0x10u }, },
+    [X86_64_OPCODE_MOVSX] = {
         .r16_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBEu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r32_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBEu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBEu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r32_rm16  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBFu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm16  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xBFu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_MOVSXD] = {
+    [X86_64_OPCODE_MOVSXD] = {
         .r16_rm16  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm32  	= { .opcode = 0x63u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_MOVZX] = {
+    [X86_64_OPCODE_MOVZX] = {
         .r16_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB6u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r32_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB6u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm8  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB6u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r32_rm16  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB7u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm16  	= { .opcode = BUILD_OPCODE(none, none, 2B, 0xB7u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_MUL] = {
+    [X86_64_OPCODE_MUL] = {
         .rm8 		= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(4)) }, 
         .rm16		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(4)) }, 
         .rm32 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(4)) }, 
         .rm64 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(4)) }, 
     },
-    [OPCODE_NEG] = {
+    [X86_64_OPCODE_NEG] = {
         .rm8 		= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(3)) }, 
         .rm16		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(3)) }, 
         .rm32 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(3)) }, 
         .rm64 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(3)) }, 
     },
-    [OPCODE_NOT] = {
+    [X86_64_OPCODE_NOT] = {
         .rm8 		= { .opcode = 0xF6u, .operands = MAKE_OPERANDS(mod_rm(2)) }, 
         .rm16		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(2)) }, 
         .rm32 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(2)) }, 
         .rm64 		= { .opcode = 0xF7u, .operands = MAKE_OPERANDS(mod_rm(2)) }, 
     },
-    [OPCODE_OUT] = {
+    [X86_64_OPCODE_OUT] = {
         .al_i8 		= { .opcode = 0xE6u, .operands = MAKE_OPERANDS(imm) },
         .ax_i8 		= { .opcode = 0xE7u, .operands = MAKE_OPERANDS(imm) },
         .eax_i8		= { .opcode = 0xE7u, .operands = MAKE_OPERANDS(imm) },
@@ -1424,18 +1439,18 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .ax_dx 		= { .opcode = 0xEFu, .operands = 0x00u },
         .eax_dx		= { .opcode = 0xEFu, .operands = 0x00u },
     },
-    [OPCODE_OUTSB] 	= { .noarg	= { .opcode = 0x6Eu, } },
-    [OPCODE_OUTSW] 	= { .noarg	= { .opcode = 0x6Fu, .operands = 0x20u } },
-    [OPCODE_OUTSD] 	= { .noarg	= { .opcode = 0x6Fu, } },
-    [OPCODE_POP] = {
+    [X86_64_OPCODE_OUTSB] 	= { .noarg	= { .opcode = 0x6Eu, } },
+    [X86_64_OPCODE_OUTSW] 	= { .noarg	= { .opcode = 0x6Fu, .operands = 0x20u } },
+    [X86_64_OPCODE_OUTSD] 	= { .noarg	= { .opcode = 0x6Fu, } },
+    [X86_64_OPCODE_POP] = {
         .rm16 		= { .opcode = 0x8Fu, .operands = MAKE_OPERANDS(mod_rm(0)) },
         .rm64 		= { .opcode = 0x8Fu, .operands = MAKE_OPERANDS(mod_rm(0)) | 0x10 },
         .r16 		= { .opcode = 0x58u, .operands = MAKE_OPERANDS(add_to_opcode) },
         .r64 		= { .opcode = 0x58u, .operands = MAKE_OPERANDS(add_to_opcode) | 0x10 },
     },
-    [OPCODE_POPF] 	= { .noarg = { .opcode = 0x9D, .operands = 0x20u } },
-    [OPCODE_POPFQ] 	= { .noarg = { .opcode = 0x9D, .operands = 0x00u } },
-    [OPCODE_PUSH] = {
+    [X86_64_OPCODE_POPF] 	= { .noarg = { .opcode = 0x9D, .operands = 0x20u } },
+    [X86_64_OPCODE_POPFQ] 	= { .noarg = { .opcode = 0x9D, .operands = 0x00u } },
+    [X86_64_OPCODE_PUSH] = {
         .rm16 		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(6)) },
         .rm64 		= { .opcode = 0xFFu, .operands = MAKE_OPERANDS(mod_rm(6)) | 0x10 },
         .r16 		= { .opcode = 0x50u, .operands = MAKE_OPERANDS(add_to_opcode) },
@@ -1445,56 +1460,56 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .i16 		= { .opcode = 0x68u, .operands = MAKE_OPERANDS(add_to_opcode) },
         .i32 		= { .opcode = 0x68u, .operands = MAKE_OPERANDS(add_to_opcode) },
     },
-    [OPCODE_PUSHF] 	= { .noarg = { .opcode = 0x9C, .operands = 0x20u } },
-    [OPCODE_PUSHFQ] = { .noarg = { .opcode = 0x9C, .operands = 0x00u } },
-    [OPCODE_RET] = {
+    [X86_64_OPCODE_PUSHF] 	= { .noarg = { .opcode = 0x9C, .operands = 0x20u } },
+    [X86_64_OPCODE_PUSHFQ] = { .noarg = { .opcode = 0x9C, .operands = 0x00u } },
+    [X86_64_OPCODE_RET] = {
         .noarg		= { .opcode = 0xC3, .operands = 0x00u },
         .i16		= { .opcode = 0xC2, .operands = MAKE_OPERANDS(imm) },
     },
-    [OPCODE_RET_FAR] = {
+    [X86_64_OPCODE_RET_FAR] = {
         .noarg		= { .opcode = 0xCB, .operands = 0x00u },
         .i16		= { .opcode = 0xCA, .operands = MAKE_OPERANDS(imm) },
     },
-    [OPCODE_SAHF] 	= { .noarg	= { .opcode = 0x9E } },
-    X86_64_OPCODE_MAKE_SHIFT_ROTATE(OPCODE_RCL, 2),
-    X86_64_OPCODE_MAKE_SHIFT_ROTATE(OPCODE_RCR, 3),
-    X86_64_OPCODE_MAKE_SHIFT_ROTATE(OPCODE_ROL, 0),
-    X86_64_OPCODE_MAKE_SHIFT_ROTATE(OPCODE_ROR, 1),
-    X86_64_OPCODE_MAKE_SHIFT_ROTATE(OPCODE_SAL, 4),
-    X86_64_OPCODE_MAKE_SHIFT_ROTATE(OPCODE_SAR, 7),
-    X86_64_OPCODE_MAKE_SHIFT_ROTATE(OPCODE_SHL, 4),
-    X86_64_OPCODE_MAKE_SHIFT_ROTATE(OPCODE_SHR, 5),
-    [OPCODE_SCASB] 	= { .noarg	= { .opcode = 0xAEu } },
-    [OPCODE_SCASW] 	= { .noarg	= { .opcode = 0xAFu, .operands = 0x20u } },
-    [OPCODE_SCASD] 	= { .noarg	= { .opcode = 0xAFu } },
-    [OPCODE_SCASQ] 	= { .noarg	= { .opcode = 0xAFu, .operands = 0x10u } },
-    [OPCODE_STC]	= { .noarg = { .opcode = 0xF9 } },
-    [OPCODE_STI]	= { .noarg = { .opcode = 0xFB } },
-    [OPCODE_STD]	= { .noarg = { .opcode = 0xFD } },
-    [OPCODE_STOSB] 	= { .noarg	= { .opcode = 0xAAu } },
-    [OPCODE_STOSW] 	= { .noarg	= { .opcode = 0xABu, .operands = 0x20u, } },
-    [OPCODE_STOSD] 	= { .noarg	= { .opcode = 0xABu } },
-    [OPCODE_STOSQ] 	= { .noarg	= { .opcode = 0xABu, .operands = 0x10u, } },
-    [OPCODE_SYSCALL] = { .noarg = { .opcode = BUILD_OPCODE(none, none, 2B, 0x05) } },
+    [X86_64_OPCODE_SAHF] 	= { .noarg	= { .opcode = 0x9E } },
+    X86_64_OPCODE_MAKE_SHIFT_ROTATE(X86_64_OPCODE_RCL, 2),
+    X86_64_OPCODE_MAKE_SHIFT_ROTATE(X86_64_OPCODE_RCR, 3),
+    X86_64_OPCODE_MAKE_SHIFT_ROTATE(X86_64_OPCODE_ROL, 0),
+    X86_64_OPCODE_MAKE_SHIFT_ROTATE(X86_64_OPCODE_ROR, 1),
+    X86_64_OPCODE_MAKE_SHIFT_ROTATE(X86_64_OPCODE_SAL, 4),
+    X86_64_OPCODE_MAKE_SHIFT_ROTATE(X86_64_OPCODE_SAR, 7),
+    X86_64_OPCODE_MAKE_SHIFT_ROTATE(X86_64_OPCODE_SHL, 4),
+    X86_64_OPCODE_MAKE_SHIFT_ROTATE(X86_64_OPCODE_SHR, 5),
+    [X86_64_OPCODE_SCASB] 	= { .noarg	= { .opcode = 0xAEu } },
+    [X86_64_OPCODE_SCASW] 	= { .noarg	= { .opcode = 0xAFu, .operands = 0x20u } },
+    [X86_64_OPCODE_SCASD] 	= { .noarg	= { .opcode = 0xAFu } },
+    [X86_64_OPCODE_SCASQ] 	= { .noarg	= { .opcode = 0xAFu, .operands = 0x10u } },
+    [X86_64_OPCODE_STC]	= { .noarg = { .opcode = 0xF9 } },
+    [X86_64_OPCODE_STI]	= { .noarg = { .opcode = 0xFB } },
+    [X86_64_OPCODE_STD]	= { .noarg = { .opcode = 0xFD } },
+    [X86_64_OPCODE_STOSB] 	= { .noarg	= { .opcode = 0xAAu } },
+    [X86_64_OPCODE_STOSW] 	= { .noarg	= { .opcode = 0xABu, .operands = 0x20u, } },
+    [X86_64_OPCODE_STOSD] 	= { .noarg	= { .opcode = 0xABu } },
+    [X86_64_OPCODE_STOSQ] 	= { .noarg	= { .opcode = 0xABu, .operands = 0x10u, } },
+    [X86_64_OPCODE_SYSCALL] = { .noarg = { .opcode = BUILD_OPCODE(none, none, 2B, 0x05) } },
 
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETO, 0x90),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETNO, 0x91),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETB, 0x92),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETAE, 0x93),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETE, 0x94),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETNE, 0x95),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETBE, 0x96),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETA, 0x97),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETS, 0x98),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETNS, 0x99),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETPE, 0x9A),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETPO, 0x9B),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETL, 0x9C),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETGE, 0x9D),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETLE, 0x9E),
-    X86_64_OPCODE_MAKE_SETcc(OPCODE_SETG, 0x9F),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETO, 0x90),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETNO, 0x91),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETB, 0x92),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETAE, 0x93),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETE, 0x94),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETNE, 0x95),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETBE, 0x96),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETA, 0x97),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETS, 0x98),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETNS, 0x99),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETPE, 0x9A),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETPO, 0x9B),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETL, 0x9C),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETGE, 0x9D),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETLE, 0x9E),
+    X86_64_OPCODE_MAKE_SETcc(X86_64_OPCODE_SETG, 0x9F),
 
-    [OPCODE_TEST] = { 
+    [X86_64_OPCODE_TEST] = { 
         .al_i8  	= { .opcode = 0xA8u, .operands = MAKE_OPERANDS(imm) }, 
         .ax_i16  	= { .opcode = 0xA9u, .operands = MAKE_OPERANDS(imm) }, 
         .eax_i32  	= { .opcode = 0xA9u, .operands = MAKE_OPERANDS(imm) }, 
@@ -1510,7 +1525,7 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .rm32_r32  	= { .opcode = 0x85u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, 
         .rm64_r64  	= { .opcode = 0x85u, .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, 
     },
-    [OPCODE_XCHG] = {
+    [X86_64_OPCODE_XCHG] = {
         .ax_r16 = { .opcode = 0x90u, .operands = MAKE_OPERANDS(add_to_opcode) },
         .eax_r32 = { .opcode = 0x90u, .operands = MAKE_OPERANDS(add_to_opcode) },
         .rax_r64 = { .opcode = 0x90u, .operands = MAKE_OPERANDS(add_to_opcode) },
@@ -1525,194 +1540,194 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .r32_rm32 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm64 = { .opcode = 0x87u, .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_XLAT] 	= { .noarg = { .opcode = 0xD7u, .operands = 0x00u }, },
+    [X86_64_OPCODE_XLAT] 	= { .noarg = { .opcode = 0xD7u, .operands = 0x00u }, },
 
 
-    /* [OPCODE_ADDPS] = { */
+    /* [X86_64_OPCODE_ADDPS] = { */
     /* 	.r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, */
     /* }, */
-    /* [OPCODE_ADDPD] = { */
+    /* [X86_64_OPCODE_ADDPD] = { */
     /* 	.r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, */
     /* }, */
-    /* [OPCODE_ADDSS] = { */
+    /* [X86_64_OPCODE_ADDSS] = { */
     /* 	.r128_rm128	= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, */
     /* }, */
-    /* [OPCODE_ADDSD] = { */
+    /* [X86_64_OPCODE_ADDSD] = { */
     /* 	.r128_rm128	= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) }, */
     /* }, */
 
-    [OPCODE_COMISS] = {
+    [X86_64_OPCODE_COMISS] = {
         .r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, 0x2Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_COMISD] = {
+    [X86_64_OPCODE_COMISD] = {
         .r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x2Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
 
-    [OPCODE_CVTDQ2PD] = {
+    [X86_64_OPCODE_CVTDQ2PD] = {
     },
-    [OPCODE_CVTDQ2PS] = {
+    [X86_64_OPCODE_CVTDQ2PS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTPD2DQ] = {
+    [X86_64_OPCODE_CVTPD2DQ] = {
     },
-    [OPCODE_CVTPD2PI] = {
+    [X86_64_OPCODE_CVTPD2PI] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTPD2PS] = {
+    [X86_64_OPCODE_CVTPD2PS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTPI2PD] = {
+    [X86_64_OPCODE_CVTPI2PD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTPI2PS] = {
+    [X86_64_OPCODE_CVTPI2PS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTPS2DQ] = {
+    [X86_64_OPCODE_CVTPS2DQ] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTPS2PD] = {
+    [X86_64_OPCODE_CVTPS2PD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTPS2PI] = {
+    [X86_64_OPCODE_CVTPS2PI] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTSD2SI] = {
+    [X86_64_OPCODE_CVTSD2SI] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTSD2SS] = {
+    [X86_64_OPCODE_CVTSD2SS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTSI2SD] = {
+    [X86_64_OPCODE_CVTSI2SD] = {
         .r128_rm32 = { .opcode = BUILD_OPCODE(none, F2, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r128_rm64 = { .opcode = BUILD_OPCODE(none, F2, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTSI2SS] = {
+    [X86_64_OPCODE_CVTSI2SS] = {
         .r128_rm32 = { .opcode = BUILD_OPCODE(none, F3, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r128_rm64 = { .opcode = BUILD_OPCODE(none, F3, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTSS2SD] = {
+    [X86_64_OPCODE_CVTSS2SD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTSS2SI] = {
+    [X86_64_OPCODE_CVTSS2SI] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTTPD2DQ] = {
+    [X86_64_OPCODE_CVTTPD2DQ] = {
     },
-    [OPCODE_CVTTPD2PI] = {
+    [X86_64_OPCODE_CVTTPD2PI] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTTPS2DQ] = {
+    [X86_64_OPCODE_CVTTPS2DQ] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTTPS2PI] = {
+    [X86_64_OPCODE_CVTTPS2PI] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTTSD2SI] = {
+    [X86_64_OPCODE_CVTTSD2SI] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_CVTTSS2SI] = {
+    [X86_64_OPCODE_CVTTSS2SI] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
 
     
-    [OPCODE_EMMS] = {
+    [X86_64_OPCODE_EMMS] = {
         .noarg			= { .opcode = BUILD_OPCODE(none, none, 2B, 0x77u) },
     },
 
-    [OPCODE_HADDPD] = {
+    [X86_64_OPCODE_HADDPD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x7Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_HADDPS] = {
+    [X86_64_OPCODE_HADDPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x7Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
 
-    [OPCODE_HSUBPD] = {
+    [X86_64_OPCODE_HSUBPD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x7Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_HSUBPS] = {
+    [X86_64_OPCODE_HSUBPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x7Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
 
-    [OPCODE_MOVAPS] = {
+    [X86_64_OPCODE_MOVAPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x28u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x29u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_MOVAPD] = {
+    [X86_64_OPCODE_MOVAPD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x28u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x29u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_MOVLPS] = {
+    [X86_64_OPCODE_MOVLPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_m(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x13u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_MOVHPS] = {
+    [X86_64_OPCODE_MOVHPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), mod_m(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x17u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_MOVHPD] = {
+    [X86_64_OPCODE_MOVHPD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), mod_m(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x17u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_MOVHLPS] = {
+    [X86_64_OPCODE_MOVHLPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_r(0)), },
     },
-    [OPCODE_MOVLHPS] = {
+    [X86_64_OPCODE_MOVLHPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), mod_r(0)), },
     },
-    [OPCODE_MOVLPD] = {
+    [X86_64_OPCODE_MOVLPD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_m(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x13u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
 
-    [OPCODE_MOVMSKPS] = {
+    [X86_64_OPCODE_MOVMSKPS] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x50u), .operands = MAKE_OPERANDS(mod_reg(0), mod_r(0)), },
     },
-    [OPCODE_MOVMSKPD] = {
+    [X86_64_OPCODE_MOVMSKPD] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x50u), .operands = MAKE_OPERANDS(mod_reg(0), mod_r(0)), },
     },
-    [OPCODE_MOVNTPS] = {
+    [X86_64_OPCODE_MOVNTPS] = {
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x2Bu), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)), },
     },
-    [OPCODE_MOVNTPD] = {
+    [X86_64_OPCODE_MOVNTPD] = {
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x2Bu), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)), },
     },
-    [OPCODE_MOVUPS] = {
+    [X86_64_OPCODE_MOVUPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_MOVUPD] = {
+    [X86_64_OPCODE_MOVUPD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_MOVSS] = {
+    [X86_64_OPCODE_MOVSS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    /* [OPCODE_MOVSD] = { */
+    /* [X86_64_OPCODE_MOVSD] = { */
     /* 	.r128_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), }, */
     /* 	.rm128_r128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) }, */
     /* }, */
-    [OPCODE_MOVSLDUP] = {
+    [X86_64_OPCODE_MOVSLDUP] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
-    [OPCODE_MOVSHDUP] = {
+    [X86_64_OPCODE_MOVSHDUP] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
-    [OPCODE_MOVDDUP] = {
+    [X86_64_OPCODE_MOVDDUP] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
 
-    [OPCODE_MOVD] = {
+    [X86_64_OPCODE_MOVD] = {
         .r64_rm32		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x6Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm32_r64		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x7Eu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)), },
         .r128_rm32		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x6Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm32_r128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x7Eu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)), },
     },
-    [OPCODE_MOVQ] = {
+    [X86_64_OPCODE_MOVQ] = {
         /* .r64_rm64		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x6Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), }, */
         /* .rm64_r64		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x7Eu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)), }, */
         .r64_rm64		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) | 0x10u, },
@@ -1722,31 +1737,31 @@ const X86_64_Instruction x86_64_instructions_table[] = {
         .rm64_r128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x7Eu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)), },
     },
 
-    [OPCODE_MOVDQA] = {
+    [X86_64_OPCODE_MOVDQA] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x7Fu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_MOVDQU] = {
+    [X86_64_OPCODE_MOVDQU] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x7Fu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_UCOMISS] = {
+    [X86_64_OPCODE_UCOMISS] = {
         .r128_rm128	= { .opcode = BUILD_OPCODE(none, none, 2B, 0x2Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_UCOMISD] = {
+    [X86_64_OPCODE_UCOMISD] = {
         .r128_rm128	= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x2Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_UNPCKLPS] = {
+    [X86_64_OPCODE_UNPCKLPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x14u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
-    [OPCODE_UNPCKHPS] = {
+    [X86_64_OPCODE_UNPCKHPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(none, none, 2B, 0x15u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
 
-    [OPCODE_LDMXCSR] = {
+    [X86_64_OPCODE_LDMXCSR] = {
         .rm32		= { .opcode = BUILD_OPCODE(none, none, 2B, 0xAEu), .operands = MAKE_OPERANDS(mod_m(2)), },
     },
-    [OPCODE_STMXCSR] = {
+    [X86_64_OPCODE_STMXCSR] = {
         .rm32		= { .opcode = BUILD_OPCODE(none, none, 2B, 0xAEu), .operands = MAKE_OPERANDS(mod_m(3)), },
     },
 
@@ -1764,343 +1779,343 @@ const X86_64_Instruction x86_64_instructions_table[] = {
 
     X86_64_OPCODE_MAKE_VECTOR_ARITHMETIC_UNARY(SQRT, 0x51u),
 
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PUNPCKLBW, OPCODE_VPUNPCKLBW,	 0x60u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PUNPCKLWD, OPCODE_VPUNPCKLWD,	 0x61u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PUNPCKLDQ, OPCODE_VPUNPCKLDQ,	 0x62u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PACKSSWB, 	OPCODE_VPACKSSWB,	 0x63u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PCMPGTB, 	OPCODE_VPCMPGTB,	 0x64u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PCMPGTW, 	OPCODE_VPCMPGTW,	 0x65u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PCMPGTD, 	OPCODE_VPCMPGTD,	 0x66u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PACKUSWB, 	OPCODE_VPACKUSWB,	 0x67u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PUNPCKHBW, OPCODE_VPUNPCKHBW,	 0x68u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PUNPCKHWD, OPCODE_VPUNPCKHWD,	 0x69u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PUNPCKHDQ, OPCODE_VPUNPCKHDQ,	 0x6Au),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PACKSSDW, 	OPCODE_VPACKSSDW,	 0x6Bu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PUNPCKLQDQ, OPCODE_VPUNPCKLQDQ, 0x6Cu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PUNPCKHQDQ, OPCODE_VPUNPCKHQDQ, 0x6Du),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PUNPCKLBW, X86_64_OPCODE_VPUNPCKLBW,	 0x60u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PUNPCKLWD, X86_64_OPCODE_VPUNPCKLWD,	 0x61u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PUNPCKLDQ, X86_64_OPCODE_VPUNPCKLDQ,	 0x62u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PACKSSWB, 	X86_64_OPCODE_VPACKSSWB,	 0x63u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PCMPGTB, 	X86_64_OPCODE_VPCMPGTB,	 0x64u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PCMPGTW, 	X86_64_OPCODE_VPCMPGTW,	 0x65u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PCMPGTD, 	X86_64_OPCODE_VPCMPGTD,	 0x66u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PACKUSWB, 	X86_64_OPCODE_VPACKUSWB,	 0x67u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PUNPCKHBW, X86_64_OPCODE_VPUNPCKHBW,	 0x68u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PUNPCKHWD, X86_64_OPCODE_VPUNPCKHWD,	 0x69u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PUNPCKHDQ, X86_64_OPCODE_VPUNPCKHDQ,	 0x6Au),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PACKSSDW, 	X86_64_OPCODE_VPACKSSDW,	 0x6Bu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PUNPCKLQDQ, X86_64_OPCODE_VPUNPCKLQDQ, 0x6Cu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PUNPCKHQDQ, X86_64_OPCODE_VPUNPCKHQDQ, 0x6Du),
 
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_CMPEQB, 	OPCODE_VCMPEQB,		 0x74u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_CMPEQW, 	OPCODE_VCMPEQW,		 0x75u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_CMPEQD, 	OPCODE_VCMPEQD,		 0x76u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_CMPEQB, 	X86_64_OPCODE_VCMPEQB,		 0x74u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_CMPEQW, 	X86_64_OPCODE_VCMPEQW,		 0x75u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_CMPEQD, 	X86_64_OPCODE_VCMPEQD,		 0x76u),
 
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSRLW,		OPCODE_VPSRLW,		0xD1u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSRLD,		OPCODE_VPSRLD,		0xD2u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSRLQ,		OPCODE_VPSRLQ,		0xD3u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PADDQ,		OPCODE_VPADDQ,		0xD4u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMULLW,	OPCODE_VPMULLW,		0xD5u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSUBUSB,	OPCODE_VPSUBUSB,	0xD8u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSUBUSW,	OPCODE_VPSUBUSW,	0xD9u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMINUB,	OPCODE_VPMINUB,		0xDAu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PAND,		OPCODE_VPAND,		0xDBu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PADDUSB,	OPCODE_VPADDUSB,	0xDCu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PADDUSW,	OPCODE_VPADDUSW,	0xDDu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMAXUB,	OPCODE_VPMAXUB,		0xDEu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PANDN,		OPCODE_VPANDN,		0xDFu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSRLW,		X86_64_OPCODE_VPSRLW,		0xD1u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSRLD,		X86_64_OPCODE_VPSRLD,		0xD2u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSRLQ,		X86_64_OPCODE_VPSRLQ,		0xD3u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PADDQ,		X86_64_OPCODE_VPADDQ,		0xD4u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMULLW,	X86_64_OPCODE_VPMULLW,		0xD5u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSUBUSB,	X86_64_OPCODE_VPSUBUSB,	0xD8u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSUBUSW,	X86_64_OPCODE_VPSUBUSW,	0xD9u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMINUB,	X86_64_OPCODE_VPMINUB,		0xDAu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PAND,		X86_64_OPCODE_VPAND,		0xDBu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PADDUSB,	X86_64_OPCODE_VPADDUSB,	0xDCu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PADDUSW,	X86_64_OPCODE_VPADDUSW,	0xDDu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMAXUB,	X86_64_OPCODE_VPMAXUB,		0xDEu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PANDN,		X86_64_OPCODE_VPANDN,		0xDFu),
 
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PAVGB,		OPCODE_VPAVGB,		0xE0u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSRAW,		OPCODE_VPSRAW,		0xE1u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSRAD,		OPCODE_VPSRAD,		0xE2u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PAVGW,		OPCODE_VPAVGW,		0xE3u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMULHUW,	OPCODE_VPMULHUW,	0xE4u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMULHW,	OPCODE_VPMULHW,		0xE5u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSUBSB,	OPCODE_VPSUBSB,		0xE8u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSUBSW,	OPCODE_VPSUBSW,		0xE9u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMINSW,	OPCODE_VPMINSW,		0xEAu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_POR,		OPCODE_VPOR,		0xEBu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PADDSB,	OPCODE_VPADDSB,		0xECu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PADDSW,	OPCODE_VPADDSW,		0xEDu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMAXSW,	OPCODE_VPMAXSW,		0xEEu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PXOR,		OPCODE_VPXOR,		0xEFu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PAVGB,		X86_64_OPCODE_VPAVGB,		0xE0u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSRAW,		X86_64_OPCODE_VPSRAW,		0xE1u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSRAD,		X86_64_OPCODE_VPSRAD,		0xE2u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PAVGW,		X86_64_OPCODE_VPAVGW,		0xE3u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMULHUW,	X86_64_OPCODE_VPMULHUW,	0xE4u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMULHW,	X86_64_OPCODE_VPMULHW,		0xE5u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSUBSB,	X86_64_OPCODE_VPSUBSB,		0xE8u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSUBSW,	X86_64_OPCODE_VPSUBSW,		0xE9u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMINSW,	X86_64_OPCODE_VPMINSW,		0xEAu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_POR,		X86_64_OPCODE_VPOR,		0xEBu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PADDSB,	X86_64_OPCODE_VPADDSB,		0xECu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PADDSW,	X86_64_OPCODE_VPADDSW,		0xEDu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMAXSW,	X86_64_OPCODE_VPMAXSW,		0xEEu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PXOR,		X86_64_OPCODE_VPXOR,		0xEFu),
 
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSLLW,		OPCODE_VPSLLW,		0xF1u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSLLD,		OPCODE_VPSLLD,		0xF2u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSLLQ,		OPCODE_VPSLLQ,		0xF3u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMULUDQ,	OPCODE_VPMULUDQ,	0xF4u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PMADDWD,	OPCODE_VPMADDWD,	0xF5u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSADBW,	OPCODE_VPSADBW,		0xF6u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSUBB,		OPCODE_VPSUBB,		0xF8u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSUBW,		OPCODE_VPSUBW,		0xF9u),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSUBD,		OPCODE_VPSUBD,		0xFAu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PSUBQ,		OPCODE_VPSUBQ,		0xFBu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PADDB,		OPCODE_VPADDB,		0xFCu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PADDW,		OPCODE_VPADDW,		0xFDu),
-    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(OPCODE_PADDD,		OPCODE_VPADDD,		0xFEu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSLLW,		X86_64_OPCODE_VPSLLW,		0xF1u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSLLD,		X86_64_OPCODE_VPSLLD,		0xF2u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSLLQ,		X86_64_OPCODE_VPSLLQ,		0xF3u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMULUDQ,	X86_64_OPCODE_VPMULUDQ,	0xF4u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PMADDWD,	X86_64_OPCODE_VPMADDWD,	0xF5u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSADBW,	X86_64_OPCODE_VPSADBW,		0xF6u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSUBB,		X86_64_OPCODE_VPSUBB,		0xF8u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSUBW,		X86_64_OPCODE_VPSUBW,		0xF9u),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSUBD,		X86_64_OPCODE_VPSUBD,		0xFAu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PSUBQ,		X86_64_OPCODE_VPSUBQ,		0xFBu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PADDB,		X86_64_OPCODE_VPADDB,		0xFCu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PADDW,		X86_64_OPCODE_VPADDW,		0xFDu),
+    X86_64_OPCODE_MAKE_VECTOR_PqQq_VxHxWx(X86_64_OPCODE_PADDD,		X86_64_OPCODE_VPADDD,		0xFEu),
 
 
-    [OPCODE_PSHUFW] = {
+    [X86_64_OPCODE_PSHUFW] = {
         .r64_rm64_i8	= { .opcode = BUILD_OPCODE(none, none, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) | 0x10u },
     },
-    [OPCODE_PSHUFD] = {
+    [X86_64_OPCODE_PSHUFD] = {
         .r64_rm64_i8	= { .opcode = BUILD_OPCODE(none, 66, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) | 0x10u },
     },
-    [OPCODE_PSHUFHW] = {
+    [X86_64_OPCODE_PSHUFHW] = {
         .r64_rm64_i8	= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) | 0x10u },
     },
-    [OPCODE_PSHUFLW] = {
+    [X86_64_OPCODE_PSHUFLW] = {
         .r64_rm64_i8	= { .opcode = BUILD_OPCODE(none, F2, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) | 0x10u },
     },
 
-    [OPCODE_RSQRTPS] = {
+    [X86_64_OPCODE_RSQRTPS] = {
         .r128_rm128 	= { .opcode = BUILD_OPCODE(none, none, 2B, 0x52u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
-    [OPCODE_RSQRTSS] = {
+    [X86_64_OPCODE_RSQRTSS] = {
         .r128_rm128 	= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x52u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
-    [OPCODE_RCPPS] = {
+    [X86_64_OPCODE_RCPPS] = {
         .r128_rm128 	= { .opcode = BUILD_OPCODE(none, none, 2B, 0x53u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
-    [OPCODE_RCPSS] = {
+    [X86_64_OPCODE_RCPSS] = {
         .r128_rm128 	= { .opcode = BUILD_OPCODE(none, F3, 2B, 0x53u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
 
-    [OPCODE_VRSQRTPS] = {
+    [X86_64_OPCODE_VRSQRTPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x52u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x52u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VRSQRTSS] = {
+    [X86_64_OPCODE_VRSQRTSS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x52u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x52u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VRCPPS] = {
+    [X86_64_OPCODE_VRCPPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x53u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x53u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VRCPSS] = {
+    [X86_64_OPCODE_VRCPSS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x53u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x53u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
 
-    /* [OPCODE_VADDPS] = { */
+    /* [X86_64_OPCODE_VADDPS] = { */
     /* 	.r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, none, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, */
     /* 	.r256_vvvv_rm256 = { .opcode = BUILD_OPCODE(vex, none, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, */
     /* }, */
-    /* [OPCODE_VADDPD] = { */
+    /* [X86_64_OPCODE_VADDPD] = { */
     /* 	.r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, */
     /* 	.r256_vvvv_rm256 = { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, */
     /* }, */
-    /* [OPCODE_VADDSS] = { */
+    /* [X86_64_OPCODE_VADDSS] = { */
     /* 	.r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, */
     /* }, */
-    /* [OPCODE_VADDSD] = { */
+    /* [X86_64_OPCODE_VADDSD] = { */
     /* 	.r128_vvvv_rm128 = { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x58u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) }, */
     /* }, */
-    [OPCODE_VCOMISS] = {
+    [X86_64_OPCODE_VCOMISS] = {
         .r128_rm128	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x2Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VCOMISD] = {
+    [X86_64_OPCODE_VCOMISD] = {
         .r128_rm128	= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x2Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VCVTSI2SD] = {
+    [X86_64_OPCODE_VCVTSI2SD] = {
         .r128_vvvv_rm32 = { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
         .r128_vvvv_rm64 = { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
     },
-    [OPCODE_VCVTSI2SS] = {
+    [X86_64_OPCODE_VCVTSI2SS] = {
         .r128_vvvv_rm32 = { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
         .r128_vvvv_rm64 = { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x2Au), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
     },
 
-    [OPCODE_VCVTTSD2SI] = {
+    [X86_64_OPCODE_VCVTTSD2SI] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VCVTTSS2SI] = {
+    [X86_64_OPCODE_VCVTTSS2SI] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x2Cu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
 
-    [OPCODE_VCVTSD2SI] = {
+    [X86_64_OPCODE_VCVTSD2SI] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VCVTSS2SI] = {
+    [X86_64_OPCODE_VCVTSS2SI] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r64_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x2Du), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
 
-    [OPCODE_VCVTPS2PD] = {
+    [X86_64_OPCODE_VCVTPS2PD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VCVTPD2PS] = {
+    [X86_64_OPCODE_VCVTPD2PS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VCVTSS2SD] = {
+    [X86_64_OPCODE_VCVTSS2SD] = {
         .r128_vvvv_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
     },
-    [OPCODE_VCVTSD2SS] = {
+    [X86_64_OPCODE_VCVTSD2SS] = {
         .r128_vvvv_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x5Au), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
     },
-    [OPCODE_VCVTDQ2PS] = {
+    [X86_64_OPCODE_VCVTDQ2PS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VCVTPS2DQ] = {
+    [X86_64_OPCODE_VCVTPS2DQ] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VCVTTPS2DQ] = {
+    [X86_64_OPCODE_VCVTTPS2DQ] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x5Bu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
 
 
-    [OPCODE_VHADDPD] = {
+    [X86_64_OPCODE_VHADDPD] = {
         .r128_vvvv_rm128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x7Cu), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
         .r256_vvvv_rm256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x7Cu), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
     },
-    [OPCODE_VHADDPS] = {
+    [X86_64_OPCODE_VHADDPS] = {
         .r128_vvvv_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x7Cu), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
         .r256_vvvv_rm256		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x7Cu), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
     },
-    [OPCODE_VHSUBPD] = {
+    [X86_64_OPCODE_VHSUBPD] = {
         .r128_vvvv_rm128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x7Du), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
         .r256_vvvv_rm256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x7Du), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
     },
-    [OPCODE_VHSUBPS] = {
+    [X86_64_OPCODE_VHSUBPS] = {
         .r128_vvvv_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x7Du), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
         .r256_vvvv_rm256		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x7Du), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)) },
     },
 
-    [OPCODE_VMOVAPS] = {
+    [X86_64_OPCODE_VMOVAPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x28u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x29u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x28u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm256_r256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x29u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVAPD] = {
+    [X86_64_OPCODE_VMOVAPD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x28u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x29u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x28u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm256_r256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x29u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVLPS] = {
+    [X86_64_OPCODE_VMOVLPS] = {
         .r128_vvvv_rm128	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_m(0)), },
         .rm128_r128			= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x13u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVHPS] = {
+    [X86_64_OPCODE_VMOVHPS] = {
         .r128_vvvv_rm128	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_m(0)), },
         .rm128_r128			= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x17u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVHPD] = {
+    [X86_64_OPCODE_VMOVHPD] = {
         .r128_vvvv_rm128	= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_m(0)), },
         .rm128_r128			= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x17u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVHLPS] = {
+    [X86_64_OPCODE_VMOVHLPS] = {
         .r128_vvvv_rm128	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_r(0)), },
     },
-    [OPCODE_VMOVLHPS] = {
+    [X86_64_OPCODE_VMOVLHPS] = {
         .r128_vvvv_rm128	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_r(0)), },
     },
-    [OPCODE_VMOVLPD] = {
+    [X86_64_OPCODE_VMOVLPD] = {
         .r128_vvvv_rm128	= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_m(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x13u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVMSKPS] = {
+    [X86_64_OPCODE_VMOVMSKPS] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x50u), .operands = MAKE_OPERANDS(mod_reg(0), mod_r(0)), },
         .r32_rm256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x50u), .operands = MAKE_OPERANDS(mod_reg(0), mod_r(0)), },
     },
-    [OPCODE_VMOVMSKPD] = {
+    [X86_64_OPCODE_VMOVMSKPD] = {
         .r32_rm128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x50u), .operands = MAKE_OPERANDS(mod_reg(0), mod_r(0)), },
         .r32_rm256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x50u), .operands = MAKE_OPERANDS(mod_reg(0), mod_r(0)), },
     },
-    [OPCODE_VMOVNTPS] = {
+    [X86_64_OPCODE_VMOVNTPS] = {
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x2Bu), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)), },
         .rm256_r256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x2Bu), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)), },
     },
-    [OPCODE_VMOVNTPD] = {
+    [X86_64_OPCODE_VMOVNTPD] = {
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x2Bu), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)), },
         .rm256_r256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x2Bu), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)), },
     },
-    [OPCODE_VMOVUPS] = {
+    [X86_64_OPCODE_VMOVUPS] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm256_r256		= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVUPD] = {
+    [X86_64_OPCODE_VMOVUPD] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .rm256_r256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVSS] = {
+    [X86_64_OPCODE_VMOVSS] = {
         .r128_vvvv_rm128 	= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_r(0)), },
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_m(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVSD] = {
+    [X86_64_OPCODE_VMOVSD] = {
         .r128_vvvv_rm128 	= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_r(0)), },
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x10u), .operands = MAKE_OPERANDS(mod_reg(0), mod_m(0)), },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x11u), .operands = MAKE_OPERANDS(mod_m(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVSLDUP] = {
+    [X86_64_OPCODE_VMOVSLDUP] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
-    [OPCODE_VMOVSHDUP] = {
+    [X86_64_OPCODE_VMOVSHDUP] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x16u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
-    [OPCODE_VMOVDDUP] = {
+    [X86_64_OPCODE_VMOVDDUP] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x12u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)), },
     },
 
-    [OPCODE_VMOVD] = {
+    [X86_64_OPCODE_VMOVD] = {
         .r128_rm32		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x6Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm32_r128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x7Eu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVQ] = {
+    [X86_64_OPCODE_VMOVQ] = {
         .r128_rm64		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x6Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm64_r128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x7Eu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
 
-    [OPCODE_VMOVDQA] = {
+    [X86_64_OPCODE_VMOVDQA] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm256_r256		= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
-    [OPCODE_VMOVDQU] = {
+    [X86_64_OPCODE_VMOVDQU] = {
         .r128_rm128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm128_r128		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
         .r256_rm256		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
         .rm256_r256		= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x6Fu), .operands = MAKE_OPERANDS(mod_rm(0), mod_reg(0)) },
     },
 
-    [OPCODE_VPSHUFD] = {
+    [X86_64_OPCODE_VPSHUFD] = {
         .r128_rm128_i8	= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) },
         .r256_rm256_i8	= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) },
     },
-    [OPCODE_VPSHUFHW] = {
+    [X86_64_OPCODE_VPSHUFHW] = {
         .r128_rm128_i8	= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) },
         .r256_rm256_i8	= { .opcode = BUILD_OPCODE(vex, F3, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) },
     },
-    [OPCODE_VPSHUFLW] = {
+    [X86_64_OPCODE_VPSHUFLW] = {
         .r128_rm128_i8	= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) },
         .r256_rm256_i8	= { .opcode = BUILD_OPCODE(vex, F2, 2B, 0x70u), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0), imm) },
     },
 
-    [OPCODE_VUCOMISS] = {
+    [X86_64_OPCODE_VUCOMISS] = {
         .r128_rm128	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x2Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VUCOMISD] = {
+    [X86_64_OPCODE_VUCOMISD] = {
         .r128_rm128	= { .opcode = BUILD_OPCODE(vex, 66, 2B, 0x2Eu), .operands = MAKE_OPERANDS(mod_reg(0), mod_rm(0)) },
     },
-    [OPCODE_VUNPCKLPS] = {
+    [X86_64_OPCODE_VUNPCKLPS] = {
         .r128_vvvv_rm128 	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x14u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)), },
         .r256_vvvv_rm256 	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x14u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)), },
     },
-    [OPCODE_VUNPCKHPS] = {
+    [X86_64_OPCODE_VUNPCKHPS] = {
         .r128_vvvv_rm128 	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x15u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)), },
         .r256_vvvv_rm256 	= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x15u), .operands = MAKE_OPERANDS(mod_reg(0), vex_vvvv, mod_rm(0)), },
     },
 
-    [OPCODE_VZEROALL] = {
+    [X86_64_OPCODE_VZEROALL] = {
         .noarg				= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x77u), .operands = 0x10u },
     },
-    [OPCODE_VZEROUPPER] = {
+    [X86_64_OPCODE_VZEROUPPER] = {
         .noarg				= { .opcode = BUILD_OPCODE(vex, none, 2B, 0x77u) },
     },
 };
@@ -2116,23 +2131,23 @@ const long long int x86_64_instructions_table_size = sizeof(x86_64_instructions_
 
 X86_64_Variant_Kind oc_x86_64_get_inverse_compare(unsigned int /* OPCODE*/ opcode) {
     switch (opcode) {
-    case OPCODE_JO: return OPCODE_JNO;
-    case OPCODE_JNO: return OPCODE_JO;
-    case OPCODE_JA: return OPCODE_JBE;
-    case OPCODE_JAE: return OPCODE_JB;
-    case OPCODE_JB: return OPCODE_JAE;
-    case OPCODE_JBE: return OPCODE_JA;
-    case OPCODE_JC: return OPCODE_JAE;
-    case OPCODE_JE: return OPCODE_JNE;
-    case OPCODE_JNE: return OPCODE_JE;
-    case OPCODE_JS: return OPCODE_JNS;
-    case OPCODE_JNS: return OPCODE_JS;
-    case OPCODE_JPE: return OPCODE_JPO;
-    case OPCODE_JPO: return OPCODE_JPE;
-    case OPCODE_JG: return OPCODE_JLE;
-    case OPCODE_JGE: return OPCODE_JL;
-    case OPCODE_JL: return OPCODE_JGE;
-    case OPCODE_JLE: return OPCODE_JG;
+    case X86_64_OPCODE_JO: return X86_64_OPCODE_JNO;
+    case X86_64_OPCODE_JNO: return X86_64_OPCODE_JO;
+    case X86_64_OPCODE_JA: return X86_64_OPCODE_JBE;
+    case X86_64_OPCODE_JAE: return X86_64_OPCODE_JB;
+    case X86_64_OPCODE_JB: return X86_64_OPCODE_JAE;
+    case X86_64_OPCODE_JBE: return X86_64_OPCODE_JA;
+    case X86_64_OPCODE_JC: return X86_64_OPCODE_JAE;
+    case X86_64_OPCODE_JE: return X86_64_OPCODE_JNE;
+    case X86_64_OPCODE_JNE: return X86_64_OPCODE_JE;
+    case X86_64_OPCODE_JS: return X86_64_OPCODE_JNS;
+    case X86_64_OPCODE_JNS: return X86_64_OPCODE_JS;
+    case X86_64_OPCODE_JPE: return X86_64_OPCODE_JPO;
+    case X86_64_OPCODE_JPO: return X86_64_OPCODE_JPE;
+    case X86_64_OPCODE_JG: return X86_64_OPCODE_JLE;
+    case X86_64_OPCODE_JGE: return X86_64_OPCODE_JL;
+    case X86_64_OPCODE_JL: return X86_64_OPCODE_JGE;
+    case X86_64_OPCODE_JLE: return X86_64_OPCODE_JG;
     default: assert(false); return 0;
     }
 }
@@ -2306,9 +2321,9 @@ void oc_x86_64_write_instruction(OC_Machine_Code_Writer* w, X86_64_Variant_Kind 
 
     bool has_vex_vvvv = false;
 
-    if (OPCODE_GET_VEX(instruction.opcode) == OPCODE_PREFIX_vex) {
+    if (X86_64_OPCODE_GET_VEX(instruction.opcode) == X86_64_OPCODE_PREFIX_vex) {
         /* ---- VEX ---- */
-        vex = OPCODE_GET_PREFIX(instruction.opcode);
+        vex = X86_64_OPCODE_GET_PREFIX(instruction.opcode);
 
         switch (variant) {
         case X86_64_VARIANT_KIND_noarg:
@@ -2395,16 +2410,16 @@ void oc_x86_64_write_instruction(OC_Machine_Code_Writer* w, X86_64_Variant_Kind 
             X86_64_APPEND_OP_SEGMENT(parameters.rep);
         }
 
-        switch (OPCODE_GET_PREFIX(instruction.opcode)) {
-        case OPCODE_PREFIX_none: 
+        switch (X86_64_OPCODE_GET_PREFIX(instruction.opcode)) {
+        case X86_64_OPCODE_PREFIX_none: 
             break;
-        case OPCODE_PREFIX_66: 
+        case X86_64_OPCODE_PREFIX_66: 
             X86_64_APPEND_OP_SEGMENT((unsigned char)0x66u);
             break;
-        case OPCODE_PREFIX_F3: 
+        case X86_64_OPCODE_PREFIX_F3: 
             X86_64_APPEND_OP_SEGMENT((unsigned char)0xF3u);
             break;
-        case OPCODE_PREFIX_F2: 
+        case X86_64_OPCODE_PREFIX_F2: 
             X86_64_APPEND_OP_SEGMENT((unsigned char)0xF2u);
             break;
         default: assert(false); break;
@@ -2415,10 +2430,10 @@ void oc_x86_64_write_instruction(OC_Machine_Code_Writer* w, X86_64_Variant_Kind 
             X86_64_APPEND_OP_SEGMENT(prefix[i]);
         }
 
-        switch (OPCODE_GET_BYTECOUNT(instruction.opcode)) {
-        case OPCODE_PREFIX_1B: 
+        switch (X86_64_OPCODE_GET_BYTECOUNT(instruction.opcode)) {
+        case X86_64_OPCODE_PREFIX_1B: 
             break;
-        case OPCODE_PREFIX_2B: 
+        case X86_64_OPCODE_PREFIX_2B: 
             X86_64_APPEND_OP_SEGMENT((unsigned char)0x0Fu);
             break;
         default: assert(false);

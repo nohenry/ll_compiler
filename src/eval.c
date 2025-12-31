@@ -108,7 +108,7 @@ int64_t do_native_fn_call(
     default: oc_todo("fn type"); break;
     }
 
-    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_SUB, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = 0xface0102 }));
+    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_SUB, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = 0xface0102 }));
     size_t stack_size_offset = b->native_fn_stub_section.count - 4;
 
 
@@ -127,10 +127,10 @@ int64_t do_native_fn_call(
         LL_Ir_Operand arg_operand = operands[pre_invoke_offset++];
         LL_Type* type = ir_get_operand_type(bir, FUNCTION(), arg_operand);
 
-        uint32_t opcode = OPCODE_MOV;
+        uint32_t opcode = X86_64_OPCODE_MOV;
         // if (type->kind == LL_TYPE_FLOAT) {
-        //     if (type->width <= 32) opcode = OPCODE_MOVSS;
-        //     else if (type->width <= 64) opcode = OPCODE_MOVSD;
+        //     if (type->width <= 32) opcode = X86_64_OPCODE_MOVSS;
+        //     else if (type->width <= 64) opcode = X86_64_OPCODE_MOVSD;
         //     else oc_todo("add widths");
         // }
 
@@ -140,7 +140,7 @@ int64_t do_native_fn_call(
                 if (is_large_aggregate_type(type)) {
                     oc_todo("struct");
                     // prealloc.immediate_displacement = (uint32_t)x86_64_make_struct_copy(cc, b, bir, type, arg_operand, false);
-                    // prealloc.opcode = OPCODE_LEA;
+                    // prealloc.opcode = X86_64_OPCODE_LEA;
                     // prealloc.variant = X86_64_VARIANT_KIND_r64_rm64;
                 } else {
                     prealloc.immediate_displacement = FRAME()->registers.items[OPD_VALUE(arg_operand)].as_i64;
@@ -150,12 +150,12 @@ int64_t do_native_fn_call(
                 break;
             case LL_IR_OPERAND_IMMEDIATE_BIT:
                 prealloc.immediate_displacement = (int64_t)OPD_VALUE(arg_operand);
-                prealloc.opcode = OPCODE_MOV;
+                prealloc.opcode = X86_64_OPCODE_MOV;
                 prealloc.variant = X86_64_VARIANT_KIND_rm64_i32;
                 break;
             case LL_IR_OPERAND_IMMEDIATE64_BIT:
                 prealloc.immediate_displacement = (int64_t)FUNCTION()->literals.items[OPD_VALUE(arg_operand)].as_u64;
-                prealloc.opcode = OPCODE_MOV;
+                prealloc.opcode = X86_64_OPCODE_MOV;
                 prealloc.variant = X86_64_VARIANT_KIND_r64_i64;
                 break;
             default: oc_todo("unhadnled argument operand: {x}", OPD_TYPE(arg_operand));
@@ -168,26 +168,26 @@ int64_t do_native_fn_call(
     uword return_struct_offset;
     if (return_type && is_large_aggregate_type(return_type)) {
         oc_todo("struct return");
-        X86_64_Parameter param = x86_64_call_convention_next(&callconv, return_type, &stack_used);
+        Call_Convention_Parameter param = x86_64_call_convention_next(&callconv, return_type, &stack_used);
 
         // return_struct_offset = x86_64_make_struct_copy(cc, b, bir, return_type, 0, true);
         if (param.is_reg) {
             params.reg0 = param.reg;
             params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
             params.displacement = -return_struct_offset;
-            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_LEA, r64_rm64, params);
+            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_LEA, r64_rm64, params);
         } else {
             X86_64_Operand_Register tmp_reg;
             tmp_reg = x86_64_backend_active_registers[active_register_top];
             params.reg0 = tmp_reg;
             params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
             params.displacement = -return_struct_offset;
-            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_LEA, r64_rm64, params);
+            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_LEA, r64_rm64, params);
 
             params.displacement = param.stack_offset;
             params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
             params.reg1 = tmp_reg;
-            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, rm64_r64, params);
+            OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_MOV, rm64_r64, params);
         }
     }
 
@@ -196,14 +196,14 @@ int64_t do_native_fn_call(
         LL_Ir_Operand arg_operand = operands[invoke_offset++];
         LL_Type* type = ir_get_operand_type(bir, FUNCTION(), arg_operand);
 
-        uint32_t opcode = OPCODE_MOV;
+        uint32_t opcode = X86_64_OPCODE_MOV;
         if (type->kind == LL_TYPE_FLOAT) {
-            if (type->width <= 32) opcode = OPCODE_MOVSS;
-            else if (type->width <= 64) opcode = OPCODE_MOVSD;
+            if (type->width <= 32) opcode = X86_64_OPCODE_MOVSS;
+            else if (type->width <= 64) opcode = X86_64_OPCODE_MOVSD;
             else oc_todo("add widths");
         }
 
-        X86_64_Parameter parameter_location = x86_64_call_convention_next(&callconv, type, &stack_used);
+        Call_Convention_Parameter parameter_location = x86_64_call_convention_next(&callconv, type, &stack_used);
         switch (OPD_TYPE(arg_operand)) {
             case LL_IR_OPERAND_REGISTER_BIT: 
                 if (parameter_location.is_reg) {
@@ -236,23 +236,23 @@ int64_t do_native_fn_call(
                     params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
                 }
                 params.immediate = OPD_VALUE(OPD_VALUE(arg_operand));
-                OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, rm64_i32, params);
+                OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_MOV, rm64_i32, params);
 
                 break;
             case LL_IR_OPERAND_IMMEDIATE64_BIT:
                 if (parameter_location.is_reg) {
                     params.reg0 = parameter_location.reg;
                     params.immediate = FUNCTION()->literals.items[OPD_VALUE(arg_operand)].as_u64;
-                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, r64_i64, params);
+                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_MOV, r64_i64, params);
                 } else {
                     params.reg0 = x86_64_backend_active_registers[active_register_top];
                     params.immediate = FUNCTION()->literals.items[OPD_VALUE(arg_operand)].as_u64;
-                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, r64_i64, params);
+                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_MOV, r64_i64, params);
 
                     params.reg1 = params.reg0;
                     params.displacement = (int32_t)parameter_location.stack_offset;
                     params.reg0 = X86_64_OPERAND_REGISTER_rsp | X86_64_REG_BASE;
-                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, rm64_r64, params);
+                    OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_MOV, rm64_r64, params);
                 }
                 break;
             default: oc_todo("unhadnled argument operand: {x}", OPD_TYPE(arg_operand));
@@ -275,15 +275,15 @@ int64_t do_native_fn_call(
 
         params.reg0 = X86_64_OPERAND_REGISTER_rax;
         params.immediate = (uword)native_fn_ptr;
-        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_MOV, r64_i64, params);
-        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_CALL, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rax }));
+        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_MOV, r64_i64, params);
+        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_CALL, rm64, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rax }));
 
         stack_used = oc_align_forward(stack_used, 16) ;
         int32_t* pstack_size = (int32_t*)&b->native_fn_stub_section.items[stack_size_offset];
         *pstack_size = stack_used;
-        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_ADD, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = stack_used }));
+        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_ADD, rm64_i32, ((X86_64_Instruction_Parameters){ .reg0 = X86_64_OPERAND_REGISTER_rsp, .immediate = stack_used }));
 
-        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_RET, noarg, params);
+        OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_RET, noarg, params);
 
         copy_native_code(cc, b);
 
@@ -297,7 +297,7 @@ int64_t do_native_fn_call(
     //         params.reg0 = x86_64_backend_active_registers[active_register_top];
     //         params.reg1 = X86_64_OPERAND_REGISTER_rbp | X86_64_REG_BASE;
     //         params.displacement = -return_struct_offset;
-    //         OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, OPCODE_LEA, r64_rm64, params);
+    //         OC_X86_64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, X86_64_OPCODE_LEA, r64_rm64, params);
 
     //         X86_64_Register offset = x86_64_move_reg_alloc(cc, b, bir, fn_type->return_type, params.reg0);
     //         FRAME()->registers.items[OPD_VALUE(operands[0])] = offset;
