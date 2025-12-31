@@ -41,6 +41,7 @@ static inline LL_Eval_Registers* get_storage_location(
     }
 }
 
+#ifdef __x86_64__
 void copy_native_code(
     Compiler_Context* cc,
     LL_Eval_Context* b
@@ -74,6 +75,14 @@ void copy_native_code(
         return;
     }
 }
+#else
+
+void copy_native_code(
+    Compiler_Context* cc,
+    LL_Eval_Context* b
+) {
+}
+#endif
 
 int64_t do_native_fn_call(
     Compiler_Context* cc,
@@ -615,10 +624,10 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
                 FRAME()->registers.items[OPD_VALUE(operands[0])].as_u64 = ll_eval_get_value(cc, b, bir, operands[1]).as_u64 % ll_eval_get_value(cc, b, bir, operands[2]).as_u64;
                 break;
             case LL_TYPE_ANYFLOAT: \
-            case LL_TYPE_FLOAT:
+            case LL_TYPE_FLOAT: {
                 extern double fmod(double, double);
                 FRAME()->registers.items[OPD_VALUE(operands[0])].as_f64 = fmod(ll_eval_get_value(cc, b, bir, operands[1]).as_f64, ll_eval_get_value(cc, b, bir, operands[2]).as_f64);
-                break;
+            } break;
             default: oc_todo("implement types for operations"); break;
             }
             break;

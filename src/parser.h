@@ -2,6 +2,7 @@
 
 #include "lexer.h"
 #include "ast.h"
+#include "typer.h"
 #include "typer2.h"
 
 Enum(LL_Operation_Kind, uint32_t,
@@ -25,9 +26,7 @@ typedef struct {
 } LL_Usage;
 
 typedef struct {
-    Array(uint32, LL_Type_Index) types;
-    Array(uint32, uint16) types_cast;
-    Array(uint32, uint16) types_implicit_cast;
+    Array(uint32, LL_Type*) types;
     Array(uint32, LL_Usage) direct_usages;
 } LL_Typecheck_Value;
 
@@ -60,7 +59,7 @@ typedef struct {
 LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename);
 Parse_Result parser_parse_file(Compiler_Context* cc, LL_Parser* parser);
 Parse_Result parser_parse_statement(Compiler_Context* cc, LL_Parser* parser);
-Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser);
+Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser, Code_Declaration* decl);
 Code_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser);
 Parse_Result parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Parse_Result* type, LL_Storage_Class storage_class);
 Parse_Result parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Parse_Result* left, int last_precedence, bool from_statement);
@@ -71,11 +70,9 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w);
 
 #define TC_ALIGNMENT (64)
 
-static inline uint32 parser_append_typecheck_value(Compiler_Context* cc, LL_Typecheck_Value* tcv, LL_Type_Index type, Ast_Result_Kind usage_kind, uint32 usage_index) {
+static inline uint32 parser_append_typecheck_value(Compiler_Context* cc, LL_Typecheck_Value* tcv, LL_Type* type, Ast_Result_Kind usage_kind, uint32 usage_index) {
     uint32 index = tcv->types.count;
     oc_array_aligned_append(&cc->arena, &tcv->types, TC_ALIGNMENT, type);
-    oc_array_aligned_append(&cc->arena, &tcv->types_cast, TC_ALIGNMENT, cc->typer->types.items[type].cast);
-    oc_array_aligned_append(&cc->arena, &tcv->types_implicit_cast, TC_ALIGNMENT, cc->typer->types.items[type].implicit_cast);
     oc_array_aligned_append(&cc->arena, &tcv->direct_usages, TC_ALIGNMENT, ((LL_Usage) { usage_kind, usage_index}));
     return index;
 }
@@ -83,8 +80,6 @@ static inline uint32 parser_append_typecheck_value(Compiler_Context* cc, LL_Type
 static inline uint32 parser_extend_uninit_typecheck_value(Compiler_Context* cc, LL_Typecheck_Value* tcv, uint32 count) {
     uint32 index = tcv->types.count;
     oc_array_aligned_extend_count_unint(&cc->arena, &tcv->types, TC_ALIGNMENT, count);
-    oc_array_aligned_extend_count_unint(&cc->arena, &tcv->types_cast, TC_ALIGNMENT, count);
-    oc_array_aligned_extend_count_unint(&cc->arena, &tcv->types_implicit_cast, TC_ALIGNMENT, count);
     oc_array_aligned_extend_count_unint(&cc->arena, &tcv->direct_usages, TC_ALIGNMENT, count);
     return index;
 }
@@ -92,12 +87,8 @@ static inline uint32 parser_extend_uninit_typecheck_value(Compiler_Context* cc, 
 static inline uint32 parser_extend_zeroed_typecheck_value(Compiler_Context* cc, LL_Typecheck_Value* tcv, uint32 count) {
     uint32 index = tcv->types.count;
     oc_array_aligned_extend_count_unint(&cc->arena, &tcv->types, TC_ALIGNMENT, count);
-    oc_array_aligned_extend_count_unint(&cc->arena, &tcv->types_cast, TC_ALIGNMENT, count);
-    oc_array_aligned_extend_count_unint(&cc->arena, &tcv->types_implicit_cast, TC_ALIGNMENT, count);
     oc_array_aligned_extend_count_unint(&cc->arena, &tcv->direct_usages, TC_ALIGNMENT, count);
     memset(tcv->types.items + index, 0, count * sizeof(tcv->types.items[0]));
-    memset(tcv->types_cast.items + index, 0, count * sizeof(tcv->types_cast.items[0]));
-    memset(tcv->types_implicit_cast.items + index, 0, count * sizeof(tcv->types_implicit_cast.items[0]));
     memset(tcv->direct_usages.items + index, 0, count * sizeof(tcv->direct_usages.items[0]));
     return index;
 }

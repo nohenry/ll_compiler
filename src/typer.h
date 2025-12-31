@@ -130,7 +130,7 @@ typedef struct {
 
 typedef struct {
     LL_Type base;
-    LL_Scope* scope;
+    Code_Scope* scope;
     LL_Type* actual_type;
 } LL_Type_Named;
 
@@ -140,7 +140,7 @@ typedef struct ll_type_intern_map_entry {
 } LL_Type_Intern_Map_Entry;
 
 typedef struct {
-    LL_Scope* scope;
+    Code_Declaration* decl;
     Code** this_arg;
 } LL_Typer_Resolve_Result;
 
@@ -150,7 +150,7 @@ typedef struct {
 } LL_Typer_Current_Record;
 
 typedef struct {
-    LL_Scope* field_scope;
+    Code_Scope* field_scope;
     LL_Eval_Value value;
     bool has_init;
 } LL_Typer_Record_Value;
@@ -202,9 +202,9 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
 bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Eval_Value* src_value, LL_Type* dst_type);
 bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typer, Code* expr, LL_Type* dst_type);
 
-void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist);
-LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
-LL_Scope* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, Code_Ident* ident);
+// void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist);
+// LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
+Code_Declaration* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, Code_Ident* ident);
 
 void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
 
@@ -223,3 +223,24 @@ static inline LL_Type* ll_get_base_type(LL_Type* type) {
     }
     return type;
 }
+
+
+typedef struct {
+    LL_Type *expected, *actual;
+    LL_Token_Info main_token;
+    LL_Token_Info highlight_start, highlight_end;
+} LL_Error;
+
+#define ll_typer_report_error(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_info(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_info_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_note(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_note_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_no_src(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_no_src_raw((cc), (typer), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+
+void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_Info line_info, LL_Token_Info start_info, LL_Token_Info end_info, bool print_dot_dot_dot, bool print_underline);
+void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...);
+void ll_typer_report_error_note_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...);
+void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...);
+void ll_typer_report_error_no_src_raw(Compiler_Context* cc, LL_Typer* typer, const char* fmt, ...);
+void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
+void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
+void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer);

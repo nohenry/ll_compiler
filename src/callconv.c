@@ -1,13 +1,13 @@
 #include "callconv.h"
 
-const static X86_64_Operand_Register call_convention_registers_systemv[] = {
+const X86_64_Operand_Register call_convention_registers_systemv[] = {
     X86_64_OPERAND_REGISTER_rcx,
     X86_64_OPERAND_REGISTER_rdx,
     X86_64_OPERAND_REGISTER_r8,
     X86_64_OPERAND_REGISTER_r9,
 };
 
-const static X86_64_Operand_Register call_convention_vector_registers_systemv[] = {
+const X86_64_Operand_Register call_convention_vector_registers_systemv[] = {
     X86_64_OPERAND_REGISTER_xmm(0),
     X86_64_OPERAND_REGISTER_xmm(1),
     X86_64_OPERAND_REGISTER_xmm(2),

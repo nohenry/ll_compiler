@@ -37,18 +37,32 @@ inline bool is_eql(void* a, void* b, size_t size) {
         result;                                                                     \
     })
 
-#define hash_map_reserve(arena, hm, reserve_capacity) do {                                                                                                 \
-        void* new_ptr = oc_arena_realloc((arena), (hm)->entries, (hm)->capacity * sizeof(*(hm)->entries), (reserve_capacity) * sizeof(*(hm)->entries)); \
-        (hm)->entries = new_ptr;                                                                                                               \
+#define hash_map_reserve(arena, hm, reserve_capacity) do {                                                                                              \
+        __typeof__((hm)->entries) new_entries = oc_arena_realloc((arena), (hm)->entries, (hm)->capacity * sizeof(*(hm)->entries), (reserve_capacity) * sizeof(*(hm)->entries)); \
+        memset(new_entries, 0, (reserve_capacity) * sizeof(*(hm)->entries)); \
+        if ((hm)->capacity) {                                                                                                                           \
+            for (uint32 i = 0; i < ((hm)->capacity); ++i) {                                                                                               \
+                if (!(hm)->entries[i].filled) continue;                                                                                               \
+                uint32 index = MAP_DEFAULT_HASH_FN((hm)->entries[i]._key, MAP_DEFAULT_SEED) % (reserve_capacity);                                   \
+                while (new_entries[index].filled) {                                                                                               \
+                    if (MAP_DEFAULT_EQL_FN(new_entries[index]._key, (hm)->entries[i]._key)) {                                                                       \
+                        break;                                                                                                                      \
+                    }                                                                                                                               \
+                    index = (index + 1) % (reserve_capacity);                                                                                       \
+                }                                                                                                                                   \
+                new_entries[index]._key = (hm)->entries[i]._key;                                                                                                    \
+                new_entries[index]._value = (hm)->entries[i]._value;                                                                                                \
+                new_entries[index].filled = 1;                                                                                                    \
+            }                                                                                                                                           \
+        }                                                                                                                                               \
+        (hm)->entries = new_entries;                                                                                                                        \
         (hm)->capacity = (reserve_capacity);                                                                                                            \
     } while (0)
 
 #define hash_map_put(arena, hm, key, value) do {                                                                                                 \
         if ((hm)->count_filled >= (hm)->capacity / 2) {                                                                                          \
             uint32 new_cap = (hm)->capacity ? (hm)->capacity * 4 : 32;                                                                          \
-            void* new_ptr = oc_arena_realloc((arena), (hm)->entries, (hm)->capacity * sizeof(*(hm)->entries), new_cap * sizeof(*(hm)->entries)); \
-            (hm)->entries = new_ptr;                                                                                                               \
-            (hm)->capacity = new_cap;                                                                                                            \
+            hash_map_reserve(arena, hm, new_cap);                                                                                         \
         }                                                                                                                                        \
         uint32 index = MAP_DEFAULT_HASH_FN(key, MAP_DEFAULT_SEED) % (hm)->capacity;                                                                \
         while ((hm)->entries[index].filled) {                                                                                                      \
@@ -72,6 +86,7 @@ typedef struct {
     Oc_Arena arena, tmp_arena;
     String_Intern_Map_Entry* string_interns[LL_DEFAULT_MAP_ENTRY_COUNT];
     struct ll_typer* typer;
+    struct ll_typer2* typer2;
     struct ll_eval_context* eval_context;
     struct ll_backend_ir* bir;
     struct ll_backend *target, *native_target;

@@ -90,6 +90,7 @@ size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opc
     }
 }
 
+#if 0
 static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block_Ref block_ref) {
     LL_Ir_Block* block = &b->blocks.items[block_ref];
     oc_array_reserve(&cc->arena, &block->rops, block->ops.count);
@@ -102,6 +103,7 @@ static void ir_gen_reverse_ops(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Blo
         i += count;
     }
 }
+#endif
 
 void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i, Oc_Writer* w) {
     (void)cc;
@@ -470,7 +472,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
             b->current_function = fn_decl->ir_index;
             b->current_block = fn.entry;
 
-            ir_generate_statement(cc, b, fn_decl->body);
+            ir_generate_statement(cc, b, (Code*)fn_decl->body);
 
             if (!b->blocks.items[b->current_block].did_branch) {
                 // b->current_block = FUNCTION()->exit;
@@ -527,7 +529,7 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
     case CODE_KIND_IDENT: {
         Code_Ident* ident = CODE_AS(expr, Code_Ident);
 
-        Code* decl = ident->resolved_scope->decl;
+        Code* decl = (Code*)ident->resolved_decl;
         switch (decl->kind) {
         case CODE_KIND_VARIABLE_DECLARATION: result = LL_IR_OPERAND_LOCAL_BIT | CODE_AS(decl, Code_Variable_Declaration)->ir_index; break;
         case CODE_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | CODE_AS(decl, Code_Parameter)->ir_index; break;
@@ -562,23 +564,23 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         } else if (opr->left->type->kind == LL_TYPE_ARRAY) {
         }
 
-        LL_Scope* field_scope = right_ident->resolved_scope;
-        oc_assert(field_scope->kind == LL_SCOPE_KIND_FIELD);
+        Code_Declaration* field_scope = right_ident->resolved_decl;
+        // oc_assert(field_scope->kind == LL_SCOPE_KIND_FIELD);
 
         // @TODO: probably should assert that this struct scope is the same as the lhs of the dot
-        LL_Scope* struct_scope = field_scope->parent;
-        oc_assert(struct_scope->kind == LL_SCOPE_KIND_STRUCT);
+        Code_Declaration* struct_scope = field_scope->within_scope->decl;
+        oc_assert(struct_scope->base.kind == CODE_KIND_STRUCT);
 
         LL_Type_Struct* struct_type;
-        if (struct_scope->decl->type->kind == LL_TYPE_NAMED) {
-            struct_type = (LL_Type_Struct*)((LL_Type_Named*)struct_scope->decl->type)->actual_type;
+        if (struct_scope->declared_type->kind == LL_TYPE_NAMED) {
+            struct_type = (LL_Type_Struct*)((LL_Type_Named*)struct_scope->declared_type)->actual_type;
         } else {
-            struct_type = (LL_Type_Struct*)struct_scope->decl->type;
+            struct_type = (LL_Type_Struct*)struct_scope->declared_type;
         }
         oc_assert(struct_type->base.kind == LL_TYPE_STRUCT);
 
         ir_calculate_struct_offsets(&struct_type->base);
-        Code_Variable_Declaration* field_decl = CODE_AS(field_scope->decl, Code_Variable_Declaration);
+        Code_Variable_Declaration* field_decl = CODE_AS(field_scope, Code_Variable_Declaration);
         oc_assert(field_decl->base.base.kind == CODE_KIND_VARIABLE_DECLARATION);
 
         uint32_t field_offset = struct_type->offsets[field_decl->ir_index];
@@ -685,10 +687,10 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
             };
             uint32_t index = FUNCTION()->locals.count;
             oc_array_append(&cc->arena, &FUNCTION()->locals, var);
-            blk->scope->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
+            blk->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
         }
         break_block = ir_create_block(cc, b, true);
-        blk->scope->break_block_ref = break_block;
+        blk->break_block_ref = break_block;
 
         for (i = 0; i < CODE_AS(expr, Code_Scope)->declarations.capacity; ++i) {
             if (CODE_AS(expr, Code_Scope)->declarations.entries[i].filled)
@@ -701,7 +703,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
         b->current_block = break_block;
 
         if (blk->flags & CODE_BLOCK_FLAG_EXPR) {
-            result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, blk->scope->break_value);
+            result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, blk->break_value);
         }
         break;
     }
@@ -726,7 +728,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
             }
         }
         break;
-    case CODE_KIND_LITERAL_FLOAT:
+    case CODE_KIND_LITERAL_FLOAT: {
         uint32_t literal_index = FUNCTION()->literals.count;
         if (expr->type->width <= 32) {
             oc_array_append(&cc->arena, &FUNCTION()->literals, ((LL_Ir_Literal) { .as_f32 = (float)CODE_AS(expr, Code_Literal)->f64 }));
@@ -736,6 +738,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
             oc_assert(false);
         }
         return LL_IR_OPERAND_IMMEDIATE64_BIT | literal_index;
+    } break;
     case CODE_KIND_LITERAL_STRING: {
         Code_Literal* lit = CODE_AS(expr, Code_Literal);
         oc_assert((b->data_items.count & 0xF0000000u) == 0); // oc_todo: maybe support more
@@ -743,8 +746,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
         oc_array_append(&cc->arena, &b->data_items, ((LL_Ir_Data_Item) { .ptr = lit->str.ptr, .len = lit->str.len, .type = lit->base.type }));
 
         // result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
-        break;
-    }
+    } break;
     case CODE_KIND_PRE_OP:
         switch (CODE_AS(expr, Code_Operation)->op.kind) {
 #pragma GCC diagnostic push
@@ -782,7 +784,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
             Code_Ident* right_ident = CODE_AS(opr->right, Code_Ident);
             static uint32_t offset_value = 0;
 
-            Code* decl = right_ident->resolved_scope ? right_ident->resolved_scope->decl : NULL;
+            Code* decl = right_ident->resolved_decl ? (Code*)right_ident->resolved_decl : NULL;
             if (decl) {
                 switch (decl->kind) {
                 case CODE_KIND_FUNCTION_DECLARATION: result = LL_IR_OPERAND_FUNCTION_BIT | CODE_AS(decl, Code_Function_Declaration)->ir_index; break;
@@ -1287,7 +1289,7 @@ HANDLE_SLICE_OP:
             break; // break outer switch
         }
 
-        Code* decl = ident->resolved_scope->decl;
+        Code* decl = (Code*)ident->resolved_decl;
         switch (decl->kind) {
         case CODE_KIND_VARIABLE_DECLARATION: result = LL_IR_OPERAND_LOCAL_BIT | CODE_AS(decl, Code_Variable_Declaration)->ir_index; break;
         case CODE_KIND_FUNCTION_DECLARATION:

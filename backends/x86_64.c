@@ -100,7 +100,7 @@ typedef struct {
     int entry_index;
 } X86_64_Backend;
 
-const static X86_64_Operand_Register x86_64_backend_active_registers[] = {
+const X86_64_Operand_Register x86_64_backend_active_registers[] = {
     X86_64_OPERAND_REGISTER_rax,
     X86_64_OPERAND_REGISTER_rcx,
     X86_64_OPERAND_REGISTER_rbx,
@@ -332,7 +332,7 @@ X86_64_Variant_Kind x86_64_get_variant_raw(LL_Type* type, X86_64_Get_Variant_Par
 
     default: break;
     }
-    asm("int3");
+    __builtin_debugtrap();
     oc_exit(-1);
     return (X86_64_Variant_Kind)-1;
 }
@@ -1515,6 +1515,7 @@ static inline void x86_64_generate_store_cast(Compiler_Context* cc, X86_64_Backe
     case LL_TYPE_STRUCT: {
         assert(dst_type == src_type);
 HANDLE_STRUCT_MEMCPY:
+        (void)0;
         LL_Backend_Layout struct_layout = x86_64_get_layout(dst_type);
         size_t actual_size = max(struct_layout.size, struct_layout.alignment);
 
@@ -2373,7 +2374,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
             params.relative = 0;
             OC_X86_64_WRITE_INSTRUCTION(b, OPCODE_JMP, rel32, params);
             break;
-        case LL_IR_OPCODE_RETVALUE:
+        case LL_IR_OPCODE_RETVALUE: {
             LL_Type_Function* fn_type = (LL_Type_Function*)b->fn->fn_type;
 
             if (b->indirect_return_type) {
@@ -2400,7 +2401,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
                 }
             }
 
-            break;
+        } break;
         default:
             print("\x1b[31;1mtodo: \x1b[0m implement op: {x}\n", opcode);
             break;

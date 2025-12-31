@@ -3,6 +3,7 @@
 #include "common.h"
 #include "lexer.h"
 #include "eval_value.h"
+// #include "../backends/ir.h"
 
 #define optional
 
@@ -52,6 +53,10 @@ typedef enum {
     CODE_KIND_CAST,
     CODE_KIND_GENERIC,
     CODE_KIND_TYPE_POINTER,
+
+
+    // Generated
+    CODE_KIND_TYPENAME,
 } Code_Kind;
 
 typedef enum {
@@ -95,7 +100,7 @@ enum {
 typedef struct {
     Code base;
     string str;
-    struct scope_map* resolved_scope;
+    struct Code_Declaration* resolved_decl;
     int32_t symbol_index;
     Code_Ident_Flags flags;
 } Code_Ident;
@@ -126,15 +131,18 @@ typedef enum {
     CODE_BLOCK_FLAG_MACRO_EXPANSION = (1u << 1u),
 } Code_Scope_Flags;
 
-typedef struct {
+typedef struct Code_Declaration {
     Code base;
     Code* type;
     Code_Ident* ident;
+    struct Code_Scope* within_scope;
+    struct ll_type* declared_type;
 } Code_Declaration;
 
 typedef struct Code_Scope {
     Code base;
     Code_Scope_Flags flags;
+    Code_Declaration* decl;
 
     struct Code_Scope* parent_scope;
 
@@ -142,6 +150,8 @@ typedef struct Code_Scope {
     Hash_Map(string, Code_Declaration*) declarations;
 
     LL_Token_Info c_open, c_close;
+    uint32 break_value;
+    uint32 break_block_ref;
 } Code_Scope;
 
 typedef struct {
@@ -200,7 +210,7 @@ typedef struct {
     Code base;
     Code* expr;
     Code_Control_Flow_Target target;
-    struct scope_map* referenced_scope;
+    Code_Scope* referenced_scope;
 } Code_Control_Flow;
 
 typedef struct {
@@ -253,8 +263,7 @@ typedef struct {
 } Code_Invoke;
 
 typedef struct {
-    Code base;
-    Code_Ident* ident;
+    Code_Declaration base;
     Code_Scope* block;
 } Code_Struct;
 
@@ -281,7 +290,35 @@ typedef struct {
 typedef struct {
     bool expand_first_block;
     bool convert_all_idents_to_expansion;
+    Code_Scope* current_scope;
 } LL_Code_Clone_Params;
 
 const char* ast_get_node_kind(Code* node);
 Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params params);
+
+#define _CREATE_ASSIGN_KIND(_kind, type) _Generic((type), \
+        Code : (void)0,                                   \
+        Code_Variable_Declaration : ((Code_Variable_Declaration*)&v)->base.base.kind = _kind,      \
+        Code_Function_Declaration : ((Code_Function_Declaration*)&v)->base.base.kind = _kind,      \
+        Code_Struct : ((Code_Struct*)&v)->base.base.kind = _kind,      \
+        default : ((Code_Scope*)&v)->base.kind = _kind                     \
+    )
+
+static inline Code* create_node(Compiler_Context* cc, Code* node, size_t size) {
+    return oc_arena_dup(&cc->arena, node, size);
+}
+
+static inline Code_Ident* create_ident(Compiler_Context* cc, string sym) {
+    Code_Ident ident = { .str = sym, .symbol_index = CODE_IDENT_SYMBOL_INVALID };
+    ident.base.kind = CODE_KIND_IDENT;
+
+    if (ident.str.ptr[0] == '$') {
+        ident.str.ptr++;
+        ident.str.len--;
+        ident.str = ll_intern_string(cc, ident.str);
+        ident.flags |= CODE_IDENT_FLAG_EXPAND;
+    }
+
+    Code_Ident* node = (Code_Ident*)create_node(cc, (Code*)&ident, sizeof(ident));
+    return node;
+}

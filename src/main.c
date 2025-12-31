@@ -1,5 +1,6 @@
 #include "common.h"
 #include "parser.h"
+#include "typer.h"
 #include "typer2.h"
 /* #include "eval.h" */
 /* #include "backend.h" */
@@ -44,7 +45,7 @@ void print_things(Compiler_Context* cc, LL_Parser* parser) {
 		for (uint32 j = 0; j < parser->linear_grid[i].types.count; j++) {
             if (j == 0)  for (uint32 ws = 0; ws <= 4 - sb.count; ws++) print(" ");
             else print("    ");
-			ll_print_type(&cc->typer->types.items[parser->linear_grid[i].types.items[j]]);
+			ll_print_type(parser->linear_grid[i].types.items[j]);
 		}
         if (!parser->linear_grid[i].types.count) print("\n");
 	}
@@ -93,6 +94,9 @@ int main(int argc, char** argv) {
 
     LL_Typer typer = ll_typer_create(&cc);
     cc.typer = &typer;
+    LL_Typer2 typer2 = ll_typer2_create(&cc);
+    cc.typer2 = &typer2;
+
 
     LL_Parser parser = parser_create_from_file(&cc, filename);
     cc.lexer = &parser.lexer;
@@ -100,8 +104,8 @@ int main(int argc, char** argv) {
     Parse_Result root = parser_parse_file(&cc, &parser);
     if (!cc.quiet) print_node(root.code, 0, &stdout_writer);
 
-    print_things(&cc, &parser);
-    ll_typer_run(&cc, &typer, &parser, root.code);
+    // print_things(&cc, &parser);
+    ll_typer_run(&cc, &typer, root.code);
 #if 0
     LL_Eval_Context eval_context = { 0 };
     ll_eval_init(&cc, &eval_context);

@@ -183,7 +183,7 @@ Compiler_Context ll_compiler_context_create() {
 }
 
 string ll_intern_string(Compiler_Context* cc, string str) {
-    string* s = MAP_GET_OR_PUT(cc->string_interns, str, str, MAP_DEFAULT);
+    string* s = MAP_GET_OR_PUT(cc->string_interns, str, str, &cc->arena, stbds_hash_string, string_eql, MAP_DEFAULT_SEED);
     return *s;
 }
 
