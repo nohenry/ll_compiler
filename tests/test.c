@@ -15,6 +15,9 @@ int main(int argc, char **argv)
     uint32* p = hash_map_get(&arena, &f, lit("foobar"));
     if (p) print("found: {}\n", *p);
 
+    uint32 size = 3;
+    uint32 i = (uint32)-1  >> (32 - size);
+    print("{x}\n", i);
 
     // print("{}\n", (void*)oc_arena_alloc_aligned(&arena, 8, 8));
     // print("{}\n", (void*)oc_arena_alloc_aligned(&arena, 40, 16));

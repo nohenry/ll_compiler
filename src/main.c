@@ -2,6 +2,7 @@
 #include "parser.h"
 #include "typer.h"
 #include "typer2.h"
+#include "../core/machine_code.h"
 /* #include "eval.h" */
 /* #include "backend.h" */
 
@@ -87,6 +88,8 @@ int main(int argc, char** argv) {
 		eprint("Expected a filename!\n");
 		return 1;
 	}
+
+    print("{}\n", (uword)aarch64_instructions_table_size);
 
     Compiler_Context cc = ll_compiler_context_create();
 	cc.quiet = quiet;

@@ -886,29 +886,306 @@ X86_64_Instruction_Variant oc_x86_64_get_variant(const X86_64_Instruction* inst,
 
 
 enum {
+    AARCH64_OPCODE_CBZ,
+    AARCH64_OPCODE_CBNZ,
+    AARCH64_OPCODE_TBZ,
+    AARCH64_OPCODE_TBNZ,
+    AARCH64_OPCODE_B_cond,
+    AARCH64_OPCODE_SVC,
+    AARCH64_OPCODE_HVC,
+    AARCH64_OPCODE_SMC,
+    AARCH64_OPCODE_BRK,
+    AARCH64_OPCODE_HLT,
+    AARCH64_OPCODE_DCPS1,
+    AARCH64_OPCODE_DCPS2,
+    AARCH64_OPCODE_DCPS3,
+    AARCH64_OPCODE_MSR,
+    AARCH64_OPCODE_HINT,
+    AARCH64_OPCODE_CLREX,
+    AARCH64_OPCODE_DSB,
+    AARCH64_OPCODE_DMB,
+    AARCH64_OPCODE_ISB,
+    AARCH64_OPCODE_SYS,
+    AARCH64_OPCODE_SYSL,
+    AARCH64_OPCODE_MRS,
+    AARCH64_OPCODE_BR,
+    AARCH64_OPCODE_BLR,
+    AARCH64_OPCODE_RET,
+    AARCH64_OPCODE_ERET,
+    AARCH64_OPCODE_DRPS,
+    AARCH64_OPCODE_B,
+    AARCH64_OPCODE_BL,
+    AARCH64_OPCODE_STXRB,
+    AARCH64_OPCODE_STLXRB,
+    AARCH64_OPCODE_LDXRB,
+    AARCH64_OPCODE_LDAXRB,
+    AARCH64_OPCODE_STLRB,
+    AARCH64_OPCODE_LDARB,
+    AARCH64_OPCODE_STXRH,
+    AARCH64_OPCODE_STLXRH,
+    AARCH64_OPCODE_LDXRH,
+    AARCH64_OPCODE_LDAXRH,
+    AARCH64_OPCODE_STLRH,
+    AARCH64_OPCODE_LDARH,
+    AARCH64_OPCODE_STXR,
+    AARCH64_OPCODE_STLXR,
+    AARCH64_OPCODE_STXP,
+    AARCH64_OPCODE_STLXP,
+    AARCH64_OPCODE_LDXR,
+    AARCH64_OPCODE_LDAXR,
+    AARCH64_OPCODE_LDXP,
+    AARCH64_OPCODE_LDAXP,
+    AARCH64_OPCODE_STLR,
+    AARCH64_OPCODE_LDAR,
+    AARCH64_OPCODE_LDR,
+    AARCH64_OPCODE_LDRSW,
+    AARCH64_OPCODE_PRFM,
+    AARCH64_OPCODE_STNP,
+    AARCH64_OPCODE_LDNP,
+    AARCH64_OPCODE_STP_post,
+    AARCH64_OPCODE_LDP_post,
+    AARCH64_OPCODE_LDPSW_post,
+    AARCH64_OPCODE_STP_off,
+    AARCH64_OPCODE_LDP_off,
+    AARCH64_OPCODE_LDPSW_off,
+    AARCH64_OPCODE_STP_pre,
+    AARCH64_OPCODE_LDP_pre,
+    AARCH64_OPCODE_LDPSW_pre,
+    AARCH64_OPCODE_STURB,
+    AARCH64_OPCODE_LDURB,
+    AARCH64_OPCODE_LDURSB,
+    AARCH64_OPCODE_STUR,
+    AARCH64_OPCODE_LDUR,
+    AARCH64_OPCODE_STURH,
+    AARCH64_OPCODE_LDURH,
+    AARCH64_OPCODE_LDURSH,
+    AARCH64_OPCODE_LDURSW,
+    AARCH64_OPCODE_PRFUM,
+    AARCH64_OPCODE_STRB_post,
+    AARCH64_OPCODE_LDRB_post,
+    AARCH64_OPCODE_LDRSB_post,
+    AARCH64_OPCODE_STR_post,
+    AARCH64_OPCODE_LDR_post,
+    AARCH64_OPCODE_STRH_post,
+    AARCH64_OPCODE_LDRH_post,
+    AARCH64_OPCODE_LDRSH_post,
+    AARCH64_OPCODE_LDRSW_post,
+    AARCH64_OPCODE_STTRB,
+    AARCH64_OPCODE_LDTRB,
+    AARCH64_OPCODE_LDTRSB,
+    AARCH64_OPCODE_STTRH,
+    AARCH64_OPCODE_LDTRH,
+    AARCH64_OPCODE_LDTRSH,
+    AARCH64_OPCODE_STTR,
+    AARCH64_OPCODE_LDTR,
+    AARCH64_OPCODE_LDTRSW,
+    AARCH64_OPCODE_STRB_pre,
+    AARCH64_OPCODE_LDRB_pre,
+    AARCH64_OPCODE_LDRSB_pre,
+    AARCH64_OPCODE_STR_pre,
+    AARCH64_OPCODE_LDR_pre,
+    AARCH64_OPCODE_STRH_pre,
+    AARCH64_OPCODE_LDRH_pre,
+    AARCH64_OPCODE_LDRSH_pre,
+    AARCH64_OPCODE_LDRSW_pre,
+    AARCH64_OPCODE_STRB_off,
+    AARCH64_OPCODE_LDRB_off,
+    AARCH64_OPCODE_LDRSB_off,
+    AARCH64_OPCODE_STR_off,
+    AARCH64_OPCODE_LDR_off,
+    AARCH64_OPCODE_STRH_off,
+    AARCH64_OPCODE_LDRH_off,
+    AARCH64_OPCODE_LDRSH_off,
+    AARCH64_OPCODE_LDRSW_off,
+    AARCH64_OPCODE_PRFM_off,
+    AARCH64_OPCODE_STRB,
+    AARCH64_OPCODE_LDRB,
+    AARCH64_OPCODE_LDRSB,
+    AARCH64_OPCODE_STR,
+    AARCH64_OPCODE_STRH,
+    AARCH64_OPCODE_LDRH,
+    AARCH64_OPCODE_LDRSH,
+    AARCH64_OPCODE_ADR,
+    AARCH64_OPCODE_ADRP,
+    AARCH64_OPCODE_ADD,
+    AARCH64_OPCODE_ADDS,
+    AARCH64_OPCODE_SUB,
+    AARCH64_OPCODE_SUBS,
+    AARCH64_OPCODE_AND,
+    AARCH64_OPCODE_ORR,
     AARCH64_OPCODE_MOV,
+    AARCH64_OPCODE_EOR,
+    AARCH64_OPCODE_ANDS,
+    AARCH64_OPCODE_MOVN,
+    AARCH64_OPCODE_MOVZ,
+    AARCH64_OPCODE_MOVK,
+    AARCH64_OPCODE_SBFM,
+    AARCH64_OPCODE_BFM,
+    AARCH64_OPCODE_UBFM,
+    AARCH64_OPCODE_EXTR,
+    AARCH64_OPCODE_BIC,
+    AARCH64_OPCODE_ORN,
+    AARCH64_OPCODE_EON,
+    AARCH64_OPCODE_BICS,
+    AARCH64_OPCODE_ADC,
+    AARCH64_OPCODE_ADCS,
+    AARCH64_OPCODE_SBC,
+    AARCH64_OPCODE_SBCS,
+    AARCH64_OPCODE_CCMN,
+    AARCH64_OPCODE_CCMP,
+    AARCH64_OPCODE_CSEL,
+    AARCH64_OPCODE_CSINC,
+    AARCH64_OPCODE_CSINV,
+    AARCH64_OPCODE_CSNEG,
+    AARCH64_OPCODE_MADD,
+    AARCH64_OPCODE_SMADDL,
+    AARCH64_OPCODE_UMADDL,
+    AARCH64_OPCODE_MSUB,
+    AARCH64_OPCODE_SMSUBL,
+    AARCH64_OPCODE_UMSUBL,
+    AARCH64_OPCODE_SMULH,
+    AARCH64_OPCODE_UMULH,
+    AARCH64_OPCODE_CRC32X,
+    AARCH64_OPCODE_CRC32CX,
+    AARCH64_OPCODE_CRC32B,
+    AARCH64_OPCODE_CRC32CB,
+    AARCH64_OPCODE_CRC32H,
+    AARCH64_OPCODE_CRC32CH,
+    AARCH64_OPCODE_CRC32W,
+    AARCH64_OPCODE_CRC32CW,
+    AARCH64_OPCODE_UDIV,
+    AARCH64_OPCODE_SDIV,
+    AARCH64_OPCODE_LSLV,
+    AARCH64_OPCODE_LSRV,
+    AARCH64_OPCODE_ASRV,
+    AARCH64_OPCODE_RORV,
+    AARCH64_OPCODE_RBIT,
+    AARCH64_OPCODE_CLZ,
+    AARCH64_OPCODE_CLS,
+    AARCH64_OPCODE_REV,
+    AARCH64_OPCODE_REV16,
+    AARCH64_OPCODE_REV32,
 };
 
 typedef struct {
-    unsigned char reg0, reg1, reg2, reg3;
-    long long int displacement, immediate, relative;
+    union {
+        unsigned int word;
+        struct {
+            unsigned char : 5;
+            unsigned char op2 : 3;
+            unsigned int crm : 6;
+            unsigned int crn : 6;
+            unsigned char op1 : 3;
+        };
+        struct {
+            unsigned char rd : 5;
+            unsigned char rn : 5;
+            union { unsigned char rd2 : 5; unsigned char ra : 5; };
+            unsigned char : 1;
+            union { unsigned char rm : 5; unsigned char rs : 5; };
+        };
+    };
+    int immediate;
+    unsigned char shift;
+    unsigned char cond;
+    unsigned char option;
 } AArch64_Instruction_Parameters;
 
-typedef struct {
+#define AARCH64_INSTRUCTION_MODIFIER_post (1u << 0u)
+#define AARCH64_INSTRUCTION_MODIFIER_offset (1u << 1u)
+#define AARCH64_INSTRUCTION_MODIFIER_pre (1u << 2u)
 
-} Aarch64_Instruction_Variant;
+
+#define AARCH64_DEFINE_VARIANTS_PARAM_EMPTY(x)
+#define AARCH64_DEFINE_VARIANTS_(X, Y, reg_prefix, _has_rd, _has_rn, _has_rm, _has_rs, _has_ra, _has_rd2) \
+    X(reg_prefix ## d_imm16_hw)   Y \
+    X(reg_prefix ## n_nzcv_imm5_cond)   Y \
+    X(reg_prefix ## d_imm14_b40)   _has_rd(1)     Y \
+    X(reg_prefix ## d_imm16)       _has_rd(1)     Y \
+    X(reg_prefix ## d_imm19)       _has_rd(1)     Y \
+    X(reg_prefix ## d_immhi_immlo) _has_rd(1)     Y \
+    X(reg_prefix ## d_ ## reg_prefix ## d2_ ## reg_prefix ## n_imm7) _has_rd2(1) _has_rn(1) _has_rd(1)      Y \
+    X(reg_prefix ## d_ ## reg_prefix ## d2_ ## reg_prefix ## n_ ## reg_prefix ## s) _has_rs(1) _has_rd2(1) _has_rn(1) _has_rd(1)        Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_imm12_shift) _has_rn(1) _has_rd(1)   Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_imm12) _has_rn(1) _has_rd(1)         Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_imm9) _has_rn(1) _has_rd(1)          Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_imms_immr) _has_rn(1) _has_rd(1)     Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_imms_immr_n) _has_rn(1) _has_rd(1)     Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m_cond) _has_rm(1) _has_rn(1) _has_rd(1)       Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m_imm6_shift) _has_rm(1) _has_rn(1) _has_rd(1) Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m_shift) _has_rm(1) _has_rn(1) _has_rd(1) Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m_option) _has_rm(1) _has_rn(1) _has_rd(1) Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m_option_s) _has_rm(1) _has_rn(1) _has_rd(1) Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m_imm3_option) _has_rm(1) _has_rn(1) _has_rd(1) Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m_ ## reg_prefix ## a) _has_rm(1) _has_rn(1) _has_rd(1)         Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m_s) _has_rm(1) _has_rn(1) _has_rd(1)          Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n_ ## reg_prefix ## m) _has_rm(1) _has_rn(1) _has_rd(1)            Y \
+    X(reg_prefix ## d_ ## reg_prefix ## n) _has_rn(1) _has_rd(1)               Y \
+    X(reg_prefix ## n) _has_rn(1)              Y \
+    X(reg_prefix ## d_crn_crm_op1_op2) _has_rd(1)
+#define AARCH64_DEFINE_VARIANTS(X, reg_prefix) AARCH64_DEFINE_VARIANTS_(X,, reg_prefix, AARCH64_DEFINE_VARIANTS_PARAM_EMPTY, AARCH64_DEFINE_VARIANTS_PARAM_EMPTY, AARCH64_DEFINE_VARIANTS_PARAM_EMPTY, AARCH64_DEFINE_VARIANTS_PARAM_EMPTY, AARCH64_DEFINE_VARIANTS_PARAM_EMPTY, AARCH64_DEFINE_VARIANTS_PARAM_EMPTY)
+
+#define AARCH64_DEFINE_VARIANT_KIND(X) AARCH64_VARIANT_KIND_ ## X,
+#define AARCH64_DEFINE_VARIANT_INSTR(X) X,
 
 typedef struct {
-    Aarch64_Instruction_Variant
+    uint32_t value;
+} AArch64_Instruction_Variant;
+
+typedef struct {
+    AArch64_Instruction_Variant
+        imm16,
+        imm26,
+        crm_op1_op2,
+        crm_op2,
+        crm,
+        imm19_cond,
+        xd_imm14_b40_b5,
+        wd_wn_wm_imms,
+        xd_xn_xm_imms,
+        AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_INSTR, w)
+        AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_INSTR, x)
+        AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_INSTR, b)
+        AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_INSTR, h)
+        AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_INSTR, d)
+        AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_INSTR, q)
+        AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_INSTR, s)
         noarg;
-} Aarch64_Instruction;
+} AArch64_Instruction;
 
 typedef enum {
-    X86_64_VARIANT_KIND_noarg,
+    AARCH64_VARIANT_KIND_imm16,
+    AARCH64_VARIANT_KIND_imm26,
+    AARCH64_VARIANT_KIND_imm19_cond,
+    AARCH64_VARIANT_KIND_noarg,
+    AARCH64_VARIANT_KIND_xd_imm14_b40_b5,
+
+    AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_KIND, w)
+    AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_KIND, x)
+    AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_KIND, b)
+    AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_KIND, h)
+    AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_KIND, d)
+    AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_KIND, q)
+    AARCH64_DEFINE_VARIANTS(AARCH64_DEFINE_VARIANT_KIND, s)
+
+    AARCH64_VARIANT_KIND_crm_op1_op2,
+    AARCH64_VARIANT_KIND_crm_op2,
+    AARCH64_VARIANT_KIND_crm,
 } AArch64_Variant_Kind;
 
+AArch64_Variant_Kind oc_aarch64_get_inverse_compare(unsigned int /* OPCODE */ opcode);
+void oc_aarch64_write_nop(OC_Machine_Code_Writer* b, unsigned char byte_count);
+void oc_aarch64_write_instruction(OC_Machine_Code_Writer* b, AArch64_Variant_Kind variant, AArch64_Instruction_Variant instruction, AArch64_Instruction_Parameters parameters);
+void oc_aarch64_run_tests(OC_Machine_Code_Writer* b);
+extern const AArch64_Instruction aarch64_instructions_table[];
+extern const long long int aarch64_instructions_table_size;
+extern const uint8_t aarch64_usable_gp_registers[];
+extern const long long int aarch64_usable_gp_registers_count;
 
+AArch64_Instruction_Variant oc_aarch64_get_variant(const AArch64_Instruction* inst, AArch64_Variant_Kind kind);
 
+#define OC_AARCH64_WRITE_INSTRUCTION(w, op, variant, parameters) oc_aarch64_write_instruction((OC_Machine_Code_Writer*)(w), AARCH64_VARIANT_KIND_ ## variant, aarch64_instructions_table[op] . variant, parameters)
+#define OC_AARCH64_WRITE_INSTRUCTION_DYN(w, op, variant, parameters) oc_aarch64_write_instruction((OC_Machine_Code_Writer*)(w), variant, oc_aarch64_get_variant(&aarch64_instructions_table[op], variant), parameters)
 
 #if OC_MACHINE_CODE_IMPLEMENTATION
 
@@ -2727,5 +3004,994 @@ X86_64_Instruction_Variant oc_x86_64_get_variant(const X86_64_Instruction* inst,
 #undef MAKE_VARIANT
     return result;
 }
+
+
+
+
+
+
+
+
+
+const AArch64_Instruction aarch64_instructions_table[] = {
+    [AARCH64_OPCODE_CBZ] = {
+        .wd_imm19 = { .value = 0x34000000u },
+        .xd_imm19 = { .value = 0xB4000000u },
+    },
+    [AARCH64_OPCODE_CBNZ] = {
+        .wd_imm19 = { .value = 0x35000000u },
+        .xd_imm19 = { .value = 0xB5000000u },
+    },
+    [AARCH64_OPCODE_TBZ] = {
+        .xd_imm14_b40_b5 = { .value = 0x36000000u },
+    },
+    [AARCH64_OPCODE_TBNZ] = {
+        .xd_imm14_b40_b5 = { .value = 0x37000000u },
+    },
+    [AARCH64_OPCODE_B_cond] = {
+        .imm19_cond = { .value = 0x54000000u },
+    },
+    [AARCH64_OPCODE_SVC] = {
+        .imm16 = { .value = 0xD4000001u },
+    },
+    [AARCH64_OPCODE_HVC] = {
+        .imm16 = { .value = 0xD4000002u },
+    },
+    [AARCH64_OPCODE_SMC] = {
+        .imm16 = { .value = 0xD4000003u },
+    },
+    [AARCH64_OPCODE_BRK] = {
+        .imm16 = { .value = 0xD4200000u },
+    },
+    [AARCH64_OPCODE_HLT] = {
+        .imm16 = { .value = 0xD4400000u },
+    },
+    [AARCH64_OPCODE_DCPS1] = {
+        .imm16 = { .value = 0xD4A00001u },
+    },
+    [AARCH64_OPCODE_DCPS2] = {
+        .imm16 = { .value = 0xD4A00002u },
+    },
+    [AARCH64_OPCODE_DCPS3] = {
+        .imm16 = { .value = 0xD4A00003u },
+    },
+    [AARCH64_OPCODE_MSR] = {
+        .crm_op1_op2 = { .value = 0xD500401Fu },
+        .xd_crn_crm_op1_op2 = { .value = 0xD5100000u },
+    },
+    [AARCH64_OPCODE_HINT] = {
+        .crm_op2 = { .value = 0xD503201Fu },
+    },
+    [AARCH64_OPCODE_CLREX] = {
+        .crm = { .value = 0xD503305Fu },
+    },
+    [AARCH64_OPCODE_DSB] = {
+        .crm = { .value = 0xD503309Fu },
+    },
+    [AARCH64_OPCODE_DMB] = {
+        .crm = { .value = 0xD50330BFu },
+    },
+    [AARCH64_OPCODE_ISB] = {
+        .crm = { .value = 0xD50330DFu },
+    },
+    [AARCH64_OPCODE_SYS] = {
+        .xd_crn_crm_op1_op2 = { .value = 0xD5080000u },
+    },
+    [AARCH64_OPCODE_SYSL] = {
+        .xd_crn_crm_op1_op2 = { .value = 0xD5280000u },
+    },
+    [AARCH64_OPCODE_MRS] = {
+        .xd_crn_crm_op1_op2 = { .value = 0xD5300000u },
+    },
+    [AARCH64_OPCODE_BR] = {
+        .xn = { .value = 0xD61F0000u },
+    },
+    [AARCH64_OPCODE_BLR] = {
+        .xn = { .value = 0xD63F0000u },
+    },
+    [AARCH64_OPCODE_RET] = {
+        .xn = { .value = 0xD65F0000u },
+    },
+    [AARCH64_OPCODE_ERET] = {
+        .noarg = { .value = 0xD69F03E0u },
+    },
+    [AARCH64_OPCODE_DRPS] = {
+        .noarg = { .value = 0xD6BF03E0u },
+    },
+    [AARCH64_OPCODE_B] = {
+        .imm26 = { .value = 0x14000000u },
+    },
+    [AARCH64_OPCODE_BL] = {
+        .imm26 = { .value = 0x94000000u },
+    },
+    [AARCH64_OPCODE_STXRB] = {
+        .xd_xd2_xn_xs = { .value = 0x8000000u },
+    },
+    [AARCH64_OPCODE_STLXRB] = {
+        .xd_xd2_xn_xs = { .value = 0x8008000u },
+    },
+    [AARCH64_OPCODE_LDXRB] = {
+        .xd_xd2_xn_xs = { .value = 0x8400000u },
+    },
+    [AARCH64_OPCODE_LDAXRB] = {
+        .xd_xd2_xn_xs = { .value = 0x8408000u },
+    },
+    [AARCH64_OPCODE_STLRB] = {
+        .xd_xd2_xn_xs = { .value = 0x8808000u },
+    },
+    [AARCH64_OPCODE_LDARB] = {
+        .xd_xd2_xn_xs = { .value = 0x8C08000u },
+    },
+    [AARCH64_OPCODE_STXRH] = {
+        .xd_xd2_xn_xs = { .value = 0x48000000u },
+    },
+    [AARCH64_OPCODE_STLXRH] = {
+        .xd_xd2_xn_xs = { .value = 0x48008000u },
+    },
+    [AARCH64_OPCODE_LDXRH] = {
+        .xd_xd2_xn_xs = { .value = 0x48400000u },
+    },
+    [AARCH64_OPCODE_LDAXRH] = {
+        .xd_xd2_xn_xs = { .value = 0x48408000u },
+    },
+    [AARCH64_OPCODE_STLRH] = {
+        .xd_xd2_xn_xs = { .value = 0x48808000u },
+    },
+    [AARCH64_OPCODE_LDARH] = {
+        .xd_xd2_xn_xs = { .value = 0x48C08000u },
+    },
+    [AARCH64_OPCODE_STXR] = {
+        .wd_wd2_wn_ws = { .value = 0x88000000u },
+        .xd_xd2_xn_xs = { .value = 0xC8000000u },
+    },
+    [AARCH64_OPCODE_STLXR] = {
+        .wd_wd2_wn_ws = { .value = 0x88008000u },
+        .xd_xd2_xn_xs = { .value = 0xC8008000u },
+    },
+    [AARCH64_OPCODE_STXP] = {
+        .wd_wd2_wn_ws = { .value = 0x88200000u },
+        .xd_xd2_xn_xs = { .value = 0xC8200000u },
+    },
+    [AARCH64_OPCODE_STLXP] = {
+        .wd_wd2_wn_ws = { .value = 0x88208000u },
+        .xd_xd2_xn_xs = { .value = 0xC8208000u },
+    },
+    [AARCH64_OPCODE_LDXR] = {
+        .wd_wd2_wn_ws = { .value = 0x88400000u },
+        .xd_xd2_xn_xs = { .value = 0xC8400000u },
+    },
+    [AARCH64_OPCODE_LDAXR] = {
+        .wd_wd2_wn_ws = { .value = 0x88408000u },
+        .xd_xd2_xn_xs = { .value = 0xC8408000u },
+    },
+    [AARCH64_OPCODE_LDXP] = {
+        .wd_wd2_wn_ws = { .value = 0x88600000u },
+        .xd_xd2_xn_xs = { .value = 0xC8600000u },
+    },
+    [AARCH64_OPCODE_LDAXP] = {
+        .wd_wd2_wn_ws = { .value = 0x88608000u },
+        .xd_xd2_xn_xs = { .value = 0xC8608000u },
+    },
+    [AARCH64_OPCODE_STLR] = {
+        .wd_wd2_wn_ws = { .value = 0x88808000u },
+        .xd_xd2_xn_xs = { .value = 0xC8808000u },
+    },
+    [AARCH64_OPCODE_LDAR] = {
+        .wd_wd2_wn_ws = { .value = 0x88C08000u },
+        .xd_xd2_xn_xs = { .value = 0xC8C08000u },
+    },
+    [AARCH64_OPCODE_LDR] = {
+        .wd_imm19 = { .value = 0x18000000u },
+        .sd_imm19 = { .value = 0x1C000000u },
+        .xd_imm19 = { .value = 0x58000000u },
+        .dd_imm19 = { .value = 0x5C000000u },
+        .qd_imm19 = { .value = 0x9C000000u },
+        .bd_bn_imm12 = { .value = 0x3D400000u },
+        .qd_qn_imm12 = { .value = 0x3DC00000u },
+        .hd_hn_imm12 = { .value = 0x7D400000u },
+        .wd_wn_imm12 = { .value = 0xB9400000u },
+        .sd_sn_imm12 = { .value = 0xBD400000u },
+        .xd_xn_imm12 = { .value = 0xF9400000u },
+        .dd_dn_imm12 = { .value = 0xFD400000u },
+    },
+    [AARCH64_OPCODE_LDRSW] = {
+        .xd_imm19 = { .value = 0x98000000u },
+        .xd_xn_imm12 = { .value = 0xB9800000u },
+    },
+    [AARCH64_OPCODE_PRFM] = {
+        .xd_imm19 = { .value = 0xD8000000u },
+        .xd_xn_imm12 = { .value = 0xF9800000u },
+    },
+    [AARCH64_OPCODE_STNP] = {
+        .wd_wd2_wn_imm7 = { .value = 0x28000000u },
+        .sd_sd2_sn_imm7 = { .value = 0x2C000000u },
+        .dd_dd2_dn_imm7 = { .value = 0x6C000000u },
+        .xd_xd2_xn_imm7 = { .value = 0xA8000000u },
+        .qd_qd2_qn_imm7 = { .value = 0xAC000000u },
+    },
+    [AARCH64_OPCODE_LDNP] = {
+        .wd_wd2_wn_imm7 = { .value = 0x28400000u },
+        .sd_sd2_sn_imm7 = { .value = 0x2C400000u },
+        .dd_dd2_dn_imm7 = { .value = 0x6C400000u },
+        .xd_xd2_xn_imm7 = { .value = 0xA8400000u },
+        .qd_qd2_qn_imm7 = { .value = 0xAC400000u },
+    },
+    [AARCH64_OPCODE_STP_post] = {
+        .wd_wd2_wn_imm7 = { .value = 0x28800000u },
+        .sd_sd2_sn_imm7 = { .value = 0x2C800000u },
+        .dd_dd2_dn_imm7 = { .value = 0x6C800000u },
+        .xd_xd2_xn_imm7 = { .value = 0xA8800000u },
+        .qd_qd2_qn_imm7 = { .value = 0xAC800000u },
+    },
+    [AARCH64_OPCODE_LDP_post] = {
+        .wd_wd2_wn_imm7 = { .value = 0x28C00000u },
+        .sd_sd2_sn_imm7 = { .value = 0x2CC00000u },
+        .dd_dd2_dn_imm7 = { .value = 0x6CC00000u },
+        .xd_xd2_xn_imm7 = { .value = 0xA8C00000u },
+        .qd_qd2_qn_imm7 = { .value = 0xACC00000u },
+    },
+    [AARCH64_OPCODE_LDPSW_post] = {
+        .xd_xd2_xn_imm7 = { .value = 0x68C00000u },
+    },
+    [AARCH64_OPCODE_STP_off] = {
+        .wd_wd2_wn_imm7 = { .value = 0x29000000u },
+        .sd_sd2_sn_imm7 = { .value = 0x2D000000u },
+        .dd_dd2_dn_imm7 = { .value = 0x6D000000u },
+        .xd_xd2_xn_imm7 = { .value = 0xA9000000u },
+        .qd_qd2_qn_imm7 = { .value = 0xAD000000u },
+    },
+    [AARCH64_OPCODE_LDP_off] = {
+        .wd_wd2_wn_imm7 = { .value = 0x29400000u },
+        .sd_sd2_sn_imm7 = { .value = 0x2D400000u },
+        .dd_dd2_dn_imm7 = { .value = 0x6D400000u },
+        .xd_xd2_xn_imm7 = { .value = 0xA9400000u },
+        .qd_qd2_qn_imm7 = { .value = 0xAD400000u },
+    },
+    [AARCH64_OPCODE_LDPSW_off] = {
+        .xd_xd2_xn_imm7 = { .value = 0x69400000u },
+    },
+    [AARCH64_OPCODE_STP_pre] = {
+        .wd_wd2_wn_imm7 = { .value = 0x29800000u },
+        .sd_sd2_sn_imm7 = { .value = 0x2D800000u },
+        .dd_dd2_dn_imm7 = { .value = 0x6D800000u },
+        .xd_xd2_xn_imm7 = { .value = 0xA9800000u },
+        .qd_qd2_qn_imm7 = { .value = 0xAD800000u },
+    },
+    [AARCH64_OPCODE_LDP_pre] = {
+        .wd_wd2_wn_imm7 = { .value = 0x29C00000u },
+        .sd_sd2_sn_imm7 = { .value = 0x2DC00000u },
+        .dd_dd2_dn_imm7 = { .value = 0x6DC00000u },
+        .xd_xd2_xn_imm7 = { .value = 0xA9C00000u },
+        .qd_qd2_qn_imm7 = { .value = 0xADC00000u },
+    },
+    [AARCH64_OPCODE_LDPSW_pre] = {
+        .xd_xd2_xn_imm7 = { .value = 0x69C00000u },
+    },
+    [AARCH64_OPCODE_STURB] = {
+        .xd_xn_imm9 = { .value = 0x38000000u },
+    },
+    [AARCH64_OPCODE_LDURB] = {
+        .xd_xn_imm9 = { .value = 0x38400000u },
+    },
+    [AARCH64_OPCODE_LDURSB] = {
+        .xd_xn_imm9 = { .value = 0x38800000u },
+        .wd_wn_imm9 = { .value = 0x38C00000u },
+    },
+    [AARCH64_OPCODE_STUR] = {
+        .bd_bn_imm9 = { .value = 0x3C000000u },
+        .qd_qn_imm9 = { .value = 0x3C800000u },
+        .hd_hn_imm9 = { .value = 0x7C000000u },
+        .wd_wn_imm9 = { .value = 0xB8000000u },
+        .sd_sn_imm9 = { .value = 0xBC000000u },
+        .xd_xn_imm9 = { .value = 0xF8000000u },
+        .dd_dn_imm9 = { .value = 0xFC000000u },
+    },
+    [AARCH64_OPCODE_LDUR] = {
+        .bd_bn_imm9 = { .value = 0x3C400000u },
+        .qd_qn_imm9 = { .value = 0x3CC00000u },
+        .hd_hn_imm9 = { .value = 0x7C400000u },
+        .wd_wn_imm9 = { .value = 0xB8400000u },
+        .sd_sn_imm9 = { .value = 0xBC400000u },
+        .xd_xn_imm9 = { .value = 0xF8400000u },
+        .dd_dn_imm9 = { .value = 0xFC400000u },
+    },
+    [AARCH64_OPCODE_STURH] = {
+        .xd_xn_imm9 = { .value = 0x78000000u },
+    },
+    [AARCH64_OPCODE_LDURH] = {
+        .xd_xn_imm9 = { .value = 0x78400000u },
+    },
+    [AARCH64_OPCODE_LDURSH] = {
+        .xd_xn_imm9 = { .value = 0x78800000u },
+        .wd_wn_imm9 = { .value = 0x78C00000u },
+    },
+    [AARCH64_OPCODE_LDURSW] = {
+        .xd_xn_imm9 = { .value = 0xB8800000u },
+    },
+    [AARCH64_OPCODE_PRFUM] = {
+        .xd_xn_imm9 = { .value = 0xF8800000u },
+    },
+    [AARCH64_OPCODE_STRB_post] = {
+        .xd_xn_imm9 = { .value = 0x38000400u },
+    },
+    [AARCH64_OPCODE_LDRB_post] = {
+        .xd_xn_imm9 = { .value = 0x38400400u },
+    },
+    [AARCH64_OPCODE_LDRSB_post] = {
+        .xd_xn_imm9 = { .value = 0x38800400u },
+        .wd_wn_imm9 = { .value = 0x38C00400u },
+    },
+    [AARCH64_OPCODE_STR_post] = {
+        .bd_bn_imm9 = { .value = 0x3C000400u },
+        .qd_qn_imm9 = { .value = 0x3C800400u },
+        .hd_hn_imm9 = { .value = 0x7C000400u },
+        .wd_wn_imm9 = { .value = 0xB8000400u },
+        .sd_sn_imm9 = { .value = 0xBC000400u },
+        .xd_xn_imm9 = { .value = 0xF8000400u },
+        .dd_dn_imm9 = { .value = 0xFC000400u },
+    },
+    [AARCH64_OPCODE_LDR_post] = {
+        .bd_bn_imm9 = { .value = 0x3C400400u },
+        .qd_qn_imm9 = { .value = 0x3CC00400u },
+        .hd_hn_imm9 = { .value = 0x7C400400u },
+        .wd_wn_imm9 = { .value = 0xB8400400u },
+        .sd_sn_imm9 = { .value = 0xBC400400u },
+        .xd_xn_imm9 = { .value = 0xF8400400u },
+        .dd_dn_imm9 = { .value = 0xFC400400u },
+    },
+    [AARCH64_OPCODE_STRH_post] = {
+        .xd_xn_imm9 = { .value = 0x78000400u },
+    },
+    [AARCH64_OPCODE_LDRH_post] = {
+        .xd_xn_imm9 = { .value = 0x78400400u },
+    },
+    [AARCH64_OPCODE_LDRSH_post] = {
+        .xd_xn_imm9 = { .value = 0x78800400u },
+        .wd_wn_imm9 = { .value = 0x78C00400u },
+    },
+    [AARCH64_OPCODE_LDRSW_post] = {
+        .xd_xn_imm9 = { .value = 0xB8800400u },
+    },
+    [AARCH64_OPCODE_STTRB] = {
+        .xd_xn_imm9 = { .value = 0x38000800u },
+    },
+    [AARCH64_OPCODE_LDTRB] = {
+        .xd_xn_imm9 = { .value = 0x38400800u },
+    },
+    [AARCH64_OPCODE_LDTRSB] = {
+        .xd_xn_imm9 = { .value = 0x38800800u },
+        .wd_wn_imm9 = { .value = 0x38C00800u },
+    },
+    [AARCH64_OPCODE_STTRH] = {
+        .xd_xn_imm9 = { .value = 0x78000800u },
+    },
+    [AARCH64_OPCODE_LDTRH] = {
+        .xd_xn_imm9 = { .value = 0x78400800u },
+    },
+    [AARCH64_OPCODE_LDTRSH] = {
+        .xd_xn_imm9 = { .value = 0x78800800u },
+        .wd_wn_imm9 = { .value = 0x78C00800u },
+    },
+    [AARCH64_OPCODE_STTR] = {
+        .wd_wn_imm9 = { .value = 0xB8000800u },
+        .xd_xn_imm9 = { .value = 0xF8000800u },
+    },
+    [AARCH64_OPCODE_LDTR] = {
+        .wd_wn_imm9 = { .value = 0xB8400800u },
+        .xd_xn_imm9 = { .value = 0xF8400800u },
+    },
+    [AARCH64_OPCODE_LDTRSW] = {
+        .xd_xn_imm9 = { .value = 0xB8800800u },
+    },
+    [AARCH64_OPCODE_STRB_pre] = {
+        .xd_xn_imm9 = { .value = 0x38000C00u },
+    },
+    [AARCH64_OPCODE_LDRB_pre] = {
+        .xd_xn_imm9 = { .value = 0x38400C00u },
+    },
+    [AARCH64_OPCODE_LDRSB_pre] = {
+        .xd_xn_imm9 = { .value = 0x38800C00u },
+        .wd_wn_imm9 = { .value = 0x38C00C00u },
+    },
+    [AARCH64_OPCODE_STR_pre] = {
+        .bd_bn_imm9 = { .value = 0x3C000C00u },
+        .qd_qn_imm9 = { .value = 0x3C800C00u },
+        .hd_hn_imm9 = { .value = 0x7C000C00u },
+        .wd_wn_imm9 = { .value = 0xB8000C00u },
+        .sd_sn_imm9 = { .value = 0xBC000C00u },
+        .xd_xn_imm9 = { .value = 0xF8000C00u },
+        .dd_dn_imm9 = { .value = 0xFC000C00u },
+    },
+    [AARCH64_OPCODE_LDR_pre] = {
+        .bd_bn_imm9 = { .value = 0x3C400C00u },
+        .qd_qn_imm9 = { .value = 0x3CC00C00u },
+        .hd_hn_imm9 = { .value = 0x7C400C00u },
+        .wd_wn_imm9 = { .value = 0xB8400C00u },
+        .sd_sn_imm9 = { .value = 0xBC400C00u },
+        .xd_xn_imm9 = { .value = 0xF8400C00u },
+        .dd_dn_imm9 = { .value = 0xFC400C00u },
+    },
+    [AARCH64_OPCODE_STRH_pre] = {
+        .xd_xn_imm9 = { .value = 0x78000C00u },
+    },
+    [AARCH64_OPCODE_LDRH_pre] = {
+        .xd_xn_imm9 = { .value = 0x78400C00u },
+    },
+    [AARCH64_OPCODE_LDRSH_pre] = {
+        .xd_xn_imm9 = { .value = 0x78800C00u },
+        .wd_wn_imm9 = { .value = 0x78C00C00u },
+    },
+    [AARCH64_OPCODE_LDRSW_pre] = {
+        .xd_xn_imm9 = { .value = 0xB8800C00u },
+    },
+    [AARCH64_OPCODE_STRB_off] = {
+        .xd_xn_xm_option_s = { .value = 0x38200800u },
+    },
+    [AARCH64_OPCODE_LDRB_off] = {
+        .xd_xn_xm_option_s = { .value = 0x38600800u },
+    },
+    [AARCH64_OPCODE_LDRSB_off] = {
+        .xd_xn_xm_option_s = { .value = 0x38A00800u },
+        .wd_wn_wm_option_s = { .value = 0x38E00800u },
+    },
+    [AARCH64_OPCODE_STR_off] = {
+        .bd_bn_bm_option_s = { .value = 0x3C200800u },
+        .qd_qn_qm_option_s = { .value = 0x3CA00800u },
+        .hd_hn_hm_option_s = { .value = 0x7C200800u },
+        .wd_wn_wm_option_s = { .value = 0xB8200800u },
+        .sd_sn_sm_option_s = { .value = 0xBC200800u },
+        .xd_xn_xm_option_s = { .value = 0xF8200800u },
+        .dd_dn_dm_option_s = { .value = 0xFC200800u },
+    },
+    [AARCH64_OPCODE_LDR_off] = {
+        .bd_bn_bm_option_s = { .value = 0x3C600800u },
+        .qd_qn_qm_option_s = { .value = 0x3CE00800u },
+        .hd_hn_hm_option_s = { .value = 0x7C600800u },
+        .wd_wn_wm_option_s = { .value = 0xB8600800u },
+        .sd_sn_sm_option_s = { .value = 0xBC600800u },
+        .xd_xn_xm_option_s = { .value = 0xF8600800u },
+        .dd_dn_dm_option_s = { .value = 0xFC600800u },
+    },
+    [AARCH64_OPCODE_STRH_off] = {
+        .xd_xn_xm_option_s = { .value = 0x78200800u },
+    },
+    [AARCH64_OPCODE_LDRH_off] = {
+        .xd_xn_xm_option_s = { .value = 0x78600800u },
+    },
+    [AARCH64_OPCODE_LDRSH_off] = {
+        .xd_xn_xm_option_s = { .value = 0x78A00800u },
+        .wd_wn_wm_option_s = { .value = 0x78E00800u },
+    },
+    [AARCH64_OPCODE_LDRSW_off] = {
+        .xd_xn_xm_option_s = { .value = 0xB8A00800u },
+    },
+    [AARCH64_OPCODE_PRFM_off] = {
+        .xd_xn_xm_option_s = { .value = 0xF8A00800u },
+    },
+    [AARCH64_OPCODE_STRB] = {
+        .xd_xn_imm12 = { .value = 0x39000000u },
+    },
+    [AARCH64_OPCODE_LDRB] = {
+        .xd_xn_imm12 = { .value = 0x39400000u },
+    },
+    [AARCH64_OPCODE_LDRSB] = {
+        .xd_xn_imm12 = { .value = 0x39800000u },
+        .wd_wn_imm12 = { .value = 0x39C00000u },
+    },
+    [AARCH64_OPCODE_STR] = {
+        .bd_bn_imm12 = { .value = 0x3D000000u },
+        .qd_qn_imm12 = { .value = 0x3D800000u },
+        .hd_hn_imm12 = { .value = 0x7D000000u },
+        .wd_wn_imm12 = { .value = 0xB9000000u },
+        .sd_sn_imm12 = { .value = 0xBD000000u },
+        .xd_xn_imm12 = { .value = 0xF9000000u },
+        .dd_dn_imm12 = { .value = 0xFD000000u },
+    },
+    [AARCH64_OPCODE_STRH] = {
+        .xd_xn_imm12 = { .value = 0x79000000u },
+    },
+    [AARCH64_OPCODE_LDRH] = {
+        .xd_xn_imm12 = { .value = 0x79400000u },
+    },
+    [AARCH64_OPCODE_LDRSH] = {
+        .xd_xn_imm12 = { .value = 0x79800000u },
+        .wd_wn_imm12 = { .value = 0x79C00000u },
+    },
+    [AARCH64_OPCODE_ADR] = {
+        .xd_immhi_immlo = { .value = 0x10000000u },
+    },
+    [AARCH64_OPCODE_ADRP] = {
+        .xd_immhi_immlo = { .value = 0x90000000u },
+    },
+    [AARCH64_OPCODE_ADD] = {
+        .wd_wn_imm12_shift = { .value = 0x11000000u },
+        .xd_xn_imm12_shift = { .value = 0x91000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0xB000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0x8B000000u },
+        .wd_wn_wm_imm3_option = { .value = 0xB200000u },
+        .xd_xn_xm_imm3_option = { .value = 0x8B200000u },
+    },
+    [AARCH64_OPCODE_ADDS] = {
+        .wd_wn_imm12_shift = { .value = 0x31000000u },
+        .xd_xn_imm12_shift = { .value = 0xB1000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0x2B000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xAB000000u },
+        .wd_wn_wm_imm3_option = { .value = 0x2B200000u },
+        .xd_xn_xm_imm3_option = { .value = 0xAB200000u },
+    },
+    [AARCH64_OPCODE_SUB] = {
+        .wd_wn_imm12_shift = { .value = 0x51000000u },
+        .xd_xn_imm12_shift = { .value = 0xD1000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0x4B000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xCB000000u },
+        .wd_wn_wm_imm3_option = { .value = 0x4B200000u },
+        .xd_xn_xm_imm3_option = { .value = 0xCB200000u },
+    },
+    [AARCH64_OPCODE_SUBS] = {
+        .wd_wn_imm12_shift = { .value = 0x71000000u },
+        .xd_xn_imm12_shift = { .value = 0xF1000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0x6B000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xEB000000u },
+        .wd_wn_wm_imm3_option = { .value = 0x6B200000u },
+        .xd_xn_xm_imm3_option = { .value = 0xEB200000u },
+    },
+    [AARCH64_OPCODE_AND] = {
+        .wd_wn_imms_immr = { .value = 0x12000000u },
+        .xd_xn_imms_immr_n = { .value = 0x92000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0xA000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0x8A000000u },
+    },
+    [AARCH64_OPCODE_MOV] = {
+        .wd_wn_imms_immr = { .value = 0x32000000u },
+        .xd_xn_imms_immr_n = { .value = 0xB2000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0x2A000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xAA000000u },
+    },
+    [AARCH64_OPCODE_ORR] = {
+        .wd_wn_imms_immr = { .value = 0x32000000u },
+        .xd_xn_imms_immr_n = { .value = 0xB2000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0x2A000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xAA000000u },
+    },
+    [AARCH64_OPCODE_EOR] = {
+        .wd_wn_imms_immr = { .value = 0x52000000u },
+        .xd_xn_imms_immr_n = { .value = 0xD2000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0x4A000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xCA000000u },
+    },
+    [AARCH64_OPCODE_ANDS] = {
+        .wd_wn_imms_immr = { .value = 0x72000000u },
+        .xd_xn_imms_immr_n = { .value = 0xF2000000u },
+        .wd_wn_wm_imm6_shift = { .value = 0x6A000000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xEA000000u },
+    },
+    [AARCH64_OPCODE_MOVN] = {
+        .wd_imm16_hw = { .value = 0x12800000u },
+        .xd_imm16_hw = { .value = 0x92800000u },
+    },
+    [AARCH64_OPCODE_MOVZ] = {
+        .wd_imm16_hw = { .value = 0x52800000u },
+        .xd_imm16_hw = { .value = 0xD2800000u },
+    },
+    [AARCH64_OPCODE_MOVK] = {
+        .wd_imm16_hw = { .value = 0x72800000u },
+        .xd_imm16_hw = { .value = 0xF2800000u },
+    },
+    [AARCH64_OPCODE_SBFM] = {
+        .wd_wn_imms_immr = { .value = 0x13000000u },
+        .xd_xn_imms_immr = { .value = 0x93400000u },
+    },
+    [AARCH64_OPCODE_BFM] = {
+        .wd_wn_imms_immr = { .value = 0x33000000u },
+        .xd_xn_imms_immr = { .value = 0xB3400000u },
+    },
+    [AARCH64_OPCODE_UBFM] = {
+        .wd_wn_imms_immr = { .value = 0x53000000u },
+        .xd_xn_imms_immr = { .value = 0xD3400000u },
+    },
+    [AARCH64_OPCODE_EXTR] = {
+        .wd_wn_wm_imms = { .value = 0x13800000u },
+        .xd_xn_xm_imms = { .value = 0x93C08000u },
+    },
+    [AARCH64_OPCODE_BIC] = {
+        .wd_wn_wm_imm6_shift = { .value = 0xA200000u },
+        .xd_xn_xm_imm6_shift = { .value = 0x8A200000u },
+    },
+    [AARCH64_OPCODE_ORN] = {
+        .wd_wn_wm_imm6_shift = { .value = 0x2A200000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xAA200000u },
+    },
+    [AARCH64_OPCODE_EON] = {
+        .wd_wn_wm_imm6_shift = { .value = 0x4A200000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xCA200000u },
+    },
+    [AARCH64_OPCODE_BICS] = {
+        .wd_wn_wm_imm6_shift = { .value = 0x6A200000u },
+        .xd_xn_xm_imm6_shift = { .value = 0xEA200000u },
+    },
+    [AARCH64_OPCODE_ADC] = {
+        .wd_wn_wm = { .value = 0x1A000000u },
+        .xd_xn_xm = { .value = 0x9A000000u },
+    },
+    [AARCH64_OPCODE_ADCS] = {
+        .wd_wn_wm = { .value = 0x3A000000u },
+        .xd_xn_xm = { .value = 0xBA000000u },
+    },
+    [AARCH64_OPCODE_SBC] = {
+        .wd_wn_wm = { .value = 0x5A000000u },
+        .xd_xn_xm = { .value = 0xDA000000u },
+    },
+    [AARCH64_OPCODE_SBCS] = {
+        .wd_wn_wm = { .value = 0x7A000000u },
+        .xd_xn_xm = { .value = 0xFA000000u },
+    },
+    [AARCH64_OPCODE_CCMN] = {
+        .wn_nzcv_imm5_cond = { .value = 0x3A400000u },
+        .xn_nzcv_imm5_cond = { .value = 0xBA400000u },
+    },
+    [AARCH64_OPCODE_CCMP] = {
+        .wn_nzcv_imm5_cond = { .value = 0x7A400000u },
+        .xn_nzcv_imm5_cond = { .value = 0xFA400000u },
+    },
+    [AARCH64_OPCODE_CSEL] = {
+        .wd_wn_wm_cond = { .value = 0x1A800000u },
+        .xd_xn_xm_cond = { .value = 0x9A800000u },
+    },
+    [AARCH64_OPCODE_CSINC] = {
+        .wd_wn_wm_cond = { .value = 0x1A800400u },
+        .xd_xn_xm_cond = { .value = 0x9A800400u },
+    },
+    [AARCH64_OPCODE_CSINV] = {
+        .wd_wn_wm_cond = { .value = 0x5A800000u },
+        .xd_xn_xm_cond = { .value = 0xDA800000u },
+    },
+    [AARCH64_OPCODE_CSNEG] = {
+        .wd_wn_wm_cond = { .value = 0x5A800400u },
+        .xd_xn_xm_cond = { .value = 0xDA800400u },
+    },
+    [AARCH64_OPCODE_MADD] = {
+        .wd_wn_wm_wa = { .value = 0x1B000000u },
+        .xd_xn_xm_xa = { .value = 0x9B000000u },
+    },
+    [AARCH64_OPCODE_SMADDL] = {
+        .xd_xn_xm_xa = { .value = 0x9B200000u },
+    },
+    [AARCH64_OPCODE_UMADDL] = {
+        .xd_xn_xm_xa = { .value = 0x9BA00000u },
+    },
+    [AARCH64_OPCODE_MSUB] = {
+        .wd_wn_wm_wa = { .value = 0x1B008000u },
+        .xd_xn_xm_xa = { .value = 0x9B008000u },
+    },
+    [AARCH64_OPCODE_SMSUBL] = {
+        .xd_xn_xm_xa = { .value = 0x9B208000u },
+    },
+    [AARCH64_OPCODE_UMSUBL] = {
+        .xd_xn_xm_xa = { .value = 0x9BA08000u },
+    },
+    [AARCH64_OPCODE_SMULH] = {
+        .xd_xn_xm_xa = { .value = 0x9B400000u },
+    },
+    [AARCH64_OPCODE_UMULH] = {
+        .xd_xn_xm_xa = { .value = 0x9BC00000u },
+    },
+    [AARCH64_OPCODE_CRC32X] = {
+        .xd_xn_xm = { .value = 0x9AC04C00u },
+    },
+    [AARCH64_OPCODE_CRC32CX] = {
+        .xd_xn_xm = { .value = 0x9AC05C00u },
+    },
+    [AARCH64_OPCODE_CRC32B] = {
+        .xd_xn_xm = { .value = 0x1AC04000u },
+    },
+    [AARCH64_OPCODE_CRC32CB] = {
+        .xd_xn_xm = { .value = 0x1AC05000u },
+    },
+    [AARCH64_OPCODE_CRC32H] = {
+        .xd_xn_xm = { .value = 0x1AC04400u },
+    },
+    [AARCH64_OPCODE_CRC32CH] = {
+        .xd_xn_xm = { .value = 0x1AC05400u },
+    },
+    [AARCH64_OPCODE_CRC32W] = {
+        .xd_xn_xm = { .value = 0x1AC04800u },
+    },
+    [AARCH64_OPCODE_CRC32CW] = {
+        .xd_xn_xm = { .value = 0x1AC05800u },
+    },
+    [AARCH64_OPCODE_UDIV] = {
+        .wd_wn_wm = { .value = 0x1AC00800u },
+        .xd_xn_xm = { .value = 0x9AC00800u },
+    },
+    [AARCH64_OPCODE_SDIV] = {
+        .wd_wn_wm = { .value = 0x1AC00C00u },
+        .xd_xn_xm = { .value = 0x9AC00C00u },
+    },
+    [AARCH64_OPCODE_LSLV] = {
+        .wd_wn_wm = { .value = 0x1AC02000u },
+        .xd_xn_xm = { .value = 0x9AC02000u },
+    },
+    [AARCH64_OPCODE_LSRV] = {
+        .wd_wn_wm = { .value = 0x1AC02400u },
+        .xd_xn_xm = { .value = 0x9AC02400u },
+    },
+    [AARCH64_OPCODE_ASRV] = {
+        .wd_wn_wm = { .value = 0x1AC02800u },
+        .xd_xn_xm = { .value = 0x9AC02800u },
+    },
+    [AARCH64_OPCODE_RORV] = {
+        .wd_wn_wm = { .value = 0x1AC02C00u },
+        .xd_xn_xm = { .value = 0x9AC02C00u },
+    },
+    [AARCH64_OPCODE_RBIT] = {
+        .wd_wn = { .value = 0x5AC00000u },
+        .xd_xn = { .value = 0xDAC00000u },
+    },
+    [AARCH64_OPCODE_CLZ] = {
+        .wd_wn = { .value = 0x5AC01000u },
+        .xd_xn = { .value = 0xDAC01000u },
+    },
+    [AARCH64_OPCODE_CLS] = {
+        .wd_wn = { .value = 0x5AC01400u },
+        .xd_xn = { .value = 0xDAC01400u },
+    },
+    [AARCH64_OPCODE_REV] = {
+        .wd_wn = { .value = 0x5AC00800u },
+        .xd_xn = { .value = 0xDAC00C00u },
+    },
+    [AARCH64_OPCODE_REV16] = {
+        .wd_wn = { .value = 0xDAC00400u },
+        .xd_xn = { .value = 0x5AC00400u },
+    },
+    [AARCH64_OPCODE_REV32] = {
+        .xd_xn = { .value = 0xDAC00800u },
+    },
+};
+
+
+const long long int aarch64_instructions_table_size = sizeof(aarch64_instructions_table);
+
+
+AArch64_Variant_Kind oc_aarch64_get_inverse_compare(unsigned int /* OPCODE */ opcode) {
+    (void)opcode;
+
+    return 0;
+}
+
+void oc_aarch64_write_nop(OC_Machine_Code_Writer* b, unsigned char byte_count) {
+    assert(byte_count == 4);
+    // b->append_u32();
+    OC_AARCH64_WRITE_INSTRUCTION(b, AARCH64_OPCODE_MOV, xd_xn_xm_shift, ((AArch64_Instruction_Parameters) { 0 }));
+}
+
+void oc_aarch64_write_instruction(OC_Machine_Code_Writer* b, AArch64_Variant_Kind variant, AArch64_Instruction_Variant instruction, AArch64_Instruction_Parameters parameters) {
+    unsigned int value = instruction.value | parameters.word;
+
+    unsigned int imm_offset = 0;
+    unsigned int imm_size = 0;
+
+    unsigned int cond_offset = 0;
+    unsigned int shift_offset = 22;
+    unsigned int shift_mask = 0b11;
+
+    switch (variant) {
+    case AARCH64_VARIANT_KIND_wd_wn_wm_option_s:
+    case AARCH64_VARIANT_KIND_xd_xn_xm_option_s:
+    case AARCH64_VARIANT_KIND_bd_bn_bm_option_s:
+    case AARCH64_VARIANT_KIND_hd_hn_hm_option_s:
+    case AARCH64_VARIANT_KIND_dd_dn_dm_option_s:
+    case AARCH64_VARIANT_KIND_qd_qn_qm_option_s:
+    case AARCH64_VARIANT_KIND_sd_sn_sm_option_s:
+        shift_mask = 0b1u;
+        shift_offset = 22u;
+        // fallthrough
+
+    case AARCH64_VARIANT_KIND_wd_wn_wm_imm3_option:
+    case AARCH64_VARIANT_KIND_xd_xn_xm_imm3_option:
+    case AARCH64_VARIANT_KIND_bd_bn_bm_imm3_option:
+    case AARCH64_VARIANT_KIND_hd_hn_hm_imm3_option:
+    case AARCH64_VARIANT_KIND_dd_dn_dm_imm3_option:
+    case AARCH64_VARIANT_KIND_qd_qn_qm_imm3_option:
+    case AARCH64_VARIANT_KIND_sd_sn_sm_imm3_option:
+
+    case AARCH64_VARIANT_KIND_wd_wn_wm_option:
+    case AARCH64_VARIANT_KIND_xd_xn_xm_option:
+    case AARCH64_VARIANT_KIND_bd_bn_bm_option:
+    case AARCH64_VARIANT_KIND_hd_hn_hm_option:
+    case AARCH64_VARIANT_KIND_dd_dn_dm_option:
+    case AARCH64_VARIANT_KIND_qd_qn_qm_option:
+    case AARCH64_VARIANT_KIND_sd_sn_sm_option:
+        if (!parameters.option) value |= (0b110u << 13);
+        else value |= (parameters.option << 13);
+        break;
+    default: break;
+    }
+
+    switch (variant) {
+    case AARCH64_VARIANT_KIND_wd_immhi_immlo:
+    case AARCH64_VARIANT_KIND_xd_immhi_immlo:
+    case AARCH64_VARIANT_KIND_bd_immhi_immlo:
+    case AARCH64_VARIANT_KIND_hd_immhi_immlo:
+    case AARCH64_VARIANT_KIND_dd_immhi_immlo:
+    case AARCH64_VARIANT_KIND_qd_immhi_immlo:
+    case AARCH64_VARIANT_KIND_sd_immhi_immlo:
+        value = (parameters.immediate & 0b11u) << 29u;
+        value = ((parameters.immediate >> 2u) & 0b1111111111111111111u) << 5u;
+        break;
+
+    case AARCH64_VARIANT_KIND_wd_wn_imms_immr_n:
+    case AARCH64_VARIANT_KIND_xd_xn_imms_immr_n:
+    case AARCH64_VARIANT_KIND_bd_bn_imms_immr_n:
+    case AARCH64_VARIANT_KIND_hd_hn_imms_immr_n:
+    case AARCH64_VARIANT_KIND_dd_dn_imms_immr_n:
+    case AARCH64_VARIANT_KIND_qd_qn_imms_immr_n:
+    case AARCH64_VARIANT_KIND_sd_sn_imms_immr_n:
+        value = (parameters.immediate & 0b111111u) << 10u;
+        value = ((parameters.immediate >> 6u) & 0b111111u) << 16u;
+        value = ((parameters.immediate >> 12u) & 0b1u) << 22u;
+        break;
+
+    case AARCH64_VARIANT_KIND_wd_wn_imms_immr:
+    case AARCH64_VARIANT_KIND_xd_xn_imms_immr:
+    case AARCH64_VARIANT_KIND_bd_bn_imms_immr:
+    case AARCH64_VARIANT_KIND_hd_hn_imms_immr:
+    case AARCH64_VARIANT_KIND_dd_dn_imms_immr:
+    case AARCH64_VARIANT_KIND_qd_qn_imms_immr:
+    case AARCH64_VARIANT_KIND_sd_sn_imms_immr:
+        value = (parameters.immediate & 0b111111u) << 10u;
+        value = ((parameters.immediate >> 6u) & 0b111111u) << 10u;
+        break;
+
+    case AARCH64_VARIANT_KIND_wd_wn_wm_imm3_option:
+    case AARCH64_VARIANT_KIND_xd_xn_xm_imm3_option:
+    case AARCH64_VARIANT_KIND_bd_bn_bm_imm3_option:
+    case AARCH64_VARIANT_KIND_hd_hn_hm_imm3_option:
+    case AARCH64_VARIANT_KIND_dd_dn_dm_imm3_option:
+    case AARCH64_VARIANT_KIND_qd_qn_qm_imm3_option:
+    case AARCH64_VARIANT_KIND_sd_sn_sm_imm3_option:
+		imm_offset = 10;
+		imm_size = 3;
+        break;
+        
+    case AARCH64_VARIANT_KIND_wn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_xn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_bn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_hn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_dn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_qn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_sn_nzcv_imm5_cond:
+		imm_offset = 16;
+		imm_size = 5;
+		break;
+
+    case AARCH64_VARIANT_KIND_wd_wn_wm_imm6_shift:
+    case AARCH64_VARIANT_KIND_xd_xn_xm_imm6_shift:
+    case AARCH64_VARIANT_KIND_bd_bn_bm_imm6_shift:
+    case AARCH64_VARIANT_KIND_hd_hn_hm_imm6_shift:
+    case AARCH64_VARIANT_KIND_dd_dn_dm_imm6_shift:
+    case AARCH64_VARIANT_KIND_qd_qn_qm_imm6_shift:
+    case AARCH64_VARIANT_KIND_sd_sn_sm_imm6_shift:
+		imm_offset = 16;
+		imm_size = 6;
+		break;
+
+    case AARCH64_VARIANT_KIND_wd_wd2_wn_imm7:
+    case AARCH64_VARIANT_KIND_xd_xd2_xn_imm7:
+    case AARCH64_VARIANT_KIND_bd_bd2_bn_imm7:
+    case AARCH64_VARIANT_KIND_hd_hd2_hn_imm7:
+    case AARCH64_VARIANT_KIND_dd_dd2_dn_imm7:
+    case AARCH64_VARIANT_KIND_qd_qd2_qn_imm7:
+    case AARCH64_VARIANT_KIND_sd_sd2_sn_imm7:
+		imm_offset = 15;
+		imm_size = 7;
+		break;
+
+    case AARCH64_VARIANT_KIND_wd_wn_imm9:
+    case AARCH64_VARIANT_KIND_xd_xn_imm9:
+    case AARCH64_VARIANT_KIND_bd_bn_imm9:
+    case AARCH64_VARIANT_KIND_hd_hn_imm9:
+    case AARCH64_VARIANT_KIND_dd_dn_imm9:
+    case AARCH64_VARIANT_KIND_qd_qn_imm9:
+    case AARCH64_VARIANT_KIND_sd_sn_imm9:
+		imm_offset = 12;
+		imm_size = 9;
+		break;
+
+    case AARCH64_VARIANT_KIND_wd_wn_imm12_shift:
+    case AARCH64_VARIANT_KIND_wd_wn_imm12:
+    case AARCH64_VARIANT_KIND_xd_xn_imm12_shift:
+    case AARCH64_VARIANT_KIND_xd_xn_imm12:
+    case AARCH64_VARIANT_KIND_bd_bn_imm12_shift:
+    case AARCH64_VARIANT_KIND_bd_bn_imm12:
+    case AARCH64_VARIANT_KIND_hd_hn_imm12_shift:
+    case AARCH64_VARIANT_KIND_hd_hn_imm12:
+    case AARCH64_VARIANT_KIND_dd_dn_imm12_shift:
+    case AARCH64_VARIANT_KIND_dd_dn_imm12:
+    case AARCH64_VARIANT_KIND_qd_qn_imm12_shift:
+    case AARCH64_VARIANT_KIND_qd_qn_imm12:
+    case AARCH64_VARIANT_KIND_sd_sn_imm12_shift:
+    case AARCH64_VARIANT_KIND_sd_sn_imm12:
+		imm_offset = 10;
+		imm_size = 12;
+		break;
+
+    case AARCH64_VARIANT_KIND_xd_imm14_b40_b5:
+    case AARCH64_VARIANT_KIND_wd_imm14_b40:
+    case AARCH64_VARIANT_KIND_xd_imm14_b40:
+    case AARCH64_VARIANT_KIND_bd_imm14_b40:
+    case AARCH64_VARIANT_KIND_hd_imm14_b40:
+    case AARCH64_VARIANT_KIND_dd_imm14_b40:
+    case AARCH64_VARIANT_KIND_qd_imm14_b40:
+    case AARCH64_VARIANT_KIND_sd_imm14_b40:
+		imm_offset = 5;
+		imm_size = 14;
+		break;
+
+    case AARCH64_VARIANT_KIND_imm16:
+    case AARCH64_VARIANT_KIND_wd_imm16:
+    case AARCH64_VARIANT_KIND_xd_imm16:
+    case AARCH64_VARIANT_KIND_bd_imm16:
+    case AARCH64_VARIANT_KIND_hd_imm16:
+    case AARCH64_VARIANT_KIND_dd_imm16:
+    case AARCH64_VARIANT_KIND_qd_imm16:
+    case AARCH64_VARIANT_KIND_sd_imm16:
+		imm_offset = 5;
+		imm_size = 16;
+		break;
+
+
+    case AARCH64_VARIANT_KIND_imm19_cond:
+    case AARCH64_VARIANT_KIND_wd_imm19:
+    case AARCH64_VARIANT_KIND_xd_imm19:
+    case AARCH64_VARIANT_KIND_bd_imm19:
+    case AARCH64_VARIANT_KIND_hd_imm19:
+    case AARCH64_VARIANT_KIND_dd_imm19:
+    case AARCH64_VARIANT_KIND_qd_imm19:
+    case AARCH64_VARIANT_KIND_sd_imm19:
+		imm_offset = 5;
+		imm_size = 19;
+		break;
+
+    case AARCH64_VARIANT_KIND_imm26:
+		imm_offset = 0;
+		imm_size = 26;
+		break;
+
+    default: break;
+    }
+	
+    switch (variant) {
+    case AARCH64_VARIANT_KIND_wn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_xn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_bn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_hn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_dn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_qn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_sn_nzcv_imm5_cond:
+    case AARCH64_VARIANT_KIND_wd_wn_wm_cond:
+    case AARCH64_VARIANT_KIND_xd_xn_xm_cond:
+    case AARCH64_VARIANT_KIND_bd_bn_bm_cond:
+    case AARCH64_VARIANT_KIND_hd_hn_hm_cond:
+    case AARCH64_VARIANT_KIND_dd_dn_dm_cond:
+    case AARCH64_VARIANT_KIND_qd_qn_qm_cond:
+    case AARCH64_VARIANT_KIND_sd_sn_sm_cond:
+		cond_offset = 12;
+		break;
+
+    case AARCH64_VARIANT_KIND_imm19_cond:
+		cond_offset = 0;
+		break;
+
+    default: break;
+    }
+
+    value |= (parameters.shift & shift_mask) << shift_offset;
+    value |= ((((uint32_t)-1) >> (32 - imm_size)) & parameters.immediate) << imm_offset;
+    value |= (parameters.cond << cond_offset);
+
+    b->append_u32(b, value);
+}
+
+
 
 #endif // OC_MACHINE_CODE_IMPLEMENTATION
