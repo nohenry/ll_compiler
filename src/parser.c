@@ -98,22 +98,9 @@ static inline void insert_into_block(Compiler_Context* cc, Code_Scope* block, Pa
 	if (!stmt.code) return;
 
     switch (stmt.code->kind) {
-    case CODE_KIND_VARIABLE_DECLARATION: {
-		Parse_Result assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
-            .left = (Code*)CODE_AS(stmt.code, Code_Variable_Declaration)->base.ident,
-            .right = CODE_AS(stmt.code, Code_Variable_Declaration)->initializer,
-            .op = CODE_AS(stmt.code, Code_Variable_Declaration)->base.base.token_info, // eql
-        }));
-
-        oc_array_append(&cc->arena, &block->statements, assign.code);
-    } // fallthrough
-    case CODE_KIND_FUNCTION_DECLARATION: {
-        Code_Declaration* decl = CODE_AS(stmt.code, Code_Declaration);
-        string name = decl->ident->str;
-        print("name: {}\n", name);
-        oc_assert(hash_map_get(&cc->arena, &block->declarations, name) == NULL);
-        hash_map_put(&cc->arena, &block->declarations, name, decl);
-    } break;
+    case CODE_KIND_VARIABLE_DECLARATION:
+    case CODE_KIND_FUNCTION_DECLARATION:
+        break;
     default:
         print("append\n");
         oc_array_append(&cc->arena, &block->statements, stmt.code);
@@ -130,7 +117,7 @@ Parse_Result parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
     while (parser->lexer.pos < parser->lexer.source.len) {
         Parse_Result stmt = parser_parse_statement(cc, parser);
         print_node(stmt.code, 0, &stdout_writer);
-        /* insert_into_block(cc, block, stmt); */
+        insert_into_block(cc, block, stmt);
         PEEK(&token);
     }
 
@@ -234,7 +221,7 @@ Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser, Code_Dec
     parser->current_scope = block;
     while (token.kind != '}') {
         Parse_Result stmt = parser_parse_statement(cc, parser);
-        /* insert_into_block(cc, block, stmt); */
+        insert_into_block(cc, block, stmt);
         PEEK(&token);
     }
     parser->current_scope = block->parent_scope;
@@ -396,7 +383,8 @@ Parse_Result parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, P
             .storage_class = storage_class,
             .p_open = p_open, .p_close = p_close,
         }));
-        CODE_AS(body_or_init.code, Code_Scope)->decl = (Code_Declaration*)result.code;
+        if (body_or_init.code)
+            CODE_AS(body_or_init.code, Code_Scope)->decl = (Code_Declaration*)result.code;
     } else {
 		result = CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
             .base.base.token_info = eql,
@@ -406,7 +394,8 @@ Parse_Result parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, P
             .initializer = body_or_init.code,
             .storage_class = storage_class,
         }));
-        CODE_AS(body_or_init.code, Code_Scope)->decl = (Code_Declaration*)result.code;
+        if (body_or_init.code)
+            CODE_AS(body_or_init.code, Code_Scope)->decl = (Code_Declaration*)result.code;
 
 		result.kind = RESULT_KIND_IDENT;
 		result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
@@ -682,10 +671,10 @@ Parse_Result parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Pa
                         if (token.kind == '=') {
                             CONSUME();
                             expr2 = parser_parse_expression(cc, parser, NULL, 0, false);
-							oc_todo("handle non Codes");
+							// oc_todo("handle non Codes");
                             expr1 = CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = expr1.code, .value = expr2.code }));
                         }
-						oc_todo("handle non Codes");
+						// oc_todo("handle non Codes");
                         oc_array_append(&cc->arena, &arguments, expr1.code);
 
                         PEEK(&token);
@@ -698,7 +687,7 @@ Parse_Result parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Pa
 
                     CONSUME();
 
-					oc_todo("handle non Codes");
+					// oc_todo("handle non Codes");
                     left = CREATE_NODE(CODE_KIND_INVOKE, ((Code_Invoke){ .expr = left.code, .arguments = arguments, .p_close = TOKEN_INFO(token) }));
                     left.code->token_info = ti;
 
@@ -1117,7 +1106,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
         wprint(w, "  ");
     }
     const char* node_kind = ast_get_node_kind(node);
-    wprint(w, "{} ", node_kind);
+    wprint(w, "{} {}", node_kind, (void*)node);
     print_node_value(node, w);
     if (node->type) {
         uint32_t max_indent = 7;
@@ -1243,7 +1232,6 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
         case CODE_KIND_BLOCK:
             for (i = 0; i < CODE_AS(node, Code_Scope)->declarations.capacity; ++i) {
                 if (CODE_AS(node, Code_Scope)->declarations.entries[i].filled) {
-                    print("{}  ", i);
                     print_node((Code*)CODE_AS(node, Code_Scope)->declarations.entries[i]._value, indent + 1, w);
                 }
             }

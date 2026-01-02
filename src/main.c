@@ -3,8 +3,8 @@
 #include "typer.h"
 #include "typer2.h"
 #include "../core/machine_code.h"
-/* #include "eval.h" */
-/* #include "backend.h" */
+#include "eval.h"
+#include "backend.h"
 
 #define shift(xs, xs_sz) (oc_assert((xs_sz) > 0), (xs_sz)--, *(xs)++)
 
@@ -100,6 +100,15 @@ int main(int argc, char** argv) {
     LL_Typer2 typer2 = ll_typer2_create(&cc);
     cc.typer2 = &typer2;
 
+    LL_Eval_Context eval_context = { 0 };
+    ll_eval_init(&cc, &eval_context);
+
+    LL_Backend backend_elf = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_ELF);
+    LL_Backend backend_ir = ll_backend_init(&cc, LL_BACKEND_IR);
+
+    cc.typer = &typer;
+    cc.eval_context = &eval_context;
+    cc.bir = backend_ir.backend;
 
     LL_Parser parser = parser_create_from_file(&cc, filename);
     cc.lexer = &parser.lexer;
@@ -110,16 +119,6 @@ int main(int argc, char** argv) {
     // print_things(&cc, &parser);
     ll_typer_run(&cc, &typer, root.code);
 #if 0
-    LL_Eval_Context eval_context = { 0 };
-    ll_eval_init(&cc, &eval_context);
-
-    LL_Backend backend_elf = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_ELF);
-    LL_Backend backend_ir = ll_backend_init(&cc, LL_BACKEND_IR);
-    // LL_Backend backend_c = ll_backend_init(&cc, LL_BACKEND_C);
-
-    cc.typer = &typer;
-    cc.eval_context = &eval_context;
-    cc.bir = backend_ir.backend;
     cc.target = &backend_elf;
     cc.native_target = &backend_elf;
     cc.lexer = &parser.lexer;

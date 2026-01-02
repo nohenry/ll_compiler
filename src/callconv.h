@@ -22,7 +22,7 @@ typedef struct {
     sint64 immediate_displacement;
     uint32 opcode;
     uint32 reg0;
-    X86_64_Variant_Kind variant;
+    uint32 variant;
 } X86_64_Invoke_Prealloc;
 
 typedef struct {

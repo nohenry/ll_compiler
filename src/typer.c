@@ -233,7 +233,8 @@ void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer) {
 }
 
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
-    typer->root_scope = typer->current_scope = node;
+    oc_assert(node->kind == CODE_KIND_BLOCK);
+    typer->root_scope = typer->current_scope = (Code_Scope*)node;
 
     #define INSERT_BUILTIN_TYPE(ty, keyword, ...) do {                \
         if (!typer->ty) typer->ty = create_type(((LL_Type) { __VA_ARGS__ }));                      \
@@ -668,7 +669,6 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
         bool did_variadic = false;
         bool did_default = false;
 
-        typer->current_scope = fn_decl->body;
         if (fn_decl->parameters.count) {
             types = alloca(sizeof(*types) * fn_decl->parameters.count);
             for (i = 0; i < fn_decl->parameters.count; ++i) {
@@ -737,6 +737,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
 
         LL_Type* fn_type = ll_typer_get_fn_type(cc, typer, return_type, types, fn_decl->parameters.count, did_variadic);
         (*stmt)->type = fn_type;
+        print("{}\n", (void*)fn_decl);
         fn_decl->base.ident->base.type = fn_type;
         fn_decl->base.ident->resolved_decl = &fn_decl->base;
 
@@ -744,6 +745,8 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
         typer->current_fn = (LL_Type_Function*)fn_type;
 
         if (fn_decl->body) {
+            typer->current_scope = fn_decl->body;
+
             if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
                 Code_Scope* blk = CODE_AS(fn_decl->body, Code_Scope);
                 ll_typer_report_error(((LL_Error) { .main_token = blk->c_open, .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Extern function shouldn't have a body");
@@ -752,9 +755,10 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
             if ((fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) == 0 && (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) == 0) {
                 ll_typer_type_statement(cc, typer, (Code**)&fn_decl->body);
             }
+
+            typer->current_scope = fn_decl->body->parent_scope;
         }
 
-        typer->current_scope = fn_decl->body->parent_scope;
         typer->current_fn = last_fn;
 
         break;
@@ -1178,6 +1182,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
                     result = decl->ident->base.type;
                 }
             } else {
+                print("{} {}\n", (void*)decl, decl->ident->str);
                 result = decl->ident->base.type;
             }
         } break;

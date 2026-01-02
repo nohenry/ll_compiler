@@ -1555,7 +1555,7 @@ struct native_string native_read_entire_file(struct native_string filepath) {
 
 
 void native_write(long long int u) {
-    print("{}\n", u);
+    print("bruh {}\n", u);
 }
 
 #include <math.h>

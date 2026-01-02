@@ -1071,19 +1071,29 @@ typedef struct {
     union {
         unsigned int word;
         struct {
-            unsigned char : 5;
+            unsigned char _1: 5;
             unsigned char op2 : 3;
             unsigned int crm : 6;
             unsigned int crn : 6;
             unsigned char op1 : 3;
-        };
+            unsigned int _2: (32 - 23);
+        } __attribute__((packed));
         struct {
             unsigned char rd : 5;
             unsigned char rn : 5;
-            union { unsigned char rd2 : 5; unsigned char ra : 5; };
-            unsigned char : 1;
-            union { unsigned char rm : 5; unsigned char rs : 5; };
-        };
+            unsigned char rd2 : 5;
+            unsigned char _3 : 1;
+            unsigned char rm : 5;
+            unsigned int _4 : (32 - 21);
+        } __attribute__((packed));
+        struct {
+            unsigned char _5: 5;
+            unsigned char _6: 5;
+            unsigned char ra : 5;
+            unsigned char _7: 1;
+            unsigned char rs : 5;
+            unsigned int _8: (32 - 21);
+        } __attribute__((packed));
     };
     int immediate;
     unsigned char shift;
@@ -3765,6 +3775,12 @@ void oc_aarch64_write_nop(OC_Machine_Code_Writer* b, unsigned char byte_count) {
 }
 
 void oc_aarch64_write_instruction(OC_Machine_Code_Writer* b, AArch64_Variant_Kind variant, AArch64_Instruction_Variant instruction, AArch64_Instruction_Parameters parameters) {
+    if (instruction.value == 0) {
+        b->log_error(b, "invalid opcode: %d", instruction.value);
+
+        __builtin_debugtrap();
+        return;
+    }
     unsigned int value = instruction.value | parameters.word;
 
     unsigned int imm_offset = 0;
@@ -3775,6 +3791,19 @@ void oc_aarch64_write_instruction(OC_Machine_Code_Writer* b, AArch64_Variant_Kin
     unsigned int shift_mask = 0b11;
 
     switch (variant) {
+    case AARCH64_VARIANT_KIND_wd_imm16_hw:
+    case AARCH64_VARIANT_KIND_xd_imm16_hw:
+    case AARCH64_VARIANT_KIND_bd_imm16_hw:
+    case AARCH64_VARIANT_KIND_hd_imm16_hw:
+    case AARCH64_VARIANT_KIND_dd_imm16_hw:
+    case AARCH64_VARIANT_KIND_qd_imm16_hw:
+    case AARCH64_VARIANT_KIND_sd_imm16_hw:
+        shift_mask = 0b11u;
+        shift_offset = 21u;
+        imm_size = 16;
+        imm_offset = 5;
+        break;
+
     case AARCH64_VARIANT_KIND_wd_wn_wm_option_s:
     case AARCH64_VARIANT_KIND_xd_xn_xm_option_s:
     case AARCH64_VARIANT_KIND_bd_bn_bm_option_s:
@@ -3992,6 +4021,31 @@ void oc_aarch64_write_instruction(OC_Machine_Code_Writer* b, AArch64_Variant_Kin
     b->append_u32(b, value);
 }
 
+AArch64_Instruction_Variant oc_aarch64_get_variant(const AArch64_Instruction* inst, AArch64_Variant_Kind kind) {
+     AArch64_Instruction_Variant result;
+#define MAKE_VARIANT(v) case AARCH64_VARIANT_KIND_ ## v: result = inst-> v; break;
+    switch (kind) {
+        MAKE_VARIANT(imm16)
+        MAKE_VARIANT(imm26)
+        MAKE_VARIANT(imm19_cond)
+        MAKE_VARIANT(noarg)
+        MAKE_VARIANT(xd_imm14_b40_b5)
 
+        AARCH64_DEFINE_VARIANTS(MAKE_VARIANT, w)
+        AARCH64_DEFINE_VARIANTS(MAKE_VARIANT, x)
+        AARCH64_DEFINE_VARIANTS(MAKE_VARIANT, b)
+        AARCH64_DEFINE_VARIANTS(MAKE_VARIANT, h)
+        AARCH64_DEFINE_VARIANTS(MAKE_VARIANT, d)
+        AARCH64_DEFINE_VARIANTS(MAKE_VARIANT, q)
+        AARCH64_DEFINE_VARIANTS(MAKE_VARIANT, s)
+
+        MAKE_VARIANT(crm_op1_op2)
+        MAKE_VARIANT(crm_op2)
+        MAKE_VARIANT(crm)
+        default: assert(false);
+    }
+#undef MAKE_VARIANT
+    return result;   
+}
 
 #endif // OC_MACHINE_CODE_IMPLEMENTATION
