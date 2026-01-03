@@ -394,31 +394,40 @@ Parse_Result parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, P
             .initializer = body_or_init.code,
             .storage_class = storage_class,
         }));
-        if (body_or_init.code)
-            CODE_AS(body_or_init.code, Code_Scope)->decl = (Code_Declaration*)result.code;
 
-		result.kind = RESULT_KIND_IDENT;
-		result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
+		// result.kind = RESULT_KIND_IDENT;
+		// result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
 
 		if (body_or_init.code) {
+            Parse_Result assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
+                .left = (Code*)CODE_AS(result.code, Code_Variable_Declaration)->base.ident,
+                .right = CODE_AS(result.code, Code_Variable_Declaration)->initializer,
+                .op = CODE_AS(result.code, Code_Variable_Declaration)->base.base.token_info, // eql
+            }));
+            oc_array_append(&cc->arena, &parser->current_scope->statements, assign.code);
+            
+            CODE_AS(body_or_init.code, Code_Scope)->decl = (Code_Declaration*)result.code;
+
 			// oc_array_extend_count_unint(&cc->arena, &parser->ops_values[LL_OPERATION_ASSIGN], TC_ALIGNMENT, 2);
 			// LL_Typecheck_Value* tval = parser->ops_values[LL_OPERATION_ASSIGN].items + parser->ops_values[LL_OPERATION_ASSIGN].count - 2;
             
 
             // oc_array_aligned_append(&cc->arena, &parser->ops_lhs[LL_OPERATION_ASSIGN], TC_ALIGNMENT, ((LL_Usage) { result.kind, result.value}));
             // oc_array_aligned_append(&cc->arena, &parser->ops_rhs[LL_OPERATION_ASSIGN], TC_ALIGNMENT, ((LL_Usage) { body_or_init.kind, body_or_init.value}));
-            parser_append_typecheck_value(cc,
-                &parser->ops_lhs[LL_OPERATION_ASSIGN],
-                parser->linear_grid[result.kind].types.items[result.value],
-                result.kind, result.value
-            );
-            parser_append_typecheck_value(cc,
-                &parser->ops_rhs[LL_OPERATION_ASSIGN],
-                parser->linear_grid[body_or_init.kind].types.items[body_or_init.value],
-                body_or_init.kind, body_or_init.value
-            );
+            oc_array_append(&cc->arena, &parser->ops[LL_OPERATION_ASSIGN], body_or_init.code);
 
-			parser_append_typecheck_value(cc, &parser->ops[LL_OPERATION_ASSIGN], NULL, 0, 0);
+            // parser_append_typecheck_value(cc,
+            //     &parser->ops_lhs[LL_OPERATION_ASSIGN],
+            //     parser->linear_grid[result.kind].types.items[result.value],
+            //     result.kind, result.value
+            // );
+            // parser_append_typecheck_value(cc,
+            //     &parser->ops_rhs[LL_OPERATION_ASSIGN],
+            //     parser->linear_grid[body_or_init.kind].types.items[body_or_init.value],
+            //     body_or_init.kind, body_or_init.value
+            // );
+
+			// parser_append_typecheck_value(cc, &parser->ops[LL_OPERATION_ASSIGN], NULL, 0, 0);
 		}
     }
 
@@ -634,24 +643,26 @@ Parse_Result parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Pa
 			default: oc_todo("uniplented");
 			}
 
+            oc_array_append(&cc->arena, &parser->ops[op_kind], left.code);
+
             // oc_array_aligned_append(&cc->arena, &parser->ops_lhs[LL_OPERATION_ASSIGN], TC_ALIGNMENT, ((LL_Usage) { left.kind, left.value}));
             // oc_array_aligned_append(&cc->arena, &parser->ops_rhs[LL_OPERATION_ASSIGN], TC_ALIGNMENT, ((LL_Usage) { right.kind, right.value}));
-            parser_append_typecheck_value(cc,
-                &parser->ops_lhs[op_kind],
-                parser->linear_grid[left.kind].types.items[left.value],
-                left.kind, left.value
-            );
-            parser_append_typecheck_value(cc,
-                &parser->ops_rhs[op_kind],
-                parser->linear_grid[right.kind].types.items[right.value],
-                right.kind, right.value
-            );
+            // parser_append_typecheck_value(cc,
+            //     &parser->ops_lhs[op_kind],
+            //     parser->linear_grid[left.kind].types.items[left.value],
+            //     left.kind, left.value
+            // );
+            // parser_append_typecheck_value(cc,
+            //     &parser->ops_rhs[op_kind],
+            //     parser->linear_grid[right.kind].types.items[right.value],
+            //     right.kind, right.value
+            // );
 			// LL_Typecheck_Value* tval = parser->ops_values[op_kind].items + parser->ops_values[op_kind].count - 2;
 			// tval[0].type = parser->linear_grid[left.kind].items[left.value].type;
 			// tval[1].type = parser->linear_grid[right.kind].items[right.value].type;
 
-			left.kind = op_kind;
-			left.value = parser_append_typecheck_value(cc, &parser->ops[op_kind], NULL, 0, 0);
+			// left.kind = op_kind;
+			// left.value = parser_append_typecheck_value(cc, &parser->ops[op_kind], NULL, 0, 0);
 
             from_statement = false;
         } else if (post_precedence != 0 && post_precedence >= last_precedence) {
@@ -804,8 +815,8 @@ Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool 
         result = CREATE_NODE(CODE_KIND_LITERAL_INT, ((Code_Literal){ .u64 = token.u64 }));
         result.code->token_info = TOKEN_INFO(token);
 
-		result.kind = RESULT_KIND_INT;
-		result.value = parser_append_typecheck_value(cc, &parser->ints, cc->typer->ty_int64, 0, 0);
+		// result.kind = RESULT_KIND_INT;
+		// result.value = parser_append_typecheck_value(cc, &parser->ints, cc->typer->ty_int64, 0, 0);
 
         break;
 
@@ -814,8 +825,8 @@ Parse_Result parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool 
         result = CREATE_NODE(CODE_KIND_LITERAL_FLOAT, ((Code_Literal){ .f64 = token.f64 }));
         result.code->token_info = TOKEN_INFO(token);
 
-		result.kind = RESULT_KIND_FLOAT;
-		result.value = parser_append_typecheck_value(cc, &parser->floats, cc->typer->ty_float64, 0, 0);
+		// result.kind = RESULT_KIND_FLOAT;
+		// result.value = parser_append_typecheck_value(cc, &parser->floats, cc->typer->ty_float64, 0, 0);
 
         break;
 

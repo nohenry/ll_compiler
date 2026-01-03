@@ -137,8 +137,6 @@ int64_t do_native_fn_call_aarch64(
     OC_AARCH64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, AARCH64_OPCODE_SUB, xd_xn_imm12_shift, ((AArch64_Instruction_Parameters){ .rd = 31, .rn = 31, .immediate = 0 }));
     size_t stack_size_offset = b->native_fn_stub_section.count - 4;
 
-    AArch64_Instruction_Parameters aaa = { .rd = 31, .rn = 31, .immediate = 0 };
-
     LL_Ir_Function* invokee_fn = &bir->fns.items[OPD_VALUE(invokee)];
     LL_Type_Function* fn_type = (LL_Type_Function*)invokee_fn->ident->base.type;
     assert(fn_type->base.kind == LL_TYPE_FUNCTION);
@@ -298,7 +296,7 @@ int64_t do_native_fn_call_aarch64(
 
         stack_used = oc_align_forward(stack_used, 16);
         uint32* pstack_size = (uint32*)&b->native_fn_stub_section.items[stack_size_offset];
-        // *pstack_size = ((stack_used & 0xFFFu) << 10u) | (*pstack_size & ~(0xFFFu << 10u));
+        *pstack_size = ((stack_used & 0xFFFu) << 10u) | (*pstack_size & ~(0xFFFu << 10u));
 
         OC_AARCH64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, AARCH64_OPCODE_ADD, xd_xn_imm12_shift, ((AArch64_Instruction_Parameters){ .rd = 31, .rn = 31, .immediate = stack_used }));
         OC_AARCH64_WRITE_INSTRUCTION(&b->native_fn_stub_writer, AARCH64_OPCODE_LDP_post, xd_xd2_xn_imm7, ((AArch64_Instruction_Parameters){ .rd = 29, .rn = 31, .rd2 = 30, .immediate = 0x10 }));

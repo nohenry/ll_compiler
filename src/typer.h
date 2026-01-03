@@ -192,8 +192,8 @@ LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* re
 LL_Typer ll_typer_create(Compiler_Context* cc);
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node);
 
-LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt);
-LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
+void ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt);
+void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename);
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);

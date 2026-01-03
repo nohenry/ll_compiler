@@ -37,7 +37,8 @@ typedef struct ll_parser {
 	union {
 		LL_Typecheck_Value linear_grid[COUNT_OF_AST_RESULT];
 		struct {
-			LL_Typecheck_Value ops[COUNT_OF_LL_OPERATION];
+			Array(uint32, Code*) ops[COUNT_OF_LL_OPERATION];
+
 			LL_Typecheck_Value ops_lhs[COUNT_OF_LL_OPERATION];
 			LL_Typecheck_Value ops_rhs[COUNT_OF_LL_OPERATION];
 			LL_Typecheck_Value idents;

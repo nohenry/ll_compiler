@@ -27,7 +27,7 @@ void ll_typer2_run(Compiler_Context* cc, LL_Typer2* typer, LL_Parser* parser, Co
     // uint16x8_t ones = vdupq_n_u16(1);
 
     // assign
-    for (uint32 i = 0; i < parser->ops->types.count; i += 8) {
+    for (uint32 i = 0; i < parser->ops->count; i += 1) {
         // uint16 lhs_type = 1 << parser->ops_lhs->types.items[i];
         // uint16 mask = parser->ops_rhs->types_implicit_cast.items[i];
         // uint16 good = lhs_type & mask;

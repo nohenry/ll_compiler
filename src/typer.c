@@ -560,7 +560,7 @@ LL_Type* ll_typer_implicit_cast_leftright(Compiler_Context* cc, LL_Typer* typer,
 }
 
 
-LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt) {
+void ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt) {
     uint32_t i;
     LL_Type** types;
 
@@ -695,7 +695,8 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
                 }
 
                 if (parameter->initializer) {
-                    LL_Type* init_type = ll_typer_type_expression(cc, typer, &parameter->initializer, types[i], NULL);
+                    ll_typer_type_expression(cc, typer, &parameter->initializer, types[i], NULL);
+                    LL_Type* init_type = parameter->initializer->type;
 
                     if (!ll_typer_implicit_cast_tofrom(cc, typer, init_type, types[i])) {
                         ll_typer_report_error(((LL_Error){ .main_token = parameter->base.token_info }), "Provided default parameter type does not match declared type of parameter");
@@ -815,7 +816,7 @@ LL_Type* ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** s
     default: return ll_typer_type_expression(cc, typer, stmt, NULL, NULL);
     }
 
-    return NULL;
+    return;
 }
 
 static LL_Eval_Value const_value_cast(LL_Eval_Value from, LL_Type* from_type, LL_Type* to_type) {
@@ -1081,7 +1082,7 @@ void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Code** ex
     *expr = new_node;
 }
 
-LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
+void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
     LL_Type* result;
     size_t i;
     switch ((*expr)->kind) {
@@ -1144,7 +1145,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
         if (!decl) {
             ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS((*expr), Code_Ident)->str);
             ll_typer_report_error_done(cc, typer);
-            return NULL;
+            return;
         }
 
         Code* possible_const = (Code*)decl->ident;
@@ -1197,8 +1198,10 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
     }
     case CODE_KIND_TYPE_POINTER: {
         Code** element = &CODE_AS((*expr), Code_Type_Pointer)->element;
-        result = ll_typer_type_expression(cc, typer, element, NULL, NULL);
-        if (!result) return NULL;
+        ll_typer_type_expression(cc, typer, element, NULL, NULL);
+        result = (*element)->type;
+
+        if (!result) return;
         if ((*element)->has_const) {
             result = ll_typer_get_ptr_type(cc, typer, (*element)->const_value.as_type);
             (*expr)->has_const = 1;
@@ -1263,9 +1266,11 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
                     Code_Key_Value* kv = CODE_AS((*expr), Code_Key_Value);
                     LL_Eval_Value key = ll_eval_node(cc, cc->eval_context, cc->bir, kv->key);
                     element_index = (uint32_t)key.as_u64;
-                    provided_type = ll_typer_type_expression(cc, typer, &kv->value, arr_type->element_type, NULL);
+                    ll_typer_type_expression(cc, typer, &kv->value, arr_type->element_type, NULL);
+                    provided_type = kv->value->type;
                 } else {
-                    provided_type = ll_typer_type_expression(cc, typer, &init->items[i], arr_type->element_type, NULL);
+                    ll_typer_type_expression(cc, typer, &init->items[i], arr_type->element_type, NULL);
+                    provided_type = init->items[i]->type;
                 }
 
                 if (provided_elements[element_index]) {
@@ -1336,7 +1341,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
                     }
 
                     (*expr)->type = right_ident->base.type;
-                    return right_ident->base.type;
+                    return;
                 } else if (base_type->kind == LL_TYPE_ARRAY) {
                     if (string_eql(right_ident->str, lit("length"))) {
                         (*expr)->has_const = true;
@@ -1346,7 +1351,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
                     }
 
                     (*expr)->type = right_ident->base.type;
-                    return right_ident->base.type;
+                    return;
                 }
 
                 if (!base_scope) {
@@ -1366,7 +1371,7 @@ LL_Type* ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** 
                 }
 
                 (*expr)->type = right_ident->base.type;
-                return right_ident->base.type;
+                return;
             } else {
 TRY_MEMBER_FUNCTION_CALL:
                 ll_typer_type_expression(cc, typer, &opr->right, NULL, &result);
@@ -1387,7 +1392,7 @@ TRY_MEMBER_FUNCTION_CALL:
                             }
 
                             (*expr)->type = right_ident->base.type;
-                            return right_ident->base.type;                           
+                            return;                           
                         }
 
                         if (member_arg_parameter->kind == LL_TYPE_POINTER && opr->left->type->kind != LL_TYPE_POINTER) {
@@ -1405,14 +1410,14 @@ TRY_MEMBER_FUNCTION_CALL:
                             }
 
                             (*expr)->type = right_ident->base.type;
-                            return right_ident->base.type;
+                            return;
                         }
                     }
                 }
 
                 ll_typer_report_error(((LL_Error){ .main_token = right_ident->base.token_info }), "Member or function '{}' not found", right_ident->str);
                 ll_typer_report_error_done(cc, typer);
-                return NULL;
+                return;
             }
         }
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
@@ -1420,17 +1425,20 @@ TRY_MEMBER_FUNCTION_CALL:
         case LL_TOKEN_KIND_ASSIGN_TIMES:
         case LL_TOKEN_KIND_ASSIGN_MINUS:
         case LL_TOKEN_KIND_ASSIGN_PLUS: {
-            LL_Type* lhs_type = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
-            LL_Type* rhs_type = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
+            ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
+            ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
 
-            if (lhs_type->kind == LL_TYPE_ANYINT && rhs_type->kind == LL_TYPE_ANYINT && expected_type) {
-                lhs_type = ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
-                rhs_type = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
-            } else if (lhs_type->kind == LL_TYPE_ANYINT || lhs_type->kind == LL_TYPE_ANYFLOAT) {
-                lhs_type = ll_typer_type_expression(cc, typer, &opr->left, rhs_type, NULL);
-            } else if (rhs_type->kind == LL_TYPE_ANYINT || rhs_type->kind == LL_TYPE_ANYFLOAT) {
-                rhs_type = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
+            if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
+                ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
+                ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
+            } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
+                ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, NULL);
+            } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
+                ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
             }
+            
+            LL_Type* lhs_type = opr->left->type;
+            LL_Type* rhs_type = opr->right->type;
 
             result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
 
@@ -1452,11 +1460,13 @@ TRY_MEMBER_FUNCTION_CALL:
             // @oc_todo: look at casting lhs
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
             (*expr)->type = result;
-            return result;
+            return;
         } break;
         case '=': {
-            LL_Type* lhs_type = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
-            LL_Type* rhs_type = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
+            ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
+            LL_Type* lhs_type = opr->left->type;
+            ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
+            LL_Type* rhs_type = opr->right->type;
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, lhs_type)) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't assign value to left hand side");
@@ -1475,26 +1485,28 @@ TRY_MEMBER_FUNCTION_CALL:
 
             // @oc_todo: look at casting lhs
             ll_typer_add_implicit_cast(cc, typer, &opr->right, lhs_type);
-            result = lhs_type;
-            (*expr)->type = result;
-            return result;
+            (*expr)->type = lhs_type;
+            return;
         } break;
         default: break;
 #pragma GCC diagnostic pop
         }
 
 
-        LL_Type* lhs_type = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
-        LL_Type* rhs_type = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
+        ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
+        ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
 
-        if (lhs_type->kind == LL_TYPE_ANYINT && rhs_type->kind == LL_TYPE_ANYINT && expected_type) {
-            lhs_type = ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
-            rhs_type = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
-        } else if (lhs_type->kind == LL_TYPE_ANYINT || lhs_type->kind == LL_TYPE_ANYFLOAT) {
-            lhs_type = ll_typer_type_expression(cc, typer, &opr->left, rhs_type, NULL);
-        } else if (rhs_type->kind == LL_TYPE_ANYINT || rhs_type->kind == LL_TYPE_ANYFLOAT) {
-            rhs_type = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
+        if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
+            ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
+            ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
+        } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
+            ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, NULL);
+        } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
+            ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
         }
+
+        LL_Type* lhs_type = opr->left->type;
+        LL_Type* rhs_type = opr->right->type;
 
         switch (opr->op.kind) {
 #pragma GCC diagnostic push
@@ -1708,7 +1720,8 @@ TRY_MEMBER_FUNCTION_CALL:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
         case '-': {
-            expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, expected_type, NULL);
+            ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, expected_type, NULL);
+            expr_type = CODE_AS((*expr), Code_Operation)->right->type;
 
             switch (expr_type->kind) {
             case LL_TYPE_FLOAT:
@@ -1738,10 +1751,11 @@ TRY_MEMBER_FUNCTION_CALL:
 
             if (expected_type) {
                 expr_type = ll_typer_get_ptr_type(cc, typer, expected_type);
-                expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, expr_type, NULL);
+                ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, expr_type, NULL);
             } else {
-                expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, NULL, NULL);
+                ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, NULL, NULL);
             }
+            expr_type = CODE_AS((*expr), Code_Operation)->right->type;
 
             switch (expr_type->kind) {
             case LL_TYPE_POINTER: result = ((LL_Type_Pointer*)expr_type)->element_type; break;
@@ -1758,10 +1772,11 @@ TRY_MEMBER_FUNCTION_CALL:
         case '&': {
             if (expected_type && expected_type->kind == LL_TYPE_POINTER) {
                 LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)expected_type;
-                expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, ptr_type->element_type, NULL);
+                ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, ptr_type->element_type, NULL);
             } else {
-                expr_type = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, NULL, NULL);
+                ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, NULL, NULL);
             }
+            expr_type = CODE_AS((*expr), Code_Operation)->right->type;
             result = ll_typer_get_ptr_type(cc, typer, expr_type);
         } break;
 #pragma GCC diagnostic pop
@@ -1779,7 +1794,9 @@ TRY_MEMBER_FUNCTION_CALL:
     case CODE_KIND_CAST: {
         Code_Cast* cast = CODE_AS((*expr), Code_Cast);
         LL_Type* specified_type = ll_typer_get_type_from_typename(cc, typer, cast->cast_type);
-        LL_Type* src_type = ll_typer_type_expression(cc, typer, &cast->expr, specified_type, NULL);
+
+        ll_typer_type_expression(cc, typer, &cast->expr, specified_type, NULL);
+        LL_Type* src_type = cast->expr->type;
         
         if (!ll_typer_can_cast(cc, typer, src_type, specified_type)) {
             ll_typer_report_error(((LL_Error){ .highlight_start = (*expr)->token_info, .highlight_end = cast->p_close }), "Incompatible cast types");
@@ -1804,7 +1821,8 @@ TRY_MEMBER_FUNCTION_CALL:
 
         if (inv->expr->kind == CODE_KIND_IDENT && CODE_AS(inv->expr, Code_Ident)->str.ptr == LL_KEYWORD_SIZEOF.ptr) {
             // @Todo: throw error if not 1 arg
-            result = ll_typer_type_expression(cc, typer, &inv->arguments.items[0], NULL, NULL);
+            ll_typer_type_expression(cc, typer, &inv->arguments.items[0], NULL, NULL);
+            result = inv->arguments.items[0]->type;
 
             LL_Backend_Layout layout;
             if (result == typer->ty_type && inv->arguments.items[0]->has_const) {
@@ -1820,14 +1838,16 @@ TRY_MEMBER_FUNCTION_CALL:
             break;
         }
 
-        LL_Type_Function* fn_type = (LL_Type_Function*)ll_typer_type_expression(cc, typer, &inv->expr, NULL, &resolve);
+        ll_typer_type_expression(cc, typer, &inv->expr, NULL, &resolve);
+        LL_Type_Function* fn_type = (LL_Type_Function*)inv->expr->type;
+
         if (fn_type->base.kind != LL_TYPE_FUNCTION) {
             ll_typer_report_error(((LL_Error){ .main_token = inv->expr->token_info }), "Unable to call this like a function");
             ll_typer_report_error_no_src("    type ");
             ll_typer_report_error_type(cc, typer, &fn_type->base);
             ll_typer_report_error_no_src(" is not a callable function\n");
             ll_typer_report_error_done(cc, typer);
-            return NULL;
+            return;
         }
 
         // if we're directly calling a function:
@@ -1936,10 +1956,11 @@ TRY_MEMBER_FUNCTION_CALL:
             
             // code ref and void are only typed checked when the parameter is expanded in macro body
             if (declared_type && declared_type->kind != LL_TYPE_VOID) {
-                provided_type = ll_typer_type_expression(cc, typer, value, declared_type, NULL);
+                ll_typer_type_expression(cc, typer, value, declared_type, NULL);
             } else if (!fn_is_macro) {
-                provided_type = ll_typer_type_expression(cc, typer, value, declared_type, NULL);
+                ll_typer_type_expression(cc, typer, value, declared_type, NULL);
             }
+            provided_type = (*value)->type;
             bool check_type_matches = true;
             if (!declared_type) {
                 if (fn_decl && !fn_decl->parameters.items[di].ident && provided_type == typer->ty_type) {
@@ -2064,7 +2085,9 @@ TRY_MEMBER_FUNCTION_CALL:
                 Code_Parameter* parameter = &fn_decl->parameters.items[arg_i];
 
                 if (!fn_type->parameters[arg_i]) {
-                    LL_Type* provided_type = ll_typer_type_expression(cc, typer, &ordered_args[arg_i], NULL, NULL);
+                    ll_typer_type_expression(cc, typer, &ordered_args[arg_i], NULL, NULL);
+                    LL_Type* provided_type = ordered_args[arg_i]->type;
+
                     if (ll_typer_match_polymorphic(cc, typer, parameter->type, provided_type, ordered_args[arg_i], resolve.this_arg != NULL && arg_i == 0)) {
                         parameter->ident->base.type = provided_type;
                     } else {
@@ -2177,12 +2200,13 @@ TRY_MEMBER_FUNCTION_CALL:
     } break;
     case CODE_KIND_INDEX: {
         Code_Slice* cf = CODE_AS((*expr), Code_Slice);
-        result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
+        ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
+        result = cf->ptr->type;
 
         if (result == typer->ty_type) {
             if (!cf->ptr->has_const) oc_todo("handle runtime");
             if (!cf->ptr->const_value.as_type) {
-                return NULL;
+                return;
             }
             ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
 
@@ -2203,7 +2227,8 @@ TRY_MEMBER_FUNCTION_CALL:
             break;
         }
 
-        LL_Type* index_type = ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
+        ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
+        LL_Type* index_type = cf->start->type;
         if (!ll_typer_can_cast(cc, typer, index_type, typer->ty_anyint)) {
             ll_typer_report_error(((LL_Error){ .main_token = cf->start->token_info }), "Expected integer to index array");
 
@@ -2249,12 +2274,13 @@ TRY_MEMBER_FUNCTION_CALL:
     } break;
     case CODE_KIND_SLICE: {
         Code_Slice* cf = CODE_AS((*expr), Code_Slice);
-        result = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
+        ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
+        result = cf->ptr->type;
 
         if (result == typer->ty_type) {
             if (!cf->ptr->has_const) oc_todo("handle runtime");
             if (!cf->ptr->const_value.as_type) {
-                return NULL;
+                return;
             }
 
             result = ll_typer_get_slice_type(cc, typer, cf->ptr->const_value.as_type);
@@ -2287,7 +2313,8 @@ TRY_MEMBER_FUNCTION_CALL:
     } break;
     case CODE_KIND_CONST: {
         Code_Marker* cf = CODE_AS((*expr), Code_Marker);
-        result = ll_typer_type_expression(cc, typer, &cf->expr, expected_type, NULL);
+        ll_typer_type_expression(cc, typer, &cf->expr, expected_type, NULL);
+        result = cf->expr->type;
         LL_Eval_Value const_value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr);
         (*expr)->has_const = true;
         (*expr)->const_value = const_value;
@@ -2474,8 +2501,8 @@ CODE_BREAK_EXIT_SCOPE:
     } break;
     case CODE_KIND_IF: {
         Code_If* iff = CODE_AS((*expr), Code_If);
-        result = ll_typer_type_expression(cc, typer, &iff->cond, typer->ty_bool, NULL);
-        switch (result->kind) {
+        ll_typer_type_expression(cc, typer, &iff->cond, typer->ty_bool, NULL);
+        switch (iff->cond->type->kind) {
         case LL_TYPE_ANYBOOL:
         case LL_TYPE_BOOL:
         case LL_TYPE_POINTER:
@@ -2514,8 +2541,8 @@ CODE_BREAK_EXIT_SCOPE:
         if (loop->init) ll_typer_type_statement(cc, typer, &loop->init);
 
         if (loop->cond) {
-            result = ll_typer_type_expression(cc, typer, &loop->cond, typer->ty_int32, NULL);
-            switch (result->kind) {
+            ll_typer_type_expression(cc, typer, &loop->cond, typer->ty_int32, NULL);
+            switch (loop->cond->type->kind) {
             case LL_TYPE_BOOL:
             case LL_TYPE_ANYBOOL:
             case LL_TYPE_POINTER:
@@ -2548,7 +2575,7 @@ CODE_BREAK_EXIT_SCOPE:
     }
 
     (*expr)->type = result;
-    return result;
+    return;
 }
 
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename) {
