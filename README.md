@@ -1,14 +1,15 @@
 
 ## Language Compiler Project
 Another attempt at a compiler, this time focusing on:
-- using c in a big project
-- development speed (fast compilation times)
-- compile time evaluation 
+- Using c in a big project
+- Development speed (fast compilation times)
+- Compile time evaluation 
+- Figuring out how to create machine code backends
 
 ## The Language
 - very c like
-	+ let's be honest, c is pretty good
-	+ c also sucks, let's improve that
+	+ Let's be honest, c is pretty good
+	+ C also sucks, let's improve that
 
 ```c
 int main(int argc, int8** argv) {
