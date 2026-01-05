@@ -3,7 +3,6 @@
 #include "common.h"
 #include "lexer.h"
 #include "eval_value.h"
-// #include "../backends/ir.h"
 
 #define optional
 
@@ -72,13 +71,11 @@ typedef enum {
     LL_PARAMETER_FLAG_VARIADIC = (1 << 0),
 } LL_Parameter_Flags;
 
-struct ll_type;
-
 struct code {
     Code_Kind kind;
     uint8_t has_const;
     LL_Queued* queued;
-    struct ll_type* type;
+    Code* type;
     LL_Eval_Value const_value;
     LL_Token_Info token_info;
 };
@@ -136,7 +133,7 @@ typedef struct Code_Declaration {
     Code* type;
     Code_Ident* ident;
     struct Code_Scope* within_scope;
-    struct ll_type* declared_type;
+    Code* declared_type;
 } Code_Declaration;
 
 typedef struct Code_Scope {
