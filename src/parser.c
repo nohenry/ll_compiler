@@ -117,7 +117,6 @@ Code_Scope* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
     parser->current_scope = block;
     while (parser->lexer.pos < parser->lexer.source.len) {
         Code* stmt = parser_parse_statement(cc, parser);
-        print_node(stmt, 0, &stdout_writer);
         insert_into_block(cc, block, stmt);
         PEEK(&token);
     }
@@ -229,10 +228,16 @@ Code_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
     }
 
     PEEK(&token);
+    if (token.kind == '?') {
+        CONSUME();
+        flags |= LL_PARAMETER_FLAG_OPTIONAL;
+    }
+
+    PEEK(&token);
     if (token.kind == ':') {
         CONSUME();
-        type = parser_parse_expression(cc, parser, NULL, 0, false);
-    }
+        type = parser_parse_type(cc, parser);
+    } else type = NULL;
 
     PEEK(&token);
     LL_Token_Info eql_info = { 0 };
@@ -316,8 +321,8 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, LL_Stora
         PEEK(&token);
         if (token.kind == ':') {
             CONSUME();
-            type = parser_parse_expression(cc, parser, NULL, 0, false);
-        }
+            type = parser_parse_type(cc, parser);
+        } else type = NULL;
 
         PEEK(&token);
         if (token.kind == '{') {
@@ -342,20 +347,21 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, LL_Stora
         PEEK(&token);
         if (token.kind == ':') {
             CONSUME();
-            type = parser_parse_expression(cc, parser, NULL, 0, false);
-        }
+            type = parser_parse_type(cc, parser);
+        } else type = NULL;
 
         LL_Token_Info eql;
+        PEEK(&token);
         if (token.kind == '=') {
             eql = TOKEN_INFO(token);
             CONSUME();
             body_or_init = parser_parse_expression(cc, parser, NULL, 0, false);
-        }
+        } else body_or_init = NULL;
 
         CONSUME_SEMI();
 
 		result = CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
-            .base.base.token_info = eql,
+            .base.base.token_info = TOKEN_INFO(kind_token),
             .base.type = type,
             .base.ident = ident,
             .base.within_scope = parser->current_scope,
@@ -367,7 +373,7 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, LL_Stora
             Code* assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
                 .left = (Code*)CODE_AS(result, Code_Variable_Declaration)->base.ident,
                 .right = CODE_AS(result, Code_Variable_Declaration)->initializer,
-                .op = CODE_AS(result, Code_Variable_Declaration)->base.base.token_info, // eql
+                .op = eql, // eql
             }));
             oc_array_append(&cc->arena, &parser->current_scope->statements, assign);
             
@@ -797,7 +803,7 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
                 result = NULL;
                 CONSUME();
             } else {
-                result = parser_parse_declaration(cc, parser, false, 0);
+                result = parser_parse_declaration(cc, parser, 0);
             }
             EXPECT(';', &token);
 
@@ -898,6 +904,10 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
     return result;
 }
 
+Code* parser_parse_type(Compiler_Context* cc, LL_Parser* parser) {
+    return parser_parse_primary(cc, parser, false);
+}
+
 void print_storage_class(LL_Storage_Class storage_class, Oc_Writer* w) {
     if (storage_class & LL_STORAGE_CLASS_EXTERN) wprint(w, "extern ");
     if (storage_class & LL_STORAGE_CLASS_STATIC) wprint(w, "static ");
@@ -929,7 +939,7 @@ const char* ast_get_node_kind(Code* node) {
         case CODE_KIND_CAST: return "Cast";
         case CODE_KIND_GENERIC: return "Generic";
         case CODE_KIND_TYPENAME: return "Typename";
-        default: oc_unreachable("");
+        default: eprint("{}\n", node->kind); oc_unreachable("");
     }
 }
 
@@ -977,7 +987,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
         wprint(w, "  ");
     }
     const char* node_kind = ast_get_node_kind(node);
-    wprint(w, "{} {}", node_kind, (void*)node);
+    wprint(w, "{} ", node_kind);
     print_node_value(node, w);
     if (node->type) {
         uint32_t max_indent = 7;
@@ -1022,13 +1032,13 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             break;
 
         case CODE_KIND_VARIABLE_DECLARATION:
-            print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.type, indent + 1, w);
+            if (CODE_AS(node, Code_Variable_Declaration)->base.type) print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.type, indent + 1, w);
             print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.ident, indent + 1, w);
             if (CODE_AS(node, Code_Variable_Declaration)->initializer) print_node(CODE_AS(node, Code_Variable_Declaration)->initializer, indent + 1, w);
             break;
 
         case CODE_KIND_FUNCTION_DECLARATION:
-            print_node(CODE_AS(node, Code_Function_Declaration)->base.type, indent + 1, w);
+            if (CODE_AS(node, Code_Function_Declaration)->base.type) print_node(CODE_AS(node, Code_Function_Declaration)->base.type, indent + 1, w);
             print_node((Code*)CODE_AS(node, Code_Function_Declaration)->base.ident, indent + 1, w);
             for (i = 0; i < CODE_AS(node, Code_Function_Declaration)->parameters.count; ++i) {
                 print_node((Code*)&CODE_AS(node, Code_Function_Declaration)->parameters.items[i], indent + 1, w);
@@ -1037,10 +1047,12 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             break;
 
         case CODE_KIND_PARAMETER:
-            if (CODE_AS(node, Code_Variable_Declaration)->base.type)
-                print_node(CODE_AS(node, Code_Variable_Declaration)->base.type, indent + 1, w);
-            if (CODE_AS(node, Code_Variable_Declaration)->base.ident)
-                print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.ident, indent + 1, w);
+            if (CODE_AS(node, Code_Parameter)->type)
+                print_node(CODE_AS(node, Code_Parameter)->type, indent + 1, w);
+            if (CODE_AS(node, Code_Parameter)->ident)
+                print_node((Code*)CODE_AS(node, Code_Parameter)->ident, indent + 1, w);
+            if (CODE_AS(node, Code_Parameter)->initializer)
+                print_node((Code*)CODE_AS(node, Code_Parameter)->initializer, indent + 1, w);
             break;
         case CODE_KIND_RETURN:
             if (CODE_AS(node, Code_Control_Flow)->expr)
@@ -1102,6 +1114,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             for (i = 0; i < CODE_AS(node, Code_Scope)->statements.count; ++i) {
                 print_node(CODE_AS(node, Code_Scope)->statements.items[i], indent + 1, w);
             }
+            break;
 
         case CODE_KIND_TYPENAME:
             print_node(CODE_AS(node, Code_Declaration)->declared_type, 0, w);

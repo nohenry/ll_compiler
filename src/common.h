@@ -121,7 +121,6 @@ extern string LL_KEYWORD_BOOLEAN;
 extern string LL_KEYWORD_NUMBER;
 extern string LL_KEYWORD_STRING;
 extern string LL_KEYWORD_VOID;
-extern string LL_KEYWORD_CHAR;
 
 #define MAP_GET(map, key, allocator, hash_fn, eql_fn, seed) ({                     \
         size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \

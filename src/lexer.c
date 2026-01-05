@@ -20,23 +20,6 @@ static void lexer_prefixed(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out,
     }
 }
 
-static void lexer_prefixed2(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out, char next_char, LL_Token_Kind next_char_kind, char next_next_char, LL_Token_Kind next_next_char_kind) {
-    (void)cc;
-    out->kind = lexer->source.ptr[lexer->pos];
-    lexer->pos += 1;
-
-    if (lexer->pos + 1 < lexer->source.len && lexer->source.ptr[lexer->pos + 1] == next_char) {
-        out->kind = next_char_kind;
-        lexer->pos += 1;
-
-        if (lexer->pos + 2 < lexer->source.len && lexer->source.ptr[lexer->pos + 2] == next_next_char) {
-            out->kind = next_next_char_kind;
-            lexer->pos += 1;
-        }
-    }
-}
-
-
 bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
     if (lexer->has_peeked_token) {
         memcpy(out, &lexer->peeked_token, sizeof(*out));
@@ -92,7 +75,6 @@ DONE_PHANTOM:
         case '_': 
         case '$': {
             out->kind = LL_TOKEN_KIND_IDENT;
-DO_IDENTIFIER:
             out->str.ptr = lexer->source.ptr + lexer->pos;
             out->str.len = 0;
 
@@ -507,7 +489,7 @@ void lexer_print_token_info_raw_to_writer(LL_Token_Info* token, Oc_Writer* w) {
     case LL_TOKEN_KIND_ASSIGN_PERCENT: wprint(w, "%="); break;
     case LL_TOKEN_KIND_ASSIGN_AND: wprint(w, "&&="); break;
     case LL_TOKEN_KIND_ASSIGN_OR: wprint(w, "||="); break;
-    case LL_TOKEN_KIND_ASSIGN_NULLOR: wprint(w, "??="); break;
+    case LL_TOKEN_KIND_ASSIGN_NULLOR: wprint(w, "?\?="); break;
     case LL_TOKEN_KIND_ASSIGN_BIT_AND: wprint(w, "&="); break;
     case LL_TOKEN_KIND_ASSIGN_BIT_OR: wprint(w, "|="); break;
 

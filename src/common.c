@@ -142,7 +142,6 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_NUMBER = ll_intern_string(&result, lit("number"));
     LL_KEYWORD_STRING = ll_intern_string(&result, lit("string"));
     LL_KEYWORD_VOID = ll_intern_string(&result, lit("void"));
-    LL_KEYWORD_CHAR = ll_intern_string(&result, lit("char"));
 
     return result;
 }

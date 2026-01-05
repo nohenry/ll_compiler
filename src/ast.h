@@ -50,6 +50,7 @@ typedef enum {
 
 typedef enum {
     LL_PARAMETER_FLAG_VARIADIC = (1 << 0),
+    LL_PARAMETER_FLAG_OPTIONAL = (1 << 1),
 } LL_Parameter_Flags;
 
 struct code {
