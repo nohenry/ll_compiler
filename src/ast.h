@@ -8,18 +8,6 @@
 
 typedef struct code Code;
 
-typedef struct {
-    Code** items;
-    uint32_t count, capacity;
-} LL_Flattened;
-
-typedef struct {
-    Code* yielded_on;
-
-    LL_Flattened flattened;
-    uint32_t flattened_todo_cursor;
-} LL_Queued;
-
 typedef enum {
     CODE_KIND_LITERAL_INT,
     CODE_KIND_LITERAL_FLOAT,
@@ -29,13 +17,14 @@ typedef enum {
     CODE_KIND_BINARY_OP,
     CODE_KIND_PRE_OP,
     CODE_KIND_INVOKE,
+    CODE_KIND_INDEX,
 
     CODE_KIND_VARIABLE_DECLARATION,
     CODE_KIND_FUNCTION_DECLARATION,
+    CODE_KIND_CLASS_DECLARATION,
     CODE_KIND_PARAMETER,
     CODE_KIND_BLOCK,
-    CODE_KIND_CONST,
-    CODE_KIND_INITIALIZER,
+    CODE_KIND_OBJECT_INITIALIZER,
     CODE_KIND_ARRAY_INITIALIZER,
     CODE_KIND_KEY_VALUE,
 
@@ -46,13 +35,8 @@ typedef enum {
     CODE_KIND_FOR,
     CODE_KIND_WHILE,
 
-    CODE_KIND_STRUCT,
-    CODE_KIND_INDEX,
-    CODE_KIND_SLICE,
     CODE_KIND_CAST,
     CODE_KIND_GENERIC,
-    CODE_KIND_TYPE_POINTER,
-
 
     // Generated
     CODE_KIND_TYPENAME,
@@ -61,10 +45,7 @@ typedef enum {
 typedef enum {
     LL_STORAGE_CLASS_EXTERN = (1 << 0),
     LL_STORAGE_CLASS_STATIC = (1 << 1),
-    LL_STORAGE_CLASS_NATIVE = (1 << 2),
-    LL_STORAGE_CLASS_MACRO  = (1 << 3),
-    LL_STORAGE_CLASS_CONST  = (1 << 4),
-    LL_STORAGE_CLASS_POLYMORPHIC = (1 << 5),
+    LL_STORAGE_CLASS_MACRO  = (1 << 2),
 } LL_Storage_Class;
 
 typedef enum {
@@ -74,7 +55,6 @@ typedef enum {
 struct code {
     Code_Kind kind;
     uint8_t has_const;
-    LL_Queued* queued;
     Code* type;
     LL_Eval_Value const_value;
     LL_Token_Info token_info;
@@ -170,9 +150,8 @@ typedef struct {
 typedef struct {
     Code base;
     Code* ptr;
-    Code* start;
-    Code* stop;
-} Code_Slice;
+    Code* index;
+} Code_Index;
 
 typedef struct {
     Code base;
@@ -262,7 +241,7 @@ typedef struct {
 typedef struct {
     Code_Declaration base;
     Code_Scope* block;
-} Code_Struct;
+} Code_Class_Declaration;
 
 typedef struct {
     Code base;
@@ -297,7 +276,7 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
         Code : (void)0,                                   \
         Code_Variable_Declaration : ((Code_Variable_Declaration*)&v)->base.base.kind = _kind,      \
         Code_Function_Declaration : ((Code_Function_Declaration*)&v)->base.base.kind = _kind,      \
-        Code_Struct : ((Code_Struct*)&v)->base.base.kind = _kind,      \
+        Code_Class_Declaration : ((Code_Class_Declaration*)&v)->base.base.kind = _kind,      \
         default : ((Code_Scope*)&v)->base.kind = _kind                     \
     )
 

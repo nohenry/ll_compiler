@@ -95,7 +95,7 @@ string LL_KEYWORD_WHILE;
 string LL_KEYWORD_ELSE;
 string LL_KEYWORD_DO;
 string LL_KEYWORD_MATCH;
-string LL_KEYWORD_STRUCT;
+string LL_KEYWORD_CLASS;
 string LL_KEYWORD_EXTERN;
 string LL_KEYWORD_NATIVE;
 string LL_KEYWORD_RETURN;
@@ -142,7 +142,7 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_ELSE = ll_intern_string(&result, lit("else"));
     LL_KEYWORD_DO = ll_intern_string(&result, lit("do"));
     LL_KEYWORD_MATCH = ll_intern_string(&result, lit("match"));
-    LL_KEYWORD_STRUCT = ll_intern_string(&result, lit("struct"));
+    LL_KEYWORD_CLASS = ll_intern_string(&result, lit("struct"));
     LL_KEYWORD_EXTERN = ll_intern_string(&result, lit("extern"));
     LL_KEYWORD_NATIVE = ll_intern_string(&result, lit("native"));
     LL_KEYWORD_RETURN = ll_intern_string(&result, lit("return"));

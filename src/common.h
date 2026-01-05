@@ -103,7 +103,7 @@ extern string LL_KEYWORD_WHILE;
 extern string LL_KEYWORD_ELSE;
 extern string LL_KEYWORD_DO;
 extern string LL_KEYWORD_MATCH;
-extern string LL_KEYWORD_STRUCT;
+extern string LL_KEYWORD_CLASS;
 extern string LL_KEYWORD_EXTERN;
 extern string LL_KEYWORD_NATIVE;
 extern string LL_KEYWORD_RETURN;

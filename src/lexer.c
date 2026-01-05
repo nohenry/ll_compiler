@@ -20,6 +20,23 @@ static void lexer_prefixed(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out,
     }
 }
 
+static void lexer_prefixed2(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out, char next_char, LL_Token_Kind next_char_kind, char next_next_char, LL_Token_Kind next_next_char_kind) {
+    (void)cc;
+    out->kind = lexer->source.ptr[lexer->pos];
+    lexer->pos += 1;
+
+    if (lexer->pos + 1 < lexer->source.len && lexer->source.ptr[lexer->pos + 1] == next_char) {
+        out->kind = next_char_kind;
+        lexer->pos += 1;
+
+        if (lexer->pos + 2 < lexer->source.len && lexer->source.ptr[lexer->pos + 2] == next_next_char) {
+            out->kind = next_next_char_kind;
+            lexer->pos += 1;
+        }
+    }
+}
+
+
 bool lexer_peek_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
     if (lexer->has_peeked_token) {
         memcpy(out, &lexer->peeked_token, sizeof(*out));
@@ -70,10 +87,6 @@ DONE_PHANTOM:
     out->position = lexer->pos;
 
     if (lexer->pos < lexer->source.len) switch (lexer->source.ptr[lexer->pos]) {
-        case '#': 
-            out->kind = LL_TOKEN_KIND_BUILTIN;
-            lexer->pos++;
-            goto DO_IDENTIFIER;
         case 'A' ... 'Z':
         case 'a' ... 'z':
         case '_': 
@@ -204,7 +217,9 @@ DONE_NUMBER:
             } else oc_unreachable("");
             return true;
         }
+        case '\'':
         case '"': {
+            char tok = lexer->source.ptr[lexer->pos];
             bool needs_alloc = false;
             Oc_String_Builder alloc_string = { 0 };
             alloc_string.arena = &cc->arena;
@@ -215,7 +230,7 @@ DONE_NUMBER:
             out->str.ptr = lexer->source.ptr + lexer->pos;
             out->str.len = 0;
 
-            while (lexer->pos < lexer->source.len && lexer->source.ptr[lexer->pos] != '"') {
+            while (lexer->pos < lexer->source.len && lexer->source.ptr[lexer->pos] != tok) {
                 switch (lexer->source.ptr[lexer->pos]) {
                     case '\\':
                         if (lexer->pos + 1 < lexer->source.len) {
@@ -303,8 +318,107 @@ DONE_NUMBER:
             out->kind = (LL_Token_Kind)lexer->source.ptr[lexer->pos++];
             return true;
 
-        case '&': lexer_prefixed(cc, lexer, out, '&', LL_TOKEN_KIND_AND); return true;
-        case '|': lexer_prefixed(cc, lexer, out, '|', LL_TOKEN_KIND_OR); return true;
+        case '&':
+            if (lexer->pos + 1 < lexer->source.len) {
+                switch (lexer->source.ptr[lexer->pos + 1]) {
+                case '=':
+                    out->kind = LL_TOKEN_KIND_ASSIGN_BIT_AND;
+                    lexer->pos += 2;
+                    break;
+                case '&':
+                    if (lexer->pos + 2 < lexer->source.len) {
+                        switch (lexer->source.ptr[lexer->pos + 2]) {
+                        case '=':
+                            out->kind = LL_TOKEN_KIND_ASSIGN_AND;
+                            lexer->pos += 3;
+                            break;
+                        default:
+                            out->kind = LL_TOKEN_KIND_AND;
+                            lexer->pos += 2;
+                            break;
+                        }
+                    } else {
+                        out->kind = LL_TOKEN_KIND_AND;
+                        lexer->pos += 2;
+                    }
+                    break;
+                default:
+                    out->kind = '&';
+                    lexer->pos += 1;
+                    break;
+                }
+            } else {
+                out->kind = '&';
+                lexer->pos += 1;
+            }
+            break;
+
+        case '|':
+            if (lexer->pos + 1 < lexer->source.len) {
+                switch (lexer->source.ptr[lexer->pos + 1]) {
+                case '=':
+                    out->kind = LL_TOKEN_KIND_ASSIGN_BIT_OR;
+                    lexer->pos += 2;
+                    break;
+                case '|':
+                    if (lexer->pos + 2 < lexer->source.len) {
+                        switch (lexer->source.ptr[lexer->pos + 2]) {
+                        case '=':
+                            out->kind = LL_TOKEN_KIND_ASSIGN_OR;
+                            lexer->pos += 3;
+                            break;
+                        default:
+                            out->kind = LL_TOKEN_KIND_OR;
+                            lexer->pos += 2;
+                            break;
+                        }
+                    } else {
+                        out->kind = LL_TOKEN_KIND_OR;
+                        lexer->pos += 2;
+                    }
+                    break;
+                default:
+                    out->kind = '|';
+                    lexer->pos += 1;
+                    break;
+                }
+            } else {
+                out->kind = '|';
+                lexer->pos += 1;
+            }
+            break;
+
+        case '?':
+            if (lexer->pos + 1 < lexer->source.len) {
+                switch (lexer->source.ptr[lexer->pos + 1]) {
+                case '?':
+                    if (lexer->pos + 2 < lexer->source.len) {
+                        switch (lexer->source.ptr[lexer->pos + 2]) {
+                        case '=':
+                            out->kind = LL_TOKEN_KIND_ASSIGN_NULLOR;
+                            lexer->pos += 3;
+                            break;
+                        default:
+                            out->kind = LL_TOKEN_KIND_NULLOR;
+                            lexer->pos += 2;
+                            break;
+                        }
+                    } else {
+                        out->kind = LL_TOKEN_KIND_NULLOR;
+                        lexer->pos += 2;
+                    }
+                    break;
+                default:
+                    out->kind = '?';
+                    lexer->pos += 1;
+                    break;
+                }
+            } else {
+                out->kind = '?';
+                lexer->pos += 1;
+            }
+            break;
+
 
         case '<': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_LTE); return true;
         case '>': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_GTE); return true;
@@ -317,7 +431,21 @@ DONE_NUMBER:
         case '/': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_DIVIDE); return true;
         case '%': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_PERCENT); return true;
 
-        case '.': lexer_prefixed(cc, lexer, out, '.', LL_TOKEN_KIND_RANGE); return true;
+        case '.':
+            if (lexer->pos + 2 < lexer->source.len) {
+                if (lexer->source.ptr[lexer->pos + 1] == '.' && lexer->source.ptr[lexer->pos + 2] == '.') {
+                    out->kind = LL_TOKEN_KIND_SPREAD;
+                    lexer->pos += 2;
+                } else {
+                    out->kind = '.';
+                    lexer->pos += 1;
+                }
+            } else {
+                out->kind = '.';
+                lexer->pos += 1;
+            }
+
+            return true;
         
         case 0:
             lexer->source.len = lexer->pos;
@@ -337,9 +465,6 @@ void lexer_print_token_kind(LL_Token_Kind kind, Oc_Writer* w) {
     case LL_TOKEN_KIND_IDENT:
         wprint(w, "identifier");
         break;
-    case LL_TOKEN_KIND_BUILTIN:
-        wprint(w, "builtin");
-        break;
     case LL_TOKEN_KIND_INT:
         wprint(w, "integer");
         break;
@@ -352,13 +477,20 @@ void lexer_print_token_kind(LL_Token_Kind kind, Oc_Writer* w) {
     case LL_TOKEN_KIND_ASSIGN_TIMES: wprint(w, "*="); break;
     case LL_TOKEN_KIND_ASSIGN_DIVIDE: wprint(w, "/="); break;
     case LL_TOKEN_KIND_ASSIGN_PERCENT: wprint(w, "%="); break;
+    case LL_TOKEN_KIND_ASSIGN_AND: wprint(w, "&&="); break;
+    case LL_TOKEN_KIND_ASSIGN_OR: wprint(w, "||="); break;
+    case LL_TOKEN_KIND_ASSIGN_BIT_AND: wprint(w, "&="); break;
+    case LL_TOKEN_KIND_ASSIGN_BIT_OR: wprint(w, "|="); break;
 
     case LL_TOKEN_KIND_EQUALS: wprint(w, "=="); break;
     case LL_TOKEN_KIND_NEQUALS: wprint(w, "=="); break;
     case LL_TOKEN_KIND_LTE: wprint(w, "<="); break;
     case LL_TOKEN_KIND_GTE: wprint(w, ">="); break;
 
-    case LL_TOKEN_KIND_RANGE: wprint(w, ".."); break;
+    case LL_TOKEN_KIND_AND: wprint(w, "&&"); break;
+    case LL_TOKEN_KIND_OR: wprint(w, "||"); break;
+
+    case LL_TOKEN_KIND_SPREAD: wprint(w, ".."); break;
     
     default:
         wprint(w, "{}", (char)kind);
@@ -373,15 +505,21 @@ void lexer_print_token_info_raw_to_writer(LL_Token_Info* token, Oc_Writer* w) {
     case LL_TOKEN_KIND_ASSIGN_TIMES: wprint(w, "*="); break;
     case LL_TOKEN_KIND_ASSIGN_DIVIDE: wprint(w, "/="); break;
     case LL_TOKEN_KIND_ASSIGN_PERCENT: wprint(w, "%="); break;
+    case LL_TOKEN_KIND_ASSIGN_AND: wprint(w, "&&="); break;
+    case LL_TOKEN_KIND_ASSIGN_OR: wprint(w, "||="); break;
+    case LL_TOKEN_KIND_ASSIGN_NULLOR: wprint(w, "??="); break;
+    case LL_TOKEN_KIND_ASSIGN_BIT_AND: wprint(w, "&="); break;
+    case LL_TOKEN_KIND_ASSIGN_BIT_OR: wprint(w, "|="); break;
 
     case LL_TOKEN_KIND_EQUALS: wprint(w, "=="); break;
     case LL_TOKEN_KIND_NEQUALS: wprint(w, "=="); break;
     case LL_TOKEN_KIND_LTE: wprint(w, "<="); break;
     case LL_TOKEN_KIND_GTE: wprint(w, ">="); break;
 
-    case LL_TOKEN_KIND_RANGE: wprint(w, ".."); break;
+    case LL_TOKEN_KIND_SPREAD: wprint(w, ".."); break;
     case LL_TOKEN_KIND_AND: wprint(w, "&&"); break;
     case LL_TOKEN_KIND_OR: wprint(w, "||"); break;
+    case LL_TOKEN_KIND_NULLOR: wprint(w, "??"); break;
     
     default:
         wprint(w, "{}", (char)token->kind);
@@ -393,9 +531,6 @@ void lexer_print_token_raw_to_writer(LL_Token* token, Oc_Writer* w) {
     LL_Token_Info ti = { .kind = token->kind, .position = token->position };
     switch (token->kind) {
     case LL_TOKEN_KIND_IDENT:
-        wprint(w, "{}", token->str);
-        break;
-    case LL_TOKEN_KIND_BUILTIN:
         wprint(w, "{}", token->str);
         break;
     case LL_TOKEN_KIND_INT:
