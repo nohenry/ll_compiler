@@ -88,16 +88,16 @@ size_t stbds_siphash_bytes(void *p, size_t len, size_t seed)
 }
 
 string LL_KEYWORD_CONST;
-string LL_KEYWORD_CAST;
+string LL_KEYWORD_AS;
 string LL_KEYWORD_IF;
 string LL_KEYWORD_FOR;
 string LL_KEYWORD_WHILE;
 string LL_KEYWORD_ELSE;
 string LL_KEYWORD_DO;
-string LL_KEYWORD_MATCH;
+string LL_KEYWORD_SWITCH;
 string LL_KEYWORD_CLASS;
 string LL_KEYWORD_EXTERN;
-string LL_KEYWORD_NATIVE;
+string LL_KEYWORD_FUNCTION;
 string LL_KEYWORD_RETURN;
 string LL_KEYWORD_BREAK;
 string LL_KEYWORD_CONTINUE;
@@ -105,46 +105,28 @@ string LL_KEYWORD_MACRO;
 string LL_KEYWORD_LET;
 string LL_KEYWORD_SIZEOF;
 
-string LL_KEYWORD_BOOL;
-string LL_KEYWORD_BOOL8;
-string LL_KEYWORD_BOOL16;
-string LL_KEYWORD_BOOL32;
-string LL_KEYWORD_BOOL64;
 string LL_KEYWORD_TRUE;
 string LL_KEYWORD_FALSE;
 string LL_KEYWORD_NULL;
 
-string LL_KEYWORD_UINT;
-string LL_KEYWORD_UINT8;
-string LL_KEYWORD_UINT16;
-string LL_KEYWORD_UINT32;
-string LL_KEYWORD_UINT64;
-string LL_KEYWORD_INT;
-string LL_KEYWORD_INT8;
-string LL_KEYWORD_INT16;
-string LL_KEYWORD_INT32;
-string LL_KEYWORD_INT64;
-string LL_KEYWORD_FLOAT16;
-string LL_KEYWORD_FLOAT32;
-string LL_KEYWORD_FLOAT64;
-string LL_KEYWORD_FLOAT;
+string LL_KEYWORD_BOOLEAN;
+string LL_KEYWORD_NUMBER;
 string LL_KEYWORD_STRING;
 string LL_KEYWORD_VOID;
-string LL_KEYWORD_CHAR;
 
 Compiler_Context ll_compiler_context_create() {
     Compiler_Context result = { 0 };
     LL_KEYWORD_CONST = ll_intern_string(&result, lit("const"));
-    LL_KEYWORD_CAST = ll_intern_string(&result, lit("cast"));
+    LL_KEYWORD_AS = ll_intern_string(&result, lit("as"));
     LL_KEYWORD_IF = ll_intern_string(&result, lit("if"));
     LL_KEYWORD_FOR = ll_intern_string(&result, lit("for"));
     LL_KEYWORD_WHILE = ll_intern_string(&result, lit("while"));
     LL_KEYWORD_ELSE = ll_intern_string(&result, lit("else"));
     LL_KEYWORD_DO = ll_intern_string(&result, lit("do"));
-    LL_KEYWORD_MATCH = ll_intern_string(&result, lit("match"));
+    LL_KEYWORD_SWITCH = ll_intern_string(&result, lit("switch"));
     LL_KEYWORD_CLASS = ll_intern_string(&result, lit("struct"));
     LL_KEYWORD_EXTERN = ll_intern_string(&result, lit("extern"));
-    LL_KEYWORD_NATIVE = ll_intern_string(&result, lit("native"));
+    LL_KEYWORD_FUNCTION = ll_intern_string(&result, lit("function"));
     LL_KEYWORD_RETURN = ll_intern_string(&result, lit("return"));
     LL_KEYWORD_BREAK = ll_intern_string(&result, lit("break"));
     LL_KEYWORD_CONTINUE = ll_intern_string(&result, lit("continue"));
@@ -152,29 +134,12 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_LET = ll_intern_string(&result, lit("let"));
     LL_KEYWORD_SIZEOF = ll_intern_string(&result, lit("sizeof"));
 
-    LL_KEYWORD_BOOL = ll_intern_string(&result, lit("bool"));
-    LL_KEYWORD_BOOL8 = ll_intern_string(&result, lit("bool8"));
-    LL_KEYWORD_BOOL16 = ll_intern_string(&result, lit("bool16"));
-    LL_KEYWORD_BOOL32 = ll_intern_string(&result, lit("bool32"));
-    LL_KEYWORD_BOOL64 = ll_intern_string(&result, lit("bool64"));
     LL_KEYWORD_TRUE = ll_intern_string(&result, lit("true"));
     LL_KEYWORD_FALSE = ll_intern_string(&result, lit("false"));
     LL_KEYWORD_NULL = ll_intern_string(&result, lit("null"));
 
-    LL_KEYWORD_UINT = ll_intern_string(&result, lit("uint"));
-    LL_KEYWORD_UINT8 = ll_intern_string(&result, lit("uint8"));
-    LL_KEYWORD_UINT16 = ll_intern_string(&result, lit("uint16"));
-    LL_KEYWORD_UINT32 = ll_intern_string(&result, lit("uint32"));
-    LL_KEYWORD_UINT64 = ll_intern_string(&result, lit("uint64"));
-    LL_KEYWORD_INT = ll_intern_string(&result, lit("int"));
-    LL_KEYWORD_INT8 = ll_intern_string(&result, lit("int8"));
-    LL_KEYWORD_INT16 = ll_intern_string(&result, lit("int16"));
-    LL_KEYWORD_INT32 = ll_intern_string(&result, lit("int32"));
-    LL_KEYWORD_INT64 = ll_intern_string(&result, lit("int64"));
-    LL_KEYWORD_FLOAT16 = ll_intern_string(&result, lit("float16"));
-    LL_KEYWORD_FLOAT32 = ll_intern_string(&result, lit("float32"));
-    LL_KEYWORD_FLOAT64 = ll_intern_string(&result, lit("float64"));
-    LL_KEYWORD_FLOAT = ll_intern_string(&result, lit("float"));
+    LL_KEYWORD_BOOLEAN = ll_intern_string(&result, lit("boolean"));
+    LL_KEYWORD_NUMBER = ll_intern_string(&result, lit("number"));
     LL_KEYWORD_STRING = ll_intern_string(&result, lit("string"));
     LL_KEYWORD_VOID = ll_intern_string(&result, lit("void"));
     LL_KEYWORD_CHAR = ll_intern_string(&result, lit("char"));

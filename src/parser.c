@@ -147,6 +147,9 @@ START_SWITCH:
             while (PEEK(&token) && token.kind == LL_TOKEN_KIND_IDENT) {
                 if (token.str.ptr == LL_KEYWORD_EXTERN.ptr) {
                     storage_class |= LL_STORAGE_CLASS_EXTERN;
+                } else if (token.str.ptr == LL_KEYWORD_FUNCTION.ptr || token.str.ptr == LL_KEYWORD_LET.ptr || token.str.ptr == LL_KEYWORD_CONST.ptr) {
+                    result = parser_parse_declaration(cc, parser, 0);
+                    return result;
                 } else {
                     goto HANDLE_IDENT;
                 }
@@ -161,19 +164,11 @@ START_SWITCH:
 HANDLE_IDENT:
             PEEK(&token);
             if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_CLASS.ptr) {
-                result = parser_parse_struct(cc, parser);
+                result = parser_parse_class(cc, parser);
                 return result;
             }
 
             result = parser_parse_expression(cc, parser, NULL, 0, true);
-            if (result && (result->kind == CODE_KIND_IF || result->kind == CODE_KIND_FOR || result->kind == CODE_KIND_WHILE)) break;
-
-            PEEK(&token);
-            if (token.kind == LL_TOKEN_KIND_IDENT) // this includes macro keyword
-                result = parser_parse_declaration(cc, parser, result, storage_class);
-            else
-                CONSUME_SEMI();
-
             break;
     }
     return result;
@@ -223,16 +218,6 @@ Code_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         CONSUME();
         type = NULL;
         flags |= LL_PARAMETER_FLAG_VARIADIC;	
-    } else if (token.kind == '%') {
-        CONSUME();
-        if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Code_Parameter) { 0 };
-        Code_Ident* ident = create_ident(cc, token.str);
-        ident->base.token_info = TOKEN_INFO(token);
-
-        type = CREATE_NODE(CODE_KIND_GENERIC, ((Code_Generic) { .ident = ident }));
-        type = parser_parse_expression(cc, parser, type, 0, true);
-    } else {
-        type = parser_parse_expression(cc, parser, NULL, 0, true);
     }
 
     PEEK(&token);
@@ -241,6 +226,12 @@ Code_Parameter parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser) {
         CONSUME();
         ident = create_ident(cc, token.str);
         ident->base.token_info = TOKEN_INFO(token);
+    }
+
+    PEEK(&token);
+    if (token.kind == ':') {
+        CONSUME();
+        type = parser_parse_expression(cc, parser, NULL, 0, false);
     }
 
     PEEK(&token);
@@ -286,74 +277,56 @@ Code* parser_parse_class(Compiler_Context* cc, LL_Parser* parser) {
     return result;
 }
 
-Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* type, LL_Storage_Class storage_class) {
+Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, LL_Storage_Class storage_class) {
     LL_Token token;
-	if (!type) {
-        type = parser_parse_expression(cc, parser, NULL, 0, true);
-    }
-
+    LL_Token kind_token;
+    if (!EXPECT(LL_TOKEN_KIND_IDENT, &kind_token)) return (Code*) { 0 };
     if (!EXPECT(LL_TOKEN_KIND_IDENT, &token)) return (Code*) { 0 };
-    if (token.str.ptr == LL_KEYWORD_MACRO.ptr) {
-        storage_class |= LL_STORAGE_CLASS_MACRO;
-        EXPECT(LL_TOKEN_KIND_IDENT, &token);
-    }
     Code_Ident* ident = create_ident(cc, token.str);
     ident->base.token_info = TOKEN_INFO(token);
 
-    bool fn = false;
-    Code_Parameter_List parameters = { 0 };
     Code* body_or_init;
-    LL_Token_Info p_open, p_close, eql;
-
-    PEEK(&token);
-    switch (token.kind) {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wswitch"
-        case '(':
-            fn = true;
-            p_open = TOKEN_INFO(token);
-            CONSUME();
-
-            PEEK(&token);
-            while (token.kind != ')') {
-                Code_Parameter parameter = parser_parse_parameter(cc, parser);
-                oc_array_append(&cc->arena, &parameters, parameter);
-                PEEK(&token);
-
-                if (token.kind != ')') {
-                    EXPECT(',', &token);
-                    PEEK(&token);
-                    continue;
-                }
-            }
-
-            CONSUME();
-            p_close = TOKEN_INFO(token);
-
-            PEEK(&token);
-            if (token.kind == '{') {
-                body_or_init = (Code*)parser_parse_block(cc, parser, NULL);
-            } else {
-                CONSUME_SEMI();
-                body_or_init = NULL;
-            }
-
-            break;
-        case '=':
-            eql = TOKEN_INFO(token);
-            CONSUME();
-            body_or_init = parser_parse_expression(cc, parser, NULL, 0, false);
-            CONSUME_SEMI();
-            break;
-#pragma GCC diagnostic pop
-        default:
-            body_or_init = NULL;
-            CONSUME_SEMI();
-            break;
-    }
-
+	Code* type;
 	Code* result;
-    if (fn) {
+
+    if (kind_token.str.ptr == LL_KEYWORD_FUNCTION.ptr) {
+        LL_Token_Info p_open, p_close;
+        Code_Parameter_List parameters = { 0 };
+
+        EXPECT('(', &token);
+        p_open = TOKEN_INFO(token);
+        CONSUME();
+
+        PEEK(&token);
+        while (token.kind != ')') {
+            Code_Parameter parameter = parser_parse_parameter(cc, parser);
+            oc_array_append(&cc->arena, &parameters, parameter);
+            PEEK(&token);
+
+            if (token.kind != ')') {
+                EXPECT(',', &token);
+                PEEK(&token);
+                continue;
+            }
+        }
+
+        CONSUME();
+        p_close = TOKEN_INFO(token);
+
+        PEEK(&token);
+        if (token.kind == ':') {
+            CONSUME();
+            type = parser_parse_expression(cc, parser, NULL, 0, false);
+        }
+
+        PEEK(&token);
+        if (token.kind == '{') {
+            body_or_init = (Code*)parser_parse_block(cc, parser, NULL);
+        } else {
+            CONSUME_SEMI();
+            body_or_init = NULL;
+        }
+
         result = CREATE_NODE(CODE_KIND_FUNCTION_DECLARATION, ((Code_Function_Declaration){
             .base.type = type,
             .base.ident = ident,
@@ -366,6 +339,21 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
         if (body_or_init)
             CODE_AS(body_or_init, Code_Scope)->decl = (Code_Declaration*)result;
     } else {
+        PEEK(&token);
+        if (token.kind == ':') {
+            CONSUME();
+            type = parser_parse_expression(cc, parser, NULL, 0, false);
+        }
+
+        LL_Token_Info eql;
+        if (token.kind == '=') {
+            eql = TOKEN_INFO(token);
+            CONSUME();
+            body_or_init = parser_parse_expression(cc, parser, NULL, 0, false);
+        }
+
+        CONSUME_SEMI();
+
 		result = CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
             .base.base.token_info = eql,
             .base.type = type,
@@ -374,9 +362,6 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             .initializer = body_or_init,
             .storage_class = storage_class,
         }));
-
-		// result.kind = RESULT_KIND_IDENT;
-		// result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
 
 		if (body_or_init) {
             Code* assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
@@ -388,26 +373,7 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             
             CODE_AS(body_or_init, Code_Scope)->decl = (Code_Declaration*)result;
 
-			// oc_array_extend_count_unint(&cc->arena, &parser->ops_values[LL_OPERATION_ASSIGN], TC_ALIGNMENT, 2);
-			// LL_Typecheck_Value* tval = parser->ops_values[LL_OPERATION_ASSIGN].items + parser->ops_values[LL_OPERATION_ASSIGN].count - 2;
-            
-
-            // oc_array_aligned_append(&cc->arena, &parser->ops_lhs[LL_OPERATION_ASSIGN], TC_ALIGNMENT, ((LL_Usage) { result.kind, result.value}));
-            // oc_array_aligned_append(&cc->arena, &parser->ops_rhs[LL_OPERATION_ASSIGN], TC_ALIGNMENT, ((LL_Usage) { body_or_init.kind, body_or_init.value}));
             oc_array_append(&cc->arena, &parser->ops[LL_OPERATION_ASSIGN], body_or_init);
-
-            // parser_append_typecheck_value(cc,
-            //     &parser->ops_lhs[LL_OPERATION_ASSIGN],
-            //     parser->linear_grid[result.kind].types.items[result.value],
-            //     result.kind, result.value
-            // );
-            // parser_append_typecheck_value(cc,
-            //     &parser->ops_rhs[LL_OPERATION_ASSIGN],
-            //     parser->linear_grid[body_or_init.kind].types.items[body_or_init.value],
-            //     body_or_init.kind, body_or_init.value
-            // );
-
-			// parser_append_typecheck_value(cc, &parser->ops[LL_OPERATION_ASSIGN], NULL, 0, 0);
 		}
     }
 
@@ -471,7 +437,7 @@ int get_postfix_precedence(LL_Token token) {
             return 150;
 #pragma GCC diagnostic pop
         case LL_TOKEN_KIND_IDENT:
-            if (token.str.ptr == LL_KEYWORD_CAST.ptr) return 160;
+            if (token.str.ptr == LL_KEYWORD_AS.ptr) return 160;
             return 0;
         default: return 0;
     }
@@ -560,7 +526,7 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                 left = parser_parse_primary(cc, parser, from_statement);
                 return left;
             } else if (token.str.ptr == LL_KEYWORD_CLASS.ptr) {
-                left = parser_parse_struct(cc, parser);
+                left = parser_parse_class(cc, parser);
                 return left;
             }
             // fallthrough
