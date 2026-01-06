@@ -26,8 +26,24 @@ void ll_typer2_run(Compiler_Context* cc, LL_Typer2* typer, LL_Parser* parser, Co
     // uint16x8_t zeros = vdupq_n_u16(0);
     // uint16x8_t ones = vdupq_n_u16(1);
 
+    while (true) {
+        uword resolved = 0;
+        for (uint32 j = 0, wi = 0; j < parser->ops[LL_OPERATION_ASSIGN].count; j++) {
+            ll_typer_type_expression(cc, cc->typer, parser->ops[LL_OPERATION_ASSIGN].items[j], NULL, NULL);
+            resolved++;
+        }
+
+        for (uint32 j = 0; j < parser->ops[LL_OPERATION_ADD].count;) {
+            ll_typer_type_expression(cc, cc->typer, parser->ops[LL_OPERATION_ADD].items[j], NULL, NULL);
+            resolved++;
+        }
+
+        if (resolved == 0) break;
+    }
+
     // assign
-    for (uint32 i = 0; i < parser->ops->count; i += 1) {
+    // for (uint32 i = 0; i < oc_len(parser->ops); i++) {
+
         // uint16 lhs_type = 1 << parser->ops_lhs->types.items[i];
         // uint16 mask = parser->ops_rhs->types_implicit_cast.items[i];
         // uint16 good = lhs_type & mask;
@@ -66,7 +82,7 @@ void ll_typer2_run(Compiler_Context* cc, LL_Typer2* typer, LL_Parser* parser, Co
         // vst1q_u16(&parser->ops->types.items[i], lhs_type);
         // vst1q_u16(&parser->ops->types_cast.items[i], lhs_cast);
         // vst1q_u16(&parser->ops->types_implicit_cast.items[i], lhs_implicit_cast);
-    }
+    // }
 
     // for (uword i = 0; i < oc_len(parser->linear_grid); ++i) {
     //     parser->linear_grid[i].types.count = old_counts[i];

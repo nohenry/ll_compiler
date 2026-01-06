@@ -8,18 +8,36 @@
 #define optional
 
 typedef struct code Code;
+typedef struct ll_resolve LL_Resolve;
+
+Enum(LL_Resolve_Status, uint32,
+    LL_RESOLVE_NEEDS_TYPECHECK = 0,
+    LL_RESOLVE_DONE,
+);
 
 typedef struct {
-    Code** items;
-    uint32_t count, capacity;
-} LL_Flattened;
+    Code* code;
+} LL_Dependency;
 
-typedef struct {
-    Code* yielded_on;
+struct ll_resolve {
+    LL_Resolve_Status status;
+    Code* code;
+    LL_Resolve* yielded_on;
 
-    LL_Flattened flattened;
-    uint32_t flattened_todo_cursor;
-} LL_Queued;
+    Array(uint32, LL_Dependency) dependencies;
+};
+
+// typedef struct {
+//     Code** items;
+//     uint32_t count, capacity;
+// } LL_Flattened;
+
+// typedef struct {
+//     Code* yielded_on;
+
+//     LL_Flattened flattened;
+//     uint32_t flattened_todo_cursor;
+// } LL_Queued;
 
 typedef enum {
     CODE_KIND_LITERAL_INT,
@@ -77,7 +95,6 @@ struct ll_type;
 struct code {
     Code_Kind kind;
     uint8_t has_const;
-    LL_Queued* queued;
     struct ll_type* type;
     LL_Eval_Value const_value;
     LL_Token_Info token_info;
@@ -103,6 +120,8 @@ typedef struct {
     struct Code_Declaration* resolved_decl;
     int32_t symbol_index;
     Code_Ident_Flags flags;
+
+    LL_Resolve* waiting_for;
 } Code_Ident;
 
 typedef struct {
@@ -133,6 +152,7 @@ typedef enum {
 
 typedef struct Code_Declaration {
     Code base;
+    LL_Resolve resolve;
     Code* type;
     Code_Ident* ident;
     struct Code_Scope* within_scope;

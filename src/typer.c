@@ -813,7 +813,7 @@ void ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
         (void)ll_typer_type_statement(cc, typer, &cf->expr);
         (void)ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr);
     } break;
-    default: return ll_typer_type_expression(cc, typer, stmt, NULL, NULL);
+    default: ll_typer_type_expression(cc, typer, stmt, NULL, NULL);
     }
 
     return;
@@ -1082,7 +1082,7 @@ void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Code** ex
     *expr = new_node;
 }
 
-void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
+bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
     LL_Type* result;
     size_t i;
     switch ((*expr)->kind) {
@@ -1126,26 +1126,38 @@ void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         break;
     }
     case CODE_KIND_IDENT: {
-        if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
-            if (expected_type->kind == LL_TYPE_BOOL) {
-                result = expected_type;
+        Code_Declaration* decl;
+        if (CODE_AS((*expr), Code_Ident)->waiting_for) {
+            decl = CODE_AS((*expr), Code_Ident)->waiting_for->code;
+        } else {
+            if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
+                if (expected_type->kind == LL_TYPE_BOOL) {
+                    result = expected_type;
+                    break;
+                }
+                result = typer->ty_anybool;
+                break;
+            } else if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_NULL.ptr) {
+                if (expected_type->kind == LL_TYPE_POINTER) {
+                    result = expected_type;
+                    break;
+                }
+                result = ll_typer_get_ptr_type(cc, typer, typer->ty_void);
                 break;
             }
-            result = typer->ty_anybool;
-            break;
-        } else if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_NULL.ptr) {
-            if (expected_type->kind == LL_TYPE_POINTER) {
-                result = expected_type;
-                break;
+            decl = ll_typer_find_symbol_up_scope(cc, typer, typer->current_scope, CODE_AS((*expr), Code_Ident));
+            if (!decl) {
+                ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS((*expr), Code_Ident)->str);
+                ll_typer_report_error_done(cc, typer);
+                return false;
             }
-            result = ll_typer_get_ptr_type(cc, typer, typer->ty_void);
-            break;
+
+            oc_array_append(&cc->arena, &decl->resolve.dependencies, ((LL_Dependency) { .code = *expr }));
         }
-        Code_Declaration* decl = ll_typer_find_symbol_up_scope(cc, typer, typer->current_scope, CODE_AS((*expr), Code_Ident));
-        if (!decl) {
-            ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS((*expr), Code_Ident)->str);
-            ll_typer_report_error_done(cc, typer);
-            return;
+
+        if (decl->resolve.status <= LL_RESOLVE_NEEDS_TYPECHECK) {
+            CODE_AS((*expr), Code_Ident)->waiting_for = &decl->resolve;
+            return true;
         }
 
         Code* possible_const = (Code*)decl->ident;
@@ -1201,7 +1213,7 @@ void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         ll_typer_type_expression(cc, typer, element, NULL, NULL);
         result = (*element)->type;
 
-        if (!result) return;
+        if (!result) return false;
         if ((*element)->has_const) {
             result = ll_typer_get_ptr_type(cc, typer, (*element)->const_value.as_type);
             (*expr)->has_const = 1;
@@ -1341,7 +1353,7 @@ void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     }
 
                     (*expr)->type = right_ident->base.type;
-                    return;
+                    return false;
                 } else if (base_type->kind == LL_TYPE_ARRAY) {
                     if (string_eql(right_ident->str, lit("length"))) {
                         (*expr)->has_const = true;
@@ -1351,7 +1363,7 @@ void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     }
 
                     (*expr)->type = right_ident->base.type;
-                    return;
+                    return false;
                 }
 
                 if (!base_scope) {
@@ -1371,7 +1383,7 @@ void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 }
 
                 (*expr)->type = right_ident->base.type;
-                return;
+                return false;
             } else {
 TRY_MEMBER_FUNCTION_CALL:
                 ll_typer_type_expression(cc, typer, &opr->right, NULL, &result);
@@ -1392,7 +1404,7 @@ TRY_MEMBER_FUNCTION_CALL:
                             }
 
                             (*expr)->type = right_ident->base.type;
-                            return;                           
+                            return false;                           
                         }
 
                         if (member_arg_parameter->kind == LL_TYPE_POINTER && opr->left->type->kind != LL_TYPE_POINTER) {
@@ -1410,14 +1422,14 @@ TRY_MEMBER_FUNCTION_CALL:
                             }
 
                             (*expr)->type = right_ident->base.type;
-                            return;
+                            return false;
                         }
                     }
                 }
 
                 ll_typer_report_error(((LL_Error){ .main_token = right_ident->base.token_info }), "Member or function '{}' not found", right_ident->str);
                 ll_typer_report_error_done(cc, typer);
-                return;
+                return false;
             }
         }
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
@@ -1460,7 +1472,7 @@ TRY_MEMBER_FUNCTION_CALL:
             // @oc_todo: look at casting lhs
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
             (*expr)->type = result;
-            return;
+            return false;
         } break;
         case '=': {
             ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
@@ -1486,7 +1498,7 @@ TRY_MEMBER_FUNCTION_CALL:
             // @oc_todo: look at casting lhs
             ll_typer_add_implicit_cast(cc, typer, &opr->right, lhs_type);
             (*expr)->type = lhs_type;
-            return;
+            return false;
         } break;
         default: break;
 #pragma GCC diagnostic pop
@@ -1847,7 +1859,7 @@ TRY_MEMBER_FUNCTION_CALL:
             ll_typer_report_error_type(cc, typer, &fn_type->base);
             ll_typer_report_error_no_src(" is not a callable function\n");
             ll_typer_report_error_done(cc, typer);
-            return;
+            return false;
         }
 
         // if we're directly calling a function:
@@ -2206,7 +2218,7 @@ TRY_MEMBER_FUNCTION_CALL:
         if (result == typer->ty_type) {
             if (!cf->ptr->has_const) oc_todo("handle runtime");
             if (!cf->ptr->const_value.as_type) {
-                return;
+                return false;
             }
             ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
 
@@ -2280,7 +2292,7 @@ TRY_MEMBER_FUNCTION_CALL:
         if (result == typer->ty_type) {
             if (!cf->ptr->has_const) oc_todo("handle runtime");
             if (!cf->ptr->const_value.as_type) {
-                return;
+                return false;
             }
 
             result = ll_typer_get_slice_type(cc, typer, cf->ptr->const_value.as_type);
@@ -2575,7 +2587,7 @@ CODE_BREAK_EXIT_SCOPE:
     }
 
     (*expr)->type = result;
-    return;
+    return false;
 }
 
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename) {

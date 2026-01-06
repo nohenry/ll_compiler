@@ -395,6 +395,9 @@ Parse_Result parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, P
             .storage_class = storage_class,
         }));
 
+        CODE_AS(result.code, Code_Declaration)->resolve.code = result.code;
+        CODE_AS(result.code, Code_Declaration)->resolve.status = LL_RESOLVE_NEEDS_TYPECHECK;
+
 		// result.kind = RESULT_KIND_IDENT;
 		// result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
 

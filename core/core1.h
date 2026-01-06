@@ -418,6 +418,13 @@ typedef struct {
 		(array)->count += (plus_count);                                                                 \
 	} while (0)
 
+#define oc_array_swapped_remove(arena, array, index) do {                                  \
+        if ((array)->count >= 1) {                                                         \
+            (array)->items[index] = (array)->items[(array)->count - 1];                    \
+            (array)->count -= 1;                                                           \
+        } else oc_assert(false && "tried to remove an element on array with no elements"); \
+    } while (0)
+
 static inline uword oc_align_forward(uword value, uword alignment_in_bytes) {
     return (value + alignment_in_bytes - 1) & ~(alignment_in_bytes - 1);
 }
