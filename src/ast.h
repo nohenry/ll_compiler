@@ -27,6 +27,7 @@ typedef enum {
     CODE_KIND_OBJECT_INITIALIZER,
     CODE_KIND_ARRAY_INITIALIZER,
     CODE_KIND_KEY_VALUE,
+    CODE_KIND_SPREAD,
 
     CODE_KIND_RETURN,
     CODE_KIND_BREAK,
@@ -37,6 +38,8 @@ typedef enum {
 
     CODE_KIND_CAST,
     CODE_KIND_GENERIC,
+    CODE_KIND_NEW,
+    CODE_KIND_TYPE_ARGUMENTS,
 
     // Generated
     CODE_KIND_TYPENAME,
@@ -99,10 +102,18 @@ typedef struct {
 } Code_Parameter;
 
 typedef struct {
-    uint32_t count;
-    uint32_t capacity;
-    Code_Parameter* items;
-} Code_Parameter_List;
+    Code base;
+    Code_Ident* ident;
+    Code* constraint;
+    Code* initializer;
+    LL_Parameter_Flags flags;
+} Code_Type_Parameter;
+
+typedef struct {
+    Code base;
+    Code* member;
+    Array(uint32, Code*) types;
+} Code_Type_Arguments;
 
 typedef enum {
     CODE_BLOCK_FLAG_EXPR            = (1u << 0u),
@@ -143,6 +154,11 @@ typedef struct {
 
 typedef struct {
     Code base;
+    Code* value;
+} Code_Spread;
+
+typedef struct {
+    Code base;
     Code* left;
     Code* right;
     LL_Token_Info op;
@@ -158,7 +174,14 @@ typedef struct {
     Code base;
     Code* key;
     Code* value;
+    bool computed;
 } Code_Key_Value;
+
+typedef struct {
+    Code base;
+    Code* expr;
+    Code_List arguments;
+} Code_New;
 
 typedef struct {
     Code base;
@@ -219,11 +242,12 @@ typedef struct {
 typedef struct {
     Code_Declaration base;
 
-    Code_Parameter_List parameters;
+    Array(uint32, Code_Type_Parameter) type_parameters;
+    Array(uint32, Code_Parameter) parameters;
     Code_Scope* body optional;
     LL_Storage_Class storage_class;
     uint32_t ir_index;
-    LL_Token_Info p_open, p_close;
+    LL_Token_Info a_open, a_close, p_open, p_close;
 
     LL_Function_Instantiation* (*instantiations)[LL_DEFAULT_MAP_ENTRY_COUNT];
 } Code_Function_Declaration;

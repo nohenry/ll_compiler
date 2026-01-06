@@ -111,7 +111,7 @@ extern string LL_KEYWORD_BREAK;
 extern string LL_KEYWORD_CONTINUE;
 extern string LL_KEYWORD_MACRO;
 extern string LL_KEYWORD_LET;
-extern string LL_KEYWORD_SIZEOF;
+extern string LL_KEYWORD_EXTENDS;
 
 extern string LL_KEYWORD_TRUE;
 extern string LL_KEYWORD_FALSE;
@@ -121,6 +121,11 @@ extern string LL_KEYWORD_BOOLEAN;
 extern string LL_KEYWORD_NUMBER;
 extern string LL_KEYWORD_STRING;
 extern string LL_KEYWORD_VOID;
+extern string LL_KEYWORD_NEW;
+extern string LL_KEYWORD_DELETE;
+extern string LL_KEYWORD_TYPEOF;
+extern string LL_KEYWORD_IN;
+extern string LL_KEYWORD_INSTANCEOF;
 
 #define MAP_GET(map, key, allocator, hash_fn, eql_fn, seed) ({                     \
         size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \

@@ -103,7 +103,7 @@ string LL_KEYWORD_BREAK;
 string LL_KEYWORD_CONTINUE;
 string LL_KEYWORD_MACRO;
 string LL_KEYWORD_LET;
-string LL_KEYWORD_SIZEOF;
+string LL_KEYWORD_EXTENDS;
 
 string LL_KEYWORD_TRUE;
 string LL_KEYWORD_FALSE;
@@ -113,6 +113,11 @@ string LL_KEYWORD_BOOLEAN;
 string LL_KEYWORD_NUMBER;
 string LL_KEYWORD_STRING;
 string LL_KEYWORD_VOID;
+string LL_KEYWORD_NEW;
+string LL_KEYWORD_DELETE;
+string LL_KEYWORD_TYPEOF;
+string LL_KEYWORD_IN;
+string LL_KEYWORD_INSTANCEOF;
 
 Compiler_Context ll_compiler_context_create() {
     Compiler_Context result = { 0 };
@@ -132,7 +137,7 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_CONTINUE = ll_intern_string(&result, lit("continue"));
     LL_KEYWORD_MACRO = ll_intern_string(&result, lit("macro"));
     LL_KEYWORD_LET = ll_intern_string(&result, lit("let"));
-    LL_KEYWORD_SIZEOF = ll_intern_string(&result, lit("sizeof"));
+    LL_KEYWORD_EXTENDS = ll_intern_string(&result, lit("extends"));
 
     LL_KEYWORD_TRUE = ll_intern_string(&result, lit("true"));
     LL_KEYWORD_FALSE = ll_intern_string(&result, lit("false"));
@@ -142,6 +147,11 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_NUMBER = ll_intern_string(&result, lit("number"));
     LL_KEYWORD_STRING = ll_intern_string(&result, lit("string"));
     LL_KEYWORD_VOID = ll_intern_string(&result, lit("void"));
+    LL_KEYWORD_NEW = ll_intern_string(&result, lit("new"));
+    LL_KEYWORD_DELETE = ll_intern_string(&result, lit("delete"));
+    LL_KEYWORD_TYPEOF = ll_intern_string(&result, lit("typeof"));
+    LL_KEYWORD_IN = ll_intern_string(&result, lit("in"));
+    LL_KEYWORD_INSTANCEOF = ll_intern_string(&result, lit("instanceof"));
 
     return result;
 }
