@@ -127,6 +127,13 @@ extern string LL_KEYWORD_TYPEOF;
 extern string LL_KEYWORD_IN;
 extern string LL_KEYWORD_INSTANCEOF;
 
+extern string LL_KEYWORD_PUBLIC;
+extern string LL_KEYWORD_PRIVATE;
+extern string LL_KEYWORD_PROTECTED;
+extern string LL_KEYWORD_IMPLEMENTS;
+extern string LL_KEYWORD_INTERFACE;
+extern string LL_KEYWORD_STATIC;
+
 #define MAP_GET(map, key, allocator, hash_fn, eql_fn, seed) ({                     \
         size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \
         __typeof((map)[0]) current = (map)[hash]; 	 		                                   \

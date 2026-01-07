@@ -1,5 +1,6 @@
 #include "common.h"
 #include "parser.h"
+#include "emit.h"
 
 #define shift(xs, xs_sz) (oc_assert((xs_sz) > 0), (xs_sz)--, *(xs)++)
 
@@ -49,6 +50,11 @@ int main(int argc, char** argv) {
 
     Code_Scope* root = parser_parse_file(&cc, &parser);
     if (!cc.quiet) print_node((Code*)root, 0, &stdout_writer);
+
+    LL_Emitter emit = ll_emitter_create(&cc);
+    ll_emitter_run(&cc, &emit, root);
+
+    print("{}\n", oc_sb_to_string(&emit.sb));
 
     return 0;
 }

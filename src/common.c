@@ -118,6 +118,12 @@ string LL_KEYWORD_DELETE;
 string LL_KEYWORD_TYPEOF;
 string LL_KEYWORD_IN;
 string LL_KEYWORD_INSTANCEOF;
+string LL_KEYWORD_PUBLIC;
+string LL_KEYWORD_PRIVATE;
+string LL_KEYWORD_PROTECTED;
+string LL_KEYWORD_IMPLEMENTS;
+string LL_KEYWORD_INTERFACE;
+string LL_KEYWORD_STATIC;
 
 Compiler_Context ll_compiler_context_create() {
     Compiler_Context result = { 0 };
@@ -152,6 +158,13 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_TYPEOF = ll_intern_string(&result, lit("typeof"));
     LL_KEYWORD_IN = ll_intern_string(&result, lit("in"));
     LL_KEYWORD_INSTANCEOF = ll_intern_string(&result, lit("instanceof"));
+
+    LL_KEYWORD_PUBLIC = ll_intern_string(&result, lit("public"));
+    LL_KEYWORD_PRIVATE = ll_intern_string(&result, lit("private"));
+    LL_KEYWORD_PROTECTED = ll_intern_string(&result, lit("protected"));
+    LL_KEYWORD_IMPLEMENTS = ll_intern_string(&result, lit("implements"));
+    LL_KEYWORD_INTERFACE = ll_intern_string(&result, lit("interface"));
+    LL_KEYWORD_STATIC = ll_intern_string(&result, lit("static"));
 
     return result;
 }

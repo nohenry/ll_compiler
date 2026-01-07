@@ -24,6 +24,7 @@ typedef enum {
     CODE_KIND_CLASS_DECLARATION,
     CODE_KIND_PARAMETER,
     CODE_KIND_BLOCK,
+    CODE_KIND_FOR_SCOPE,
     CODE_KIND_OBJECT_INITIALIZER,
     CODE_KIND_ARRAY_INITIALIZER,
     CODE_KIND_KEY_VALUE,
@@ -49,11 +50,17 @@ typedef enum {
     LL_STORAGE_CLASS_EXTERN = (1 << 0),
     LL_STORAGE_CLASS_STATIC = (1 << 1),
     LL_STORAGE_CLASS_MACRO  = (1 << 2),
+    LL_STORAGE_CLASS_PUBLIC  = (1 << 3),
+    LL_STORAGE_CLASS_PRIVATE  = (1 << 4),
+    LL_STORAGE_CLASS_PROTECTED = (1 << 5),
 } LL_Storage_Class;
 
 typedef enum {
-    LL_PARAMETER_FLAG_VARIADIC = (1 << 0),
-    LL_PARAMETER_FLAG_OPTIONAL = (1 << 1),
+    LL_PARAMETER_FLAG_VARIADIC  = (1 << 0),
+    LL_PARAMETER_FLAG_OPTIONAL  = (1 << 1),
+    LL_PARAMETER_FLAG_PUBLIC    = (1 << 2),
+    LL_PARAMETER_FLAG_PRIVATE   = (1 << 3),
+    LL_PARAMETER_FLAG_PROTECTED = (1 << 4),
 } LL_Parameter_Flags;
 
 struct code {
@@ -144,6 +151,15 @@ typedef struct Code_Scope {
 } Code_Scope;
 
 typedef struct {
+    Code_Declaration base;
+
+    Code* initializer optional;
+    LL_Storage_Class storage_class;
+    uint32_t ir_index; // for locals, it's the locals index
+                       // for structs, it's the type field index
+} Code_Variable_Declaration;
+
+typedef struct {
     Code base;
     union {
         uint64_t u64;
@@ -161,7 +177,9 @@ typedef struct {
     Code base;
     Code* left;
     Code* right;
-    LL_Token_Info op;
+    LL_Token op;
+
+    Code_Variable_Declaration* from_initializer;
 } Code_Operation;
 
 typedef struct {
@@ -233,15 +251,6 @@ typedef struct {
 typedef struct {
     Code_Declaration base;
 
-    Code* initializer optional;
-    LL_Storage_Class storage_class;
-    uint32_t ir_index; // for locals, it's the locals index
-                       // for structs, it's the type field index
-} Code_Variable_Declaration;
-
-typedef struct {
-    Code_Declaration base;
-
     Array(uint32, Code_Type_Parameter) type_parameters;
     Array(uint32, Code_Parameter) parameters;
     Code_Scope* body optional;
@@ -255,6 +264,7 @@ typedef struct {
 typedef struct {
     Code base;
     Code* expr;
+    Array(uint32, Code*) type_arguments;
     Code_List arguments;
 	Code_List ordered_arguments;
     Code_Function_Declaration* fn_decl;
@@ -265,6 +275,9 @@ typedef struct {
 
 typedef struct {
     Code_Declaration base;
+    Array(uint32, Code_Type_Parameter) type_parameters;
+    Array(uint32, Code*) implements;
+    Code* extends;
     Code_Scope* block;
 } Code_Class_Declaration;
 
