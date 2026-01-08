@@ -43,7 +43,7 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
         for (uint32 i = 0; i < scp->statements.count; ++i) {
             if (scp->statements.items[i]->kind == CODE_KIND_PARAMETER) {
                 Code_Parameter* param = CODE_AS(scp->statements.items[i], Code_Parameter);
-                if (param->flags & LL_STORAGE_CLASS_STATIC) {}
+                if (param->base.flags & LL_DECLARATION_FLAG_STATIC) {}
                 else continue;
             }
 
@@ -56,7 +56,7 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS(stmt, Code_Variable_Declaration);
         INDENT();
-        if (var_decl->storage_class & LL_STORAGE_CLASS_CONST) {
+        if (var_decl->base.flags & LL_DECLARATION_FLAG_CONST) {
             wprint(w, "const {}", var_decl->base.ident->str);
         } else {
             wprint(w, "let {}", var_decl->base.ident->str);
@@ -70,7 +70,7 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
     case CODE_KIND_PARAMETER: {
         Code_Parameter* var_decl = CODE_AS(stmt, Code_Parameter);
         INDENT();
-        if (var_decl->flags & LL_STORAGE_CLASS_STATIC) {
+        if (var_decl->base.flags & LL_DECLARATION_FLAG_STATIC) {
             wprint(w, "static {}", var_decl->base.ident->str);
         }
         wprint(w, ";");
@@ -78,7 +78,7 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS(stmt, Code_Function_Declaration);
         INDENT();
-        if (fn_decl->storage_class & LL_STORAGE_CLASS_ARROW_FUNC) {
+        if (fn_decl->base.flags & LL_DECLARATION_FLAG_ARROW_FUNC) {
         } else {
             if (!fn_decl->base.within_scope->decl || fn_decl->base.within_scope->decl->base.kind != CODE_KIND_CLASS_DECLARATION) {
                 wprint(w, "function");
@@ -97,7 +97,7 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
         }
         wprint(w, ")");
 
-        if (fn_decl->storage_class & LL_STORAGE_CLASS_ARROW_FUNC) {
+        if (fn_decl->base.flags & LL_DECLARATION_FLAG_ARROW_FUNC) {
             wprint(w, "=>");
             if (fn_decl->body) {
                 if (fn_decl->body->base.kind == CODE_KIND_BLOCK) {

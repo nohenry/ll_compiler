@@ -25,6 +25,7 @@ typedef enum {
     CODE_KIND_FUNCTION_DECLARATION,
     CODE_KIND_CLASS_DECLARATION,
     CODE_KIND_INTERFACE_DECLARATION,
+    CODE_KIND_TYPE_DECLARATION,
     CODE_KIND_PARAMETER,
     CODE_KIND_BLOCK,
     CODE_KIND_FOR_SCOPE,
@@ -52,18 +53,18 @@ typedef enum {
 } Code_Kind;
 
 typedef enum {
-    LL_STORAGE_CLASS_EXTERN    = (1 << 0),
-    LL_STORAGE_CLASS_STATIC    = (1 << 1),
-    LL_STORAGE_CLASS_MACRO     = (1 << 2),
-    LL_STORAGE_CLASS_PUBLIC    = (1 << 3),
-    LL_STORAGE_CLASS_PRIVATE   = (1 << 4),
-    LL_STORAGE_CLASS_PROTECTED = (1 << 5),
-    LL_STORAGE_CLASS_CONST     = (1 << 6),
-    LL_STORAGE_CLASS_READONLY  = (1 << 7),
-    LL_STORAGE_CLASS_ARROW_FUNC= (1 << 8),
-    LL_STORAGE_CLASS_OPTIONAL  = (1 << 9),
-    LL_STORAGE_CLASS_VARIADIC  = (1 << 10),
-} LL_Storage_Class;
+    LL_DECLARATION_FLAG_EXTERN    = (1 << 0),
+    LL_DECLARATION_FLAG_STATIC    = (1 << 1),
+    LL_DECLARATION_FLAG_MACRO     = (1 << 2),
+    LL_DECLARATION_FLAG_PUBLIC    = (1 << 3),
+    LL_DECLARATION_FLAG_PRIVATE   = (1 << 4),
+    LL_DECLARATION_FLAG_PROTECTED = (1 << 5),
+    LL_DECLARATION_FLAG_CONST     = (1 << 6),
+    LL_DECLARATION_FLAG_READONLY  = (1 << 7),
+    LL_DECLARATION_FLAG_ARROW_FUNC= (1 << 8),
+    LL_DECLARATION_FLAG_OPTIONAL  = (1 << 9),
+    LL_DECLARATION_FLAG_VARIADIC  = (1 << 10),
+} LL_Declaration_Flags;
 
 // typedef enum {
 //     LL_PARAMETER_FLAG_VARIADIC  = (1 << 0),
@@ -115,7 +116,7 @@ typedef struct {
     Code_Ident* ident;
     Code* constraint;
     Code* initializer;
-    LL_Storage_Class flags;
+    LL_Declaration_Flags flags;
 } Code_Type_Parameter;
 
 typedef struct {
@@ -135,12 +136,12 @@ typedef struct Code_Declaration {
     Code_Ident* ident;
     struct Code_Scope* within_scope;
     Code* declared_type;
+    LL_Declaration_Flags flags;
 } Code_Declaration;
 
 typedef struct {
     Code_Declaration base;
     Code* initializer;
-    LL_Storage_Class flags;
 } Code_Parameter;
 
 typedef struct Code_Scope {
@@ -162,7 +163,6 @@ typedef struct {
     Code_Declaration base;
 
     Code* initializer optional;
-    LL_Storage_Class storage_class;
     uint32_t ir_index; // for locals, it's the locals index
                        // for structs, it's the type field index
 } Code_Variable_Declaration;
@@ -267,7 +267,6 @@ typedef struct {
     Array(uint32, Code_Type_Parameter) type_parameters;
     Array(uint32, Code_Parameter*) parameters;
     Code_Scope* body optional;
-    LL_Storage_Class storage_class;
     uint32_t ir_index;
     LL_Token_Info a_open, a_close, p_open, p_close;
 
