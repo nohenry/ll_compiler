@@ -4,7 +4,7 @@
 // #include <stdbool.h>
 #include "common.h"
 
-typedef enum {
+Enum(LL_Token_Kind, uint16,
     LL_TOKEN_KIND_NONE = 0,
     LL_TOKEN_KIND_IDENT = 256,
     LL_TOKEN_KIND_INT,
@@ -23,9 +23,13 @@ typedef enum {
     LL_TOKEN_KIND_ASSIGN_OR,
     LL_TOKEN_KIND_ASSIGN_NULLOR,
 
+    LL_TOKEN_KIND_ARROW,
+
     /* comparison */
     LL_TOKEN_KIND_EQUALS,
+    LL_TOKEN_KIND_EQUALS_EQUALS,
     LL_TOKEN_KIND_NEQUALS,
+    LL_TOKEN_KIND_NEQUALS_NEQUALS,
     LL_TOKEN_KIND_LTE,
     LL_TOKEN_KIND_GTE,
 
@@ -34,10 +38,13 @@ typedef enum {
     LL_TOKEN_KIND_NULLOR,
 
     LL_TOKEN_KIND_SPREAD,
-} LL_Token_Kind;
+
+    LL_TOKEN_FLAG_STRING_SINGLE_QUOTE = (1 << 10),
+);
 
 typedef struct {
     LL_Token_Kind kind;
+    uint16 flag;
     size_t position;
     union {
         uint64_t u64;
@@ -48,13 +55,14 @@ typedef struct {
 
 typedef struct {
     LL_Token_Kind kind;
+    uint16 flag;
     size_t position;
 } LL_Token_Info;
 
 typedef struct ll_lexer {
     string filename;
     string source;
-    size_t pos;
+    size_t unpeeked_pos, pos;
     LL_Token peeked_token;
     LL_Token_Info peeked_token_info;
     bool has_peeked_token;

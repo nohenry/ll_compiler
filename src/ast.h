@@ -14,14 +14,17 @@ typedef enum {
     CODE_KIND_LITERAL_STRING,
     CODE_KIND_IDENT,
 
+    CODE_KIND_GROUPED,
     CODE_KIND_BINARY_OP,
     CODE_KIND_PRE_OP,
+    CODE_KIND_COMMA_LIST,
     CODE_KIND_INVOKE,
     CODE_KIND_INDEX,
 
     CODE_KIND_VARIABLE_DECLARATION,
     CODE_KIND_FUNCTION_DECLARATION,
     CODE_KIND_CLASS_DECLARATION,
+    CODE_KIND_INTERFACE_DECLARATION,
     CODE_KIND_PARAMETER,
     CODE_KIND_BLOCK,
     CODE_KIND_FOR_SCOPE,
@@ -34,6 +37,7 @@ typedef enum {
     CODE_KIND_BREAK,
     CODE_KIND_CONTINUE,
     CODE_KIND_IF,
+    CODE_KIND_TERNARY,
     CODE_KIND_FOR,
     CODE_KIND_WHILE,
 
@@ -41,27 +45,34 @@ typedef enum {
     CODE_KIND_GENERIC,
     CODE_KIND_NEW,
     CODE_KIND_TYPE_ARGUMENTS,
+    CODE_KIND_TUPLE,
 
     // Generated
     CODE_KIND_TYPENAME,
 } Code_Kind;
 
 typedef enum {
-    LL_STORAGE_CLASS_EXTERN = (1 << 0),
-    LL_STORAGE_CLASS_STATIC = (1 << 1),
-    LL_STORAGE_CLASS_MACRO  = (1 << 2),
-    LL_STORAGE_CLASS_PUBLIC  = (1 << 3),
-    LL_STORAGE_CLASS_PRIVATE  = (1 << 4),
+    LL_STORAGE_CLASS_EXTERN    = (1 << 0),
+    LL_STORAGE_CLASS_STATIC    = (1 << 1),
+    LL_STORAGE_CLASS_MACRO     = (1 << 2),
+    LL_STORAGE_CLASS_PUBLIC    = (1 << 3),
+    LL_STORAGE_CLASS_PRIVATE   = (1 << 4),
     LL_STORAGE_CLASS_PROTECTED = (1 << 5),
+    LL_STORAGE_CLASS_CONST     = (1 << 6),
+    LL_STORAGE_CLASS_READONLY  = (1 << 7),
+    LL_STORAGE_CLASS_ARROW_FUNC= (1 << 8),
+    LL_STORAGE_CLASS_OPTIONAL  = (1 << 9),
+    LL_STORAGE_CLASS_VARIADIC  = (1 << 10),
 } LL_Storage_Class;
 
-typedef enum {
-    LL_PARAMETER_FLAG_VARIADIC  = (1 << 0),
-    LL_PARAMETER_FLAG_OPTIONAL  = (1 << 1),
-    LL_PARAMETER_FLAG_PUBLIC    = (1 << 2),
-    LL_PARAMETER_FLAG_PRIVATE   = (1 << 3),
-    LL_PARAMETER_FLAG_PROTECTED = (1 << 4),
-} LL_Parameter_Flags;
+// typedef enum {
+//     LL_PARAMETER_FLAG_VARIADIC  = (1 << 0),
+//     LL_PARAMETER_FLAG_OPTIONAL  = (1 << 1),
+//     LL_PARAMETER_FLAG_PUBLIC    = (1 << 2),
+//     LL_PARAMETER_FLAG_PRIVATE   = (1 << 3),
+//     LL_PARAMETER_FLAG_PROTECTED = (1 << 4),
+//     LL_PARAMETER_FLAG_READONLY  = (1 << 5),
+// } LL_Parameter_Flags;
 
 struct code {
     Code_Kind kind;
@@ -101,19 +112,10 @@ typedef struct {
 
 typedef struct {
     Code base;
-    Code* type;
-    Code_Ident* ident;
-    Code* initializer;
-    LL_Parameter_Flags flags;
-    uint32_t ir_index;
-} Code_Parameter;
-
-typedef struct {
-    Code base;
     Code_Ident* ident;
     Code* constraint;
     Code* initializer;
-    LL_Parameter_Flags flags;
+    LL_Storage_Class flags;
 } Code_Type_Parameter;
 
 typedef struct {
@@ -134,6 +136,12 @@ typedef struct Code_Declaration {
     struct Code_Scope* within_scope;
     Code* declared_type;
 } Code_Declaration;
+
+typedef struct {
+    Code_Declaration base;
+    Code* initializer;
+    LL_Storage_Class flags;
+} Code_Parameter;
 
 typedef struct Code_Scope {
     Code base;
@@ -181,6 +189,11 @@ typedef struct {
 
     Code_Variable_Declaration* from_initializer;
 } Code_Operation;
+
+typedef struct {
+    Code base;
+    Array(uint32, Code*) exprs;
+} Code_Comma_List;
 
 typedef struct {
     Code base;
@@ -252,7 +265,7 @@ typedef struct {
     Code_Declaration base;
 
     Array(uint32, Code_Type_Parameter) type_parameters;
-    Array(uint32, Code_Parameter) parameters;
+    Array(uint32, Code_Parameter*) parameters;
     Code_Scope* body optional;
     LL_Storage_Class storage_class;
     uint32_t ir_index;
@@ -297,6 +310,16 @@ typedef struct {
     Code base;
     Code* element;
 } Code_Type_Pointer;
+
+typedef struct {
+    Code base;
+    Array(uint32, Code*) types;
+} Code_Tuple;
+
+typedef struct {
+    Code base;
+    Code* expr;
+} Code_Grouped;
 
 #define CODE_AS(value, Type) ((Type*)(value))
 

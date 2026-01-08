@@ -133,6 +133,7 @@ extern string LL_KEYWORD_PROTECTED;
 extern string LL_KEYWORD_IMPLEMENTS;
 extern string LL_KEYWORD_INTERFACE;
 extern string LL_KEYWORD_STATIC;
+extern string LL_KEYWORD_READONLY;
 
 #define MAP_GET(map, key, allocator, hash_fn, eql_fn, seed) ({                     \
         size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \

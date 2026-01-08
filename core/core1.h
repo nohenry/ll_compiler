@@ -318,8 +318,8 @@ typedef struct {
 // #elif __aarch64__
 //     #define oc_breakpoint() __asm__("trap")
 // #endif
-// #define oc_breakpoint() __builtin_debugtrap()
-#define oc_breakpoint() exit(1)
+#define oc_breakpoint() __builtin_debugtrap()
+// #define oc_breakpoint() exit(1)
 
 #ifndef _NDEBUG
 #define oc_assert(expr) ((expr) ? 1 : _oc_assert_fail(#expr, __FILE__, __LINE__, __func__))

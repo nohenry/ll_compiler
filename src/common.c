@@ -124,6 +124,7 @@ string LL_KEYWORD_PROTECTED;
 string LL_KEYWORD_IMPLEMENTS;
 string LL_KEYWORD_INTERFACE;
 string LL_KEYWORD_STATIC;
+string LL_KEYWORD_READONLY;
 
 Compiler_Context ll_compiler_context_create() {
     Compiler_Context result = { 0 };
@@ -135,7 +136,7 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_ELSE = ll_intern_string(&result, lit("else"));
     LL_KEYWORD_DO = ll_intern_string(&result, lit("do"));
     LL_KEYWORD_SWITCH = ll_intern_string(&result, lit("switch"));
-    LL_KEYWORD_CLASS = ll_intern_string(&result, lit("struct"));
+    LL_KEYWORD_CLASS = ll_intern_string(&result, lit("class"));
     LL_KEYWORD_EXTERN = ll_intern_string(&result, lit("extern"));
     LL_KEYWORD_FUNCTION = ll_intern_string(&result, lit("function"));
     LL_KEYWORD_RETURN = ll_intern_string(&result, lit("return"));
@@ -165,6 +166,7 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_IMPLEMENTS = ll_intern_string(&result, lit("implements"));
     LL_KEYWORD_INTERFACE = ll_intern_string(&result, lit("interface"));
     LL_KEYWORD_STATIC = ll_intern_string(&result, lit("static"));
+    LL_KEYWORD_READONLY = ll_intern_string(&result, lit("readonly"));
 
     return result;
 }
