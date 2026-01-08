@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     cc.lexer = &parser.lexer;
 
     Code_Scope* root = parser_parse_file(&cc, &parser);
-    if (!cc.quiet) print_node((Code*)root, 0, &stdout_writer);
+    if (!cc.quiet) print_node((Code*)root);
 
     LL_Emitter emit = ll_emitter_create(&cc);
     ll_emitter_run(&cc, &emit, root);

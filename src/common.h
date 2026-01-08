@@ -124,6 +124,7 @@ extern string LL_KEYWORD_VOID;
 extern string LL_KEYWORD_NEW;
 extern string LL_KEYWORD_DELETE;
 extern string LL_KEYWORD_TYPEOF;
+extern string LL_KEYWORD_TYPE;
 extern string LL_KEYWORD_IN;
 extern string LL_KEYWORD_INSTANCEOF;
 

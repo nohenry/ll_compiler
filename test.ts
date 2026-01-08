@@ -29,7 +29,18 @@ interface User {
     readonly id: number, // Readonly property
     name: string;
     email?: string; // Optional property
+    greet(foo: number): void;
 }
+
+interface Employee extends User {
+    department: string;
+    manager?: User;
+}
+
+type Foobar<T> = {
+    a: number;
+    '0923]1p[5': boolean;
+};
 
 class Animal {
     private name: string; // Private property

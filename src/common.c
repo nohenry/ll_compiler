@@ -116,6 +116,7 @@ string LL_KEYWORD_VOID;
 string LL_KEYWORD_NEW;
 string LL_KEYWORD_DELETE;
 string LL_KEYWORD_TYPEOF;
+string LL_KEYWORD_TYPE;
 string LL_KEYWORD_IN;
 string LL_KEYWORD_INSTANCEOF;
 string LL_KEYWORD_PUBLIC;
@@ -157,6 +158,7 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_NEW = ll_intern_string(&result, lit("new"));
     LL_KEYWORD_DELETE = ll_intern_string(&result, lit("delete"));
     LL_KEYWORD_TYPEOF = ll_intern_string(&result, lit("typeof"));
+    LL_KEYWORD_TYPE = ll_intern_string(&result, lit("type"));
     LL_KEYWORD_IN = ll_intern_string(&result, lit("in"));
     LL_KEYWORD_INSTANCEOF = ll_intern_string(&result, lit("instanceof"));
 

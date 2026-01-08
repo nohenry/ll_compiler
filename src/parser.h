@@ -24,7 +24,7 @@ Code_Scope* parser_parse_file(Compiler_Context* cc, LL_Parser* parser);
 Code* parser_parse_statement(Compiler_Context* cc, LL_Parser* parser);
 Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser, Code_Declaration* decl);
 Code_Scope* parser_parse_class_block(Compiler_Context* cc, LL_Parser* parser, Code_Declaration* decl);
-Code_Parameter* parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser, LL_Declaration_Flags storage, Code_Ident* ident);
+Code_Parameter* parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser, LL_Declaration_Flags storage, Code_Ident* ident, bool object_parameter);
 Code_Type_Parameter parser_parse_type_parameter(Compiler_Context* cc, LL_Parser* parser);
 Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, LL_Declaration_Flags storage_class, Code_Ident* class_fn_ident);
 Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* left, int last_precedence, bool from_statement, bool can_be_parameter);
@@ -33,4 +33,6 @@ Code* parser_parse_class(Compiler_Context* cc, LL_Parser* parser, bool interface
 
 Code* parser_parse_type(Compiler_Context* cc, LL_Parser* parser);
 
-void print_node(Code* node, uint32_t indent, Oc_Writer* w);
+void print_node(Code* node);
+void print_node_raw(Code* node, Oc_Writer* w);
+void print_node_raw_impl(Code* node, uint32_t indent, bool do_first_indent, Oc_Writer* w);

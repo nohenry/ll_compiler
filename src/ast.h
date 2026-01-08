@@ -294,6 +294,11 @@ typedef struct {
 } Code_Class_Declaration;
 
 typedef struct {
+    Code_Declaration base;
+    Array(uint32, Code_Type_Parameter) type_parameters;
+} Code_Type_Declaration;
+
+typedef struct {
     Code base;
     Code* cast_type;
     Code* expr;
