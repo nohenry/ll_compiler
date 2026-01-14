@@ -42,7 +42,7 @@ static inline LL_Eval_Registers* get_storage_location(
     }
 }
 
-#ifdef __x86_64__
+#ifdef OC_PLATFORM_WINDOWS
 void copy_native_code(
     Compiler_Context* cc,
     LL_Eval_Context* b

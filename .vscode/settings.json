@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.b": "c",
+        "*.h": "c",
         "system_error": "c",
         "array": "c",
         "functional": "c",

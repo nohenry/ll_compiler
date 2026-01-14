@@ -57,6 +57,9 @@ typedef enum {
 
     // Generated
     CODE_KIND_TYPENAME,
+
+
+    COUNT_OF_CODE_KIND,
 } Code_Kind;
 
 typedef enum {

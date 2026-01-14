@@ -1083,7 +1083,7 @@ void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Code** ex
 }
 
 void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
-    LL_Type* result;
+    LL_Type* result = NULL;
     size_t i;
     switch ((*expr)->kind) {
     case CODE_KIND_BLOCK: {
@@ -2568,6 +2568,8 @@ CODE_BREAK_EXIT_SCOPE:
 
         result = expected_type;
     } break;
+    case CODE_KIND_TYPENAME: break;
+    case COUNT_OF_CODE_KIND: break;
     default:
         eprint("\x1b[31;1mTODO:\x1b[0m type expression {}\n", (*expr)->kind);
         result = NULL;
