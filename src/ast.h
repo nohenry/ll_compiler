@@ -17,9 +17,12 @@ typedef enum {
     CODE_KIND_GROUPED,
     CODE_KIND_BINARY_OP,
     CODE_KIND_PRE_OP,
+    CODE_KIND_POST_OP,
     CODE_KIND_COMMA_LIST,
     CODE_KIND_INVOKE,
     CODE_KIND_INDEX,
+    CODE_KIND_INDEX_SIGNATURE,
+    CODE_KIND_MAPPED_SIGNATURE,
 
     CODE_KIND_VARIABLE_DECLARATION,
     CODE_KIND_FUNCTION_DECLARATION,
@@ -64,6 +67,7 @@ typedef enum {
     LL_DECLARATION_FLAG_ARROW_FUNC= (1 << 8),
     LL_DECLARATION_FLAG_OPTIONAL  = (1 << 9),
     LL_DECLARATION_FLAG_VARIADIC  = (1 << 10),
+    LL_DECLARATION_FLAG_ABSTRACT  = (1 << 11),
 } LL_Declaration_Flags;
 
 // typedef enum {
@@ -200,6 +204,14 @@ typedef struct {
     Code* ptr;
     Code* index;
 } Code_Index;
+
+typedef struct {
+    Code base;
+    Code_Ident* ident;
+    Code* member_type;
+    Code* result_type;
+    LL_Declaration_Flags flags;
+} Code_Index_Signature;
 
 typedef struct {
     Code base;

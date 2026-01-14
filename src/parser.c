@@ -196,6 +196,8 @@ START_SWITCH:
                 } else if (token.str.ptr == LL_KEYWORD_FUNCTION.ptr || token.str.ptr == LL_KEYWORD_LET.ptr || token.str.ptr == LL_KEYWORD_CONST.ptr) {
                     result = parser_parse_declaration(cc, parser, decl_flags, NULL);
                     return result;
+                } else if (token.str.ptr == LL_KEYWORD_ABSTRACT.ptr) {
+                    decl_flags |= LL_DECLARATION_FLAG_ABSTRACT;
                 } else if (token.str.ptr == LL_KEYWORD_TYPE.ptr) {
                     LL_Token type_kw = token;
                     CONSUME(); 
@@ -290,6 +292,33 @@ START_SWITCH:
         return (Code*) { 0 };
     }
     switch (token.kind) {
+        case '[': {
+            CONSUME();
+            EXPECT(LL_TOKEN_KIND_IDENT, &token);
+            Code_Ident* ident = create_ident(cc, token.str);
+            ident->base.token_info = TOKEN_INFO(token);
+
+            uint32 kind;
+            if (PEEK(&token) && token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_IN.ptr) {
+                kind = CODE_KIND_MAPPED_SIGNATURE;
+            } else if (token.kind == ':') {
+                kind = CODE_KIND_INDEX_SIGNATURE;
+            } else UNEXPECTED();
+            CONSUME();
+
+            Code* member_type = parser_parse_type(cc, parser);
+            EXPECT(']', &token);
+            EXPECT(':', &token);
+            Code* result_type = parser_parse_type(cc, parser);
+
+            result = CREATE_NODE(kind, ((Code_Index_Signature) {
+                .ident = ident,
+                .member_type = member_type,
+                .result_type = result_type,
+                .flags = decl_flags,
+            }));
+            return result;
+        } break;
         case LL_TOKEN_KIND_IDENT:
             while (PEEK(&token) && token.kind == LL_TOKEN_KIND_IDENT) {
                 if (token.str.ptr == LL_KEYWORD_EXTERN.ptr) {
@@ -304,13 +333,17 @@ START_SWITCH:
                     decl_flags |= LL_DECLARATION_FLAG_PROTECTED;
                 } else if (token.str.ptr == LL_KEYWORD_READONLY.ptr) {
                     decl_flags |= LL_DECLARATION_FLAG_READONLY;
+                } else if (token.str.ptr == LL_KEYWORD_ABSTRACT.ptr) {
+                    decl_flags |= LL_DECLARATION_FLAG_ABSTRACT;
                 } else {
                     CONSUME();
                     Code_Ident* ident = create_ident(cc, token.str);
                     ident->base.token_info = TOKEN_INFO(token);
 
                     if (PEEK(&token)) {
-                        if (token.kind == ':' || token.kind == '?') {
+                        if (token.kind == '(') {
+                            result = parser_parse_declaration(cc, parser, decl_flags, ident);
+                        } else {
                             result = (Code*)parser_parse_parameter(cc, parser, decl_flags, ident, true);
                             CONSUME_SEMI_OR_COMMA();
 
@@ -319,9 +352,7 @@ START_SWITCH:
 
                             oc_assert(hash_map_get(&cc->arena, &parser->current_scope->declarations, param->ident->str) == NULL);
                             hash_map_put(&cc->arena, &parser->current_scope->declarations, param->ident->str, param);
-                        } else if (token.kind == '(') {
-                            result = parser_parse_declaration(cc, parser, decl_flags, ident);
-                        } else result = (Code*)ident;
+                        }
                     } else result = (Code*)ident;
 
                     return result;
@@ -415,15 +446,16 @@ Code_Parameter* parser_parse_parameter(Compiler_Context* cc, LL_Parser* parser, 
     LL_Token token;
     Code *type = NULL, *init = NULL;
 
-    while (!ident) {
+    while (!ident && PEEK(&token)) {
         if (token.kind == LL_TOKEN_KIND_IDENT) {
             if (token.str.ptr == LL_KEYWORD_PUBLIC.ptr) decl_flags |= LL_DECLARATION_FLAG_PUBLIC;
             else if (token.str.ptr == LL_KEYWORD_PRIVATE.ptr) decl_flags |= LL_DECLARATION_FLAG_PRIVATE;
             else if (token.str.ptr == LL_KEYWORD_PROTECTED.ptr) decl_flags |= LL_DECLARATION_FLAG_PROTECTED;
             else if (token.str.ptr == LL_KEYWORD_READONLY.ptr) decl_flags |= LL_DECLARATION_FLAG_READONLY;
+            else if (token.str.ptr == LL_KEYWORD_STATIC.ptr) decl_flags |= LL_DECLARATION_FLAG_STATIC;
             else break;
         } else break;
-        if (!PEEK(&token)) break;
+        CONSUME();
     }
 
     PEEK(&token);
@@ -788,6 +820,9 @@ int get_postfix_precedence(LL_Token token) {
         case '(':
             return 150;
 #pragma GCC diagnostic pop
+        case LL_TOKEN_KIND_PLUS_PLUS:
+        case LL_TOKEN_KIND_MINUS_MINUS:
+            return 160;
         default: return 0;
     }
 }
@@ -1047,6 +1082,12 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                     left->token_info = ti;
                     break;
                 }
+                case LL_TOKEN_KIND_PLUS_PLUS:
+                case LL_TOKEN_KIND_MINUS_MINUS:
+                    CONSUME();
+                    left = CREATE_NODE(CODE_KIND_POST_OP, ((Code_Operation){ .op = token, .left = left }));
+                    break;
+
 #pragma GCC diagnostic pop
                 default: oc_assert(false); break;
             }
@@ -1120,6 +1161,8 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
     case '-':
     case '~':
     case '!':
+    case LL_TOKEN_KIND_PLUS_PLUS:
+    case LL_TOKEN_KIND_MINUS_MINUS:
         CONSUME();
         result = CREATE_NODE(CODE_KIND_PRE_OP, ((Code_Operation){ .op = token, .right = parser_parse_expression(cc, parser, NULL, 140, false, false) }));
         break;
@@ -1379,19 +1422,8 @@ Code* parser_parse_primary_type(Compiler_Context* cc, LL_Parser* parser) {
         Code_List list = { 0 };
 
         while (PEEK(&token) && token.kind != '}') {
-            Code* parameter = (Code*)parser_parse_parameter(cc, parser, 0, NULL, true);
-            oc_array_append(&cc->arena, &list, parameter);
-            // Code* key = parser_parse_leaf(cc, parser);
-            // Code* value = NULL;
-
-            // if (PEEK(&token) && token.kind == ':') {
-            //     CONSUME();
-            //     value = parser_parse_type(cc, parser);
-            //     oc_array_append(&cc->arena, &list, CREATE_NODE(CODE_KIND_KEY_VALUE, ((Code_Key_Value) { .key = key, .value = value, })));
-            //     print("appendobj\n");
-            // } else {
-            //     oc_array_append(&cc->arena, &list, key);
-            // }
+            Code* field = parser_parse_class_statement(cc, parser);
+            oc_array_append(&cc->arena, &list, field);
 
             if (PEEK(&token) && (token.kind == ',' || token.kind == ';')) {
                 CONSUME();
@@ -1410,6 +1442,11 @@ Code* parser_parse_primary_type(Compiler_Context* cc, LL_Parser* parser) {
     } break;
 #pragma GCC diagnostic pop
     case LL_TOKEN_KIND_IDENT:
+        if (token.str.ptr == LL_KEYWORD_KEYOF.ptr) {
+            CONSUME();
+            result = CREATE_NODE(CODE_KIND_PRE_OP, ((Code_Operation) { .op = token, .right = parser_parse_type(cc, parser) }));
+            break;
+        }
         CONSUME();
         result = (Code*)create_ident(cc, token.str);
         result->token_info = TOKEN_INFO(token);
@@ -1535,6 +1572,7 @@ const char* ast_get_node_kind(Code* node) {
         case CODE_KIND_IDENT: return "Identifier";
         case CODE_KIND_BINARY_OP: return "Binary_Operator";
         case CODE_KIND_PRE_OP: return "Prefix_Operator";
+        case CODE_KIND_POST_OP: return "Postfix_Operator";
         case CODE_KIND_INVOKE: return "Invoke";
         case CODE_KIND_OBJECT_INITIALIZER: return "Initializer";
         case CODE_KIND_ARRAY_INITIALIZER: return "Array_Initializer";
@@ -1555,6 +1593,8 @@ const char* ast_get_node_kind(Code* node) {
         case CODE_KIND_FOR: return "For";
         case CODE_KIND_WHILE: return "While";
         case CODE_KIND_INDEX: return "Index";
+        case CODE_KIND_INDEX_SIGNATURE: return "Index_Signature";
+        case CODE_KIND_MAPPED_SIGNATURE: return "Mapped_Signature";
         case CODE_KIND_CAST: return "Cast";
         case CODE_KIND_GENERIC: return "Generic";
         case CODE_KIND_TYPENAME: return "Typename";
@@ -1573,8 +1613,9 @@ void print_node_value(Code* node, Oc_Writer* w) {
         case CODE_KIND_LITERAL_FLOAT:  wprint(w, "{}", CODE_AS(node, Code_Literal)->f64); break;
         case CODE_KIND_LITERAL_STRING: wprint(w, "{}", CODE_AS(node, Code_Literal)->str); break;
         case CODE_KIND_IDENT:          wprint(w, "{}", CODE_AS(node, Code_Ident)->str); break;
-        case CODE_KIND_BINARY_OP: lexer_print_token_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
-        case CODE_KIND_PRE_OP:    lexer_print_token_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
+        case CODE_KIND_BINARY_OP:  lexer_print_token_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
+        case CODE_KIND_PRE_OP:     lexer_print_token_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
+        case CODE_KIND_POST_OP:    lexer_print_token_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
         case CODE_KIND_INVOKE: break;
         case CODE_KIND_OBJECT_INITIALIZER: break;
         case CODE_KIND_ARRAY_INITIALIZER: break;
@@ -1595,6 +1636,8 @@ void print_node_value(Code* node, Oc_Writer* w) {
         case CODE_KIND_FOR: break;
         case CODE_KIND_WHILE: break;
         case CODE_KIND_INDEX: break;
+        case CODE_KIND_INDEX_SIGNATURE: print_declaration_flags(CODE_AS(node, Code_Index_Signature)->flags, w); break;
+        case CODE_KIND_MAPPED_SIGNATURE: print_declaration_flags(CODE_AS(node, Code_Index_Signature)->flags, w); break;
         case CODE_KIND_GENERIC: break;
         case CODE_KIND_SPREAD: break;
         case CODE_KIND_TYPE_ARGUMENTS: break;
@@ -1651,6 +1694,9 @@ void print_node_raw_impl(Code* node, uint32_t indent, bool do_first_indent, Oc_W
             break;
         case CODE_KIND_PRE_OP: 
             print_node_raw_impl(CODE_AS(node, Code_Operation)->right, indent + 1, true, w);
+            break;
+        case CODE_KIND_POST_OP: 
+            print_node_raw_impl(CODE_AS(node, Code_Operation)->left, indent + 2, true, w);
             break;
 
         case CODE_KIND_INVOKE: 
@@ -1741,6 +1787,13 @@ void print_node_raw_impl(Code* node, uint32_t indent, bool do_first_indent, Oc_W
             print_node_raw_impl(CODE_AS(node, Code_Index)->ptr, indent + 1, true, w);
             if (CODE_AS(node, Code_Index)->index)
                 print_node_raw_impl(CODE_AS(node, Code_Index)->index, indent + 1, true, w);
+            break;
+
+        case CODE_KIND_MAPPED_SIGNATURE:
+        case CODE_KIND_INDEX_SIGNATURE:
+            print_node_raw_impl((Code*)CODE_AS(node, Code_Index_Signature)->ident, indent + 1, true, w);
+            print_node_raw_impl(CODE_AS(node, Code_Index_Signature)->member_type, indent + 1, true, w);
+            print_node_raw_impl(CODE_AS(node, Code_Index_Signature)->result_type, indent + 1, true, w);
             break;
 
         case CODE_KIND_CAST:
@@ -1843,11 +1896,18 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
             .right = ast_clone_node_deep(cc, CODE_AS(node, Code_Operation)->right, params),
         }));
         break;
-    case CODE_KIND_PRE_OP: 
+    case CODE_KIND_PRE_OP:
         result = CREATE_NODE(node->kind, ((Code_Operation) {
             .base.token_info = node->token_info,
             .op = CODE_AS(node, Code_Operation)->op,
             .right = ast_clone_node_deep(cc, CODE_AS(node, Code_Operation)->right, params),
+        }));
+        break;
+    case CODE_KIND_POST_OP:
+        result = CREATE_NODE(node->kind, ((Code_Operation) {
+            .base.token_info = node->token_info,
+            .op = CODE_AS(node, Code_Operation)->op,
+            .left = ast_clone_node_deep(cc, CODE_AS(node, Code_Operation)->left, params),
         }));
         break;
 
@@ -1985,6 +2045,16 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
             .base.token_info = node->token_info,
             .ptr = ast_clone_node_deep(cc, CODE_AS(node, Code_Index)->ptr, params),
             .index = ast_clone_node_deep(cc, CODE_AS(node, Code_Index)->index, params),
+        }));
+        break;
+
+    case CODE_KIND_MAPPED_SIGNATURE:
+    case CODE_KIND_INDEX_SIGNATURE:
+        result = CREATE_NODE(node->kind, ((Code_Index_Signature){
+            .base.token_info = node->token_info,
+            .ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Index_Signature)->ident, params),
+            .member_type = ast_clone_node_deep(cc, CODE_AS(node, Code_Index_Signature)->member_type, params),
+            .result_type = ast_clone_node_deep(cc, CODE_AS(node, Code_Index_Signature)->result_type, params),
         }));
         break;
 

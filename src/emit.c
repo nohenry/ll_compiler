@@ -10,8 +10,8 @@ void ll_emitter_run(Compiler_Context* cc, LL_Emitter *e, Code_Scope* file) {
     ll_emitter_emit_statement(cc, e, &e->sb.writer, 0, true, (Code*)file);
 }
 
-void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w, int indent, bool do_indent, Code* stmt) {
-    #define INDENT() do { if (do_indent) { for (int iii = 0 ; iii < indent; ++iii) wprint(w, "    "); } else { do_indent = true; } } while (0)
+bool ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w, int indent, bool do_indent, Code* stmt) {
+    #define INDENT(...) do { if (do_indent) { for (int iii = 0 ; iii < (indent __VA_ARGS__); ++iii) wprint(w, "    "); } else { do_indent = true; } } while (0)
 
     switch (stmt->kind) {
     case CODE_KIND_FOR_SCOPE: {
@@ -25,6 +25,91 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
         Code_Scope* scp = CODE_AS(stmt, Code_Scope);
         INDENT();
         wprint(w, "{{\n");
+        uint32 start_stmt_index = 0;
+
+
+        // generate class field initializers
+        if (scp->decl) {
+            Code_Class_Declaration* class_decl = NULL;
+            Code_Function_Declaration* fn_decl = NULL;
+            bool this_is_a_class = scp->decl->base.kind == CODE_KIND_CLASS_DECLARATION;
+            bool this_is_a_fn    = scp->decl->base.kind == CODE_KIND_FUNCTION_DECLARATION;
+
+            if (this_is_a_fn) {
+                fn_decl = CODE_AS(scp->decl, Code_Function_Declaration);
+                // if we are a function within a class
+                if (scp->decl->within_scope->decl && scp->decl->within_scope->decl->base.kind == CODE_KIND_CLASS_DECLARATION) {
+                    string ctor_string = ll_intern_string(cc, lit("constructor"));
+                    if (fn_decl->base.ident->str.ptr == ctor_string.ptr) {
+                        class_decl = (Code_Class_Declaration*)scp->decl->within_scope->decl;
+                    } else fn_decl = NULL;
+                } else fn_decl = NULL;
+            } else if (this_is_a_class) {
+                class_decl = CODE_AS(scp->decl, Code_Class_Declaration);
+            }
+
+            sint64 super_index = -1;
+            if (class_decl && this_is_a_fn && fn_decl) {
+                // find super
+                for (uint32 i = 0; i < fn_decl->body->statements.count; ++i) {
+                    if (fn_decl->body->statements.items[i]->kind == CODE_KIND_INVOKE) {
+                        Code_Invoke* inv = CODE_AS(fn_decl->body->statements.items[i], Code_Invoke);
+                        if (inv->expr->kind == CODE_KIND_IDENT) {
+                            if (CODE_AS(inv->expr, Code_Ident)->str.ptr == LL_KEYWORD_SUPER.ptr) {
+                                super_index = i;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (class_decl) {
+                int more_indent = 0;
+                if (this_is_a_fn && fn_decl) {
+                    if (super_index >= 0) {
+                        for (uint32 i = 0; i <= (uint32)super_index; ++i) {
+                            bool elide = ll_emitter_emit_statement(cc, e, &e->sb.writer, indent + 1, true, scp->statements.items[i]);
+                            if (!elide) wprint(w, "\n");
+                        }
+                        start_stmt_index = super_index + 1;
+                    }
+                    // do nothing
+                } else if (this_is_a_class && !fn_decl) {
+                    more_indent = 1;
+                    INDENT(+1); wprint(w, "constructor(){{\n");
+                }
+
+                if (this_is_a_fn && fn_decl) { // we are constructor
+                    uint32 field_flags = (LL_DECLARATION_FLAG_PRIVATE | LL_DECLARATION_FLAG_PUBLIC | LL_DECLARATION_FLAG_READONLY);
+                    for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
+                        if (fn_decl->parameters.items[i]->base.flags & field_flags) {
+                            INDENT(+more_indent+1); wprint(w, "this.{} = {};\n", fn_decl->parameters.items[i]->base.ident->str, fn_decl->parameters.items[i]->base.ident->str);
+                        }
+                    }
+                }
+
+                if ((this_is_a_fn && fn_decl) || (this_is_a_class && !fn_decl)) {
+                    for (uint32 i = 0; i < class_decl->block->statements.count; ++i) {
+                        if (class_decl->block->statements.items[i]->kind == CODE_KIND_PARAMETER) {
+                            Code_Parameter* var_decl = CODE_AS(class_decl->block->statements.items[i], Code_Parameter);
+                            if (var_decl->initializer && !(var_decl->base.flags & LL_DECLARATION_FLAG_STATIC)) {
+                                INDENT(+more_indent+1); wprint(w, "this.{} = ", var_decl->base.ident->str);
+                                ll_emitter_emit_expression(cc, e, w, indent, (Code*)var_decl->initializer);
+                                wprint(w, ";\n");
+                            }
+                        }
+                    }
+                }
+
+                if (this_is_a_fn && fn_decl) {
+                    // do nothing
+                } else if (this_is_a_class && !fn_decl) {
+                    INDENT(+1); wprint(w, "}\n");
+                }
+            }
+        }
+
         for (uint32 i = 0; i < scp->declarations.capacity; ++i) {
             if (scp->declarations.entries[i].filled) {
                 // if (scp->declarations.entries[i]._value->base.kind == ODE_) {
@@ -40,15 +125,15 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
                 // }
             }
         }
-        for (uint32 i = 0; i < scp->statements.count; ++i) {
+        for (uint32 i = start_stmt_index; i < scp->statements.count; ++i) {
             if (scp->statements.items[i]->kind == CODE_KIND_PARAMETER) {
                 Code_Parameter* param = CODE_AS(scp->statements.items[i], Code_Parameter);
                 if (param->base.flags & LL_DECLARATION_FLAG_STATIC) {}
                 else continue;
             }
 
-            ll_emitter_emit_statement(cc, e, &e->sb.writer, indent + 1, true, scp->statements.items[i]);
-            wprint(w, "\n");
+            bool elide = ll_emitter_emit_statement(cc, e, &e->sb.writer, indent + 1, true, scp->statements.items[i]);
+            if (!elide) wprint(w, "\n");
         }
         INDENT();
         wprint(w, "}");
@@ -77,7 +162,12 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
     } break;
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS(stmt, Code_Function_Declaration);
+        if (fn_decl->body == NULL) return true;
         INDENT();
+        if (fn_decl->base.flags & LL_DECLARATION_FLAG_STATIC) {
+            wprint(w, "static ");
+        }
+
         if (fn_decl->base.flags & LL_DECLARATION_FLAG_ARROW_FUNC) {
         } else {
             if (!fn_decl->base.within_scope->decl || fn_decl->base.within_scope->decl->base.kind != CODE_KIND_CLASS_DECLARATION) {
@@ -116,17 +206,37 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
     case CODE_KIND_CLASS_DECLARATION: {
         INDENT();
         Code_Class_Declaration* class_decl = CODE_AS(stmt, Code_Class_Declaration);
+
         wprint(w, "class");
         if (class_decl->base.ident) {
             wprint(w, " {}", class_decl->base.ident->str);
         }
         if (class_decl->extends) {
-            ll_emitter_emit_statement(cc, e, w, indent, false, (Code*)class_decl->extends);
+            wprint(w, " extends "); ll_emitter_emit_expression(cc, e, w, indent, (Code*)class_decl->extends);
         }
+
         oc_assert(class_decl->block);
         ll_emitter_emit_statement(cc, e, w, indent, false, (Code*)class_decl->block);
+
+        if (class_decl->block->statements.count) {
+            wprint(w, "\n");
+        }
+        for (uint32 i = 0; i < class_decl->block->statements.count; ++i) {
+            if (class_decl->block->statements.items[i]->kind == CODE_KIND_PARAMETER) {
+                Code_Parameter* var_decl = CODE_AS(class_decl->block->statements.items[i], Code_Parameter);
+                if (var_decl->initializer && (var_decl->base.flags & LL_DECLARATION_FLAG_STATIC)) {
+                    INDENT(); wprint(w, "{}.{} = ", class_decl->base.ident->str, var_decl->base.ident->str);
+                    ll_emitter_emit_expression(cc, e, w, indent, (Code*)var_decl->initializer);
+                    wprint(w, ";\n");
+                }
+            }
+        }
     } break;
     case CODE_KIND_INTERFACE_DECLARATION: {
+        return true;
+    } break;
+    case CODE_KIND_TYPE_DECLARATION: {
+        return true;
     } break;
     case CODE_KIND_IF: {
         INDENT();
@@ -192,6 +302,8 @@ void ll_emitter_emit_statement(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w
         ll_emitter_emit_expression(cc, e, w, indent, stmt);
         wprint(w, ";");
     }
+
+    return false;
 }
 
 void ll_emitter_emit_expression(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* w, int indent, Code* expr) {
@@ -225,6 +337,15 @@ void ll_emitter_emit_expression(Compiler_Context* cc, LL_Emitter *e, Oc_Writer* 
             lexer_print_token_raw_to_writer(&op->op, w);
         }
         ll_emitter_emit_expression(cc, e, w, indent, op->right);
+    } break;
+    case CODE_KIND_POST_OP: {
+        Code_Operation* op = CODE_AS(expr, Code_Operation);
+        ll_emitter_emit_expression(cc, e, w, indent, op->left);
+        if (op->op.kind == LL_TOKEN_KIND_IDENT) {
+            wprint(w, "{} ", op->op.str);
+        } else {
+            lexer_print_token_raw_to_writer(&op->op, w);
+        }
     } break;
     case CODE_KIND_BINARY_OP: {
         Code_Operation* op = CODE_AS(expr, Code_Operation);

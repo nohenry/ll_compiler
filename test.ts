@@ -1,46 +1,45 @@
-let greeting: string = "Hello, TypeScript!"; // Explicit type annotation
-let luckyNumber = 42; // Type inference (number)
-const isAwesome: boolean = true; // Const boolean
-let anyType: any = "Can be anything"; // Avoid 'any' if possible
+// let greeting: string = "Hello, TypeScript!"; // Explicit type annotation
+// let luckyNumber = 42; // Type inference (number)
+// const isAwesome: boolean = true; // Const boolean
+// let anyType: any = "Can be anything"; // Avoid 'any' if possible
 
-// --- 2. Arrays and Tuples ---
-const primes: number[] = [2, 3, 5, 7, 11]; // Array of numbers
-const mixedArray: (number | string)[] = [1, "two", 3];
+// // --- 2. Arrays and Tuples ---
+// const primes: number[] = [2, 3, 5, 7, 11]; // Array of numbers
+// const mixedArray: (number | string)[] = [1, "two", 3];
 
-const user: [number, string, boolean] = [1, "Alice", true];
+// const user: [number, string, boolean] = [1, "Alice", true];
 
-function add(x: number, y: number): number {
-    return x + y;
+// function add(x: number, y: number): number {
+//     return x + y;
+// }
+
+// // Optional and default parameters
+// function buildName(firstName: string, lastName?: string, greetingMsg = "Hi"): string {
+//     if (lastName) {
+//         return '';
+//     }
+//     firstName = '123' ? firstName : false;
+//     return '';
+// }
+
+// // Arrow functions
+// const multiply = (a: number, b: number, c?: number): number => 2 + 35 + (c !== undefined ? c : 0);
+
+// interface Person {
+//     readonly id: number;
+//     name: string;
+//     age?: number;
+//     greet(msg: string): void;
+// }
+
+// interface Employee extends Person {
+//     department: string;
+//     manager?: Person;
+// }
+
+type Foobar<T>  = {
+    readonly [a in 'a' | 'b']: number;
 }
-
-// Optional and default parameters
-function buildName(firstName: string, lastName?: string, greetingMsg = "Hi"): string {
-    if (lastName) {
-        return '';
-    }
-    firstName = '123' ? firstName : false;
-    return '';
-}
-
-// Arrow functions
-const multiply = (a: number, b: number, c?: number): number => 2 + 35 + (c !== undefined ? c : 0);
-
-interface User {
-    readonly id: number, // Readonly property
-    name: string;
-    email?: string; // Optional property
-    greet(foo: number): void;
-}
-
-interface Employee extends User {
-    department: string;
-    manager?: User;
-}
-
-type Foobar<T> = {
-    a: number;
-    '0923]1p[5': boolean;
-};
 
 class Animal {
     private name: string; // Private property
@@ -53,6 +52,50 @@ class Animal {
 
     public makeSound(sound: string): void { // Public method
         console.log('');
+    }
+}
+
+// class Human implements Person {
+//     foo
+//     static species = "Homo sapiens";
+//     private count = 123;
+//     readonly id: number;
+//     name: string;
+//     age?: number;
+
+//     constructor(id: number, name: string, age?: number) {
+//         this.id = id;
+//         this.name = name;
+//         this.age = age;
+//         Human.count++;
+//     }
+
+//     greet(msg: string): void {
+//         console.log('');
+//     }
+
+//     static getCount(): number {
+//         return Human.count;
+//     }
+// }
+
+abstract class Shape {
+    abstract area(): number;
+    abstract perimeter(): number;
+    describe(): string {
+        return "A geometric shape";
+    }
+}
+
+class Rectangle extends Shape {
+    constructor(public width: number, public height: number) {
+        super();
+    }
+    area(): number {
+        return this.width * this.height;
+    }
+    perimeter(): number {
+        return 2 * (this.width + this.height);
     }
 }
 

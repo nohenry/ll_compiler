@@ -126,6 +126,9 @@ string LL_KEYWORD_IMPLEMENTS;
 string LL_KEYWORD_INTERFACE;
 string LL_KEYWORD_STATIC;
 string LL_KEYWORD_READONLY;
+string LL_KEYWORD_ABSTRACT;
+string LL_KEYWORD_SUPER;
+string LL_KEYWORD_KEYOF;
 
 Compiler_Context ll_compiler_context_create() {
     Compiler_Context result = { 0 };
@@ -169,6 +172,9 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_INTERFACE = ll_intern_string(&result, lit("interface"));
     LL_KEYWORD_STATIC = ll_intern_string(&result, lit("static"));
     LL_KEYWORD_READONLY = ll_intern_string(&result, lit("readonly"));
+    LL_KEYWORD_ABSTRACT = ll_intern_string(&result, lit("abstract"));
+    LL_KEYWORD_SUPER = ll_intern_string(&result, lit("super"));
+    LL_KEYWORD_KEYOF = ll_intern_string(&result, lit("keyof"));
 
     return result;
 }

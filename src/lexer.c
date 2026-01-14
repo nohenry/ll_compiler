@@ -473,8 +473,50 @@ DONE_NUMBER:
             }
             return true;
 
-        case '+': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_PLUS); return true;
-        case '-': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_MINUS); return true;
+        case '+':
+            if (lexer->pos + 1 < lexer->source.len) {
+                switch (lexer->source.ptr[lexer->pos + 1]) {
+                case '=':
+                    out->kind = LL_TOKEN_KIND_ASSIGN_PLUS;
+                    lexer->pos += 2;
+                    break;
+                case '+':
+                    out->kind = LL_TOKEN_KIND_PLUS_PLUS;
+                    lexer->pos += 2;
+                    break;
+                default:
+                    out->kind = '+';
+                    lexer->pos += 1;
+                    break;
+                }
+            } else {
+                out->kind = '+';
+                lexer->pos += 1;
+            }
+            return true;
+
+        case '-':
+            if (lexer->pos + 1 < lexer->source.len) {
+                switch (lexer->source.ptr[lexer->pos + 1]) {
+                case '=':
+                    out->kind = LL_TOKEN_KIND_ASSIGN_MINUS;
+                    lexer->pos += 2;
+                    break;
+                case '-':
+                    out->kind = LL_TOKEN_KIND_MINUS_MINUS;
+                    lexer->pos += 2;
+                    break;
+                default:
+                    out->kind = '-';
+                    lexer->pos += 1;
+                    break;
+                }
+            } else {
+                out->kind = '-';
+                lexer->pos += 1;
+            }
+            return true;
+
         case '*': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_TIMES); return true;
         case '/': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_DIVIDE); return true;
         case '%': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_PERCENT); return true;
@@ -541,6 +583,9 @@ void lexer_print_token_kind(LL_Token_Kind kind, Oc_Writer* w) {
     case LL_TOKEN_KIND_OR: wprint(w, "||"); break;
 
     case LL_TOKEN_KIND_SPREAD: wprint(w, ".."); break;
+
+    case LL_TOKEN_KIND_PLUS_PLUS: wprint(w, "++"); break;
+    case LL_TOKEN_KIND_MINUS_MINUS: wprint(w, "--"); break;
     
     default:
         wprint(w, "{}", (char)kind);
@@ -572,6 +617,9 @@ void lexer_print_token_info_raw_to_writer(LL_Token_Info* token, Oc_Writer* w) {
     case LL_TOKEN_KIND_AND: wprint(w, "&&"); break;
     case LL_TOKEN_KIND_OR: wprint(w, "||"); break;
     case LL_TOKEN_KIND_NULLOR: wprint(w, "??"); break;
+    
+    case LL_TOKEN_KIND_PLUS_PLUS: wprint(w, "++"); break;
+    case LL_TOKEN_KIND_MINUS_MINUS: wprint(w, "--"); break;
     
     default:
         wprint(w, "{}", (char)token->kind);
