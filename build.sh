@@ -6,4 +6,5 @@ c_files="src/main.c src/lexer.c src/common.c src/parser.c src/typer.c src/backen
 
 set -x
 # clang $c_files $debug_flags -lm -o main.exe
-clang $c_files $debug_flags -fsanitize=address -g -lm -o main.exe
+# clang $c_files $debug_flags -fsanitize=address -g -gdwarf-4 -lm -o main.exe
+clang $c_files $debug_flags  -g -gdwarf-4 -lm -o main.exe

@@ -21,6 +21,22 @@ inline bool is_eql(void* a, void* b, size_t size) {
 
 #define Enum(_name, _type, ...) typedef _type _name; enum { __VA_ARGS__ }
 
+#define hash_map_get_from_hash(arena, hm, key, hash) ({                                             \
+        __typeof__((hm)->entries[0]._value)* result = NULL;                          \
+        if ((hm)->capacity) { \
+            uint32 index = hash % (hm)->capacity; \
+            uint32 until_index = index;                                                 \
+            do {                                                                        \
+                if ((hm)->entries[index].filled && MAP_DEFAULT_EQL_FN((hm)->entries[index]._key, key)) {                \
+                    result = &(hm)->entries[index]._value;                               \
+                    break;                                                              \
+                }                                                                       \
+                index = (index + 1) % (hm)->capacity;                                   \
+            } while ((hm)->entries[index].filled && index != until_index);              \
+        } \
+        result;                                                                     \
+    })
+
 #define hash_map_get(arena, hm, key) ({                                             \
         __typeof__((hm)->entries[0]._value)* result = NULL;                          \
         if ((hm)->capacity) { \
@@ -76,6 +92,9 @@ inline bool is_eql(void* a, void* b, size_t size) {
         (hm)->entries[index].filled = 1;                                                                                               \
         (hm)->count_filled++; \
     } while(0)
+
+#define hash_map_iterator(hm) struct { typeof((hm)->entries[0]._value)* value; typeof((hm)->entries[0]._key)* key; typeof((hm)->capacity) index; }
+#define hash_map_iterator_next(hm, _it) ((_it).index = 0; (_it).index < (hm)->capacity; ++(_it).index) if (((_it).key = &(hm)->entries[(_it).index]._key, (_it).value = &(hm)->entries[(_it).index]._value, (hm)->entries[(_it).index].filled))
 
 typedef struct string_intern_map_entry {
     string value;

@@ -1,9 +1,16 @@
-native int write_int(int64 a);
+// let d = a;
+// let a = 123;
+// let b = a;
+// let c = b;
 
 void main() {
-	int a = 123;
-	int b = 100;
-    const {
-        write_int(123);
-    }
+    let c = 123;
+
+    let bbb = do_fun(false);
+    // bbb = true;
+    // a();
+}
+
+
+int do_fun(bool b) {
 }

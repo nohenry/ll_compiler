@@ -1899,6 +1899,7 @@ static void x86_64_generate_block(Compiler_Context* cc, X86_64_Backend* b, LL_Ba
                 if (type->width <= 32) opcode1 = X86_64_OPCODE_ADDSS;
                 else if (type->width <= 64) opcode1 = X86_64_OPCODE_ADDSD;
                 else oc_todo("add widths");
+                get_variant.mem_right = true;
                 break;
             default: oc_todo("add types"); break;
             }
@@ -2618,6 +2619,44 @@ void x86_64_run(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
     sint32 a;
     if (!VirtualProtect(code, b->section_text.count, PAGE_EXECUTE, &a)) {
         extern sint32 GetLastError();
+        oc_assert(false && "Unable to change protection: {x}\n");
+        return;
+    }
+
+    void (*fn_ptr)() = (void (*)())(code + b->ir->fns.items[b->entry_index].generated_offset);
+    fn_ptr();
+#elif OC_PLATFORM_UNIX
+    uint8* data = NULL;
+    if (b->section_data.count) {
+        data = mmap(NULL, b->section_data.count, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_UNINITIALIZED, -1, 0);
+        if (!data) {
+            oc_assert(false && "Unable to allocate memory\n");
+            return;
+        }
+        memcpy(data, b->section_data.items, b->section_data.count);
+    } else {
+        oc_assert(b->internal_relocations.count == 0);
+    }
+
+    uint8* code = mmap(NULL, b->section_text.count, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_UNINITIALIZED, -1, 0);
+    if (!code) {
+        oc_assert(false && "Unable to allocate memory\n");
+        return;
+    }
+    memcpy(code, b->section_text.items, b->section_text.count);
+
+    for (size_t fi = 0; fi < b->internal_relocations.count; ++fi) {
+        X86_64_Internal_Relocation relocation = b->internal_relocations.items[fi];
+
+        LL_Ir_Data_Item* data_item = &bir->data_items.items[relocation.data_item];
+
+        int64_t* dst_offset = (int64_t*)&code[relocation.text_rel_byte_offset];
+        *dst_offset += ((int64_t)data + data_item->binary_offset);
+    }
+
+    sint32 a;
+    if (mprotect(code, b->section_text.count, PROT_EXEC)) {
+        // extern sint32 GetLastError();
         oc_assert(false && "Unable to change protection: {x}\n");
         return;
     }

@@ -44,8 +44,6 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-    print("{}\n", (uword)aarch64_instructions_table_size);
-
     Compiler_Context cc = ll_compiler_context_create();
 	cc.quiet = quiet;
     cc.exit_0 = exit_0;
@@ -67,14 +65,27 @@ int main(int argc, char** argv) {
     cc.lexer = &parser.lexer;
 
     Code* root = parser_parse_file(&cc, &parser);
-    if (!cc.quiet) print_node(root, 0, &stdout_writer);
 
     // print_things(&cc, &parser);
-    ll_typer_run(&cc, &typer, root);
-#if 0
+    // if (!cc.quiet) {
+    //     print("typer queued: {}\n", typer.queue.count);
+    //     ll_typer_run(&cc, &typer, root);
+    //     print("typer queued: {}\n", typer.queue.count);
+    //     for (uint32 i = 0; i < typer.queue.count; ++i) {
+    //         if (typer.queue.items[i]->stmt_yielded_index == (uint32)-1) {
+    //             // typer.queue.items[i]->decl_yielded_hash
+    //             // Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &typer.queue.items[i]->yielded_in_scope->declarations, typer.queue.items[i]->decl_str, typer.queue.items[i]->decl_yielded_hash);
+
+    //             print("  decl {} -> {}\n", (void*)typer.queue.items[i]->yielded_in_scope, typer.queue.items[i]->decl_str);
+    //         } else {
+    //             print("  stmt {} -> {}\n", (void*)typer.queue.items[i]->yielded_in_scope, typer.queue.items[i]->stmt_yielded_index);
+    //         }
+    //     }
+    // }
+
+#if 1
     cc.target = &backend_elf;
     cc.native_target = &backend_elf;
-    cc.lexer = &parser.lexer;
 
     if (!cc.quiet) print_node(root, 0, &stdout_writer);
     ll_typer_run(&cc, &typer, root);
@@ -96,12 +107,7 @@ int main(int argc, char** argv) {
     if (run) ll_backend_execute(&cc, &backend_elf, backend_ir.backend);
 #endif
 
-    /* x86_64_run_tests(&cc, backend_elf.backend); */
+    free(parser.lexer.source.ptr);
 
-    
-    /* LL_Token token; */
-    /* while (lexer_next_token(&cc, &lexer, &token)) { */
-    /*     lexer_print_token(&lexer, &token); */
-    /* } */
     return 0;
 }

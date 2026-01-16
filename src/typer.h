@@ -178,12 +178,24 @@ typedef struct ll_typer {
     LL_Type_Named* current_named;
     LL_Typer_Current_Record* current_record;
     LL_Typer_Record_Values* current_record_values;
+
+
+    Code* waited_on_code;
+    Array(uint32, LL_Queued*) queue;
+    uint32* number_of_queued;
 } LL_Typer;
 
 typedef struct {
     Code_Ident* ident;
     LL_Type* type;
 } LL_Typer_Matched_Polymorph;
+
+typedef struct {
+    Code* code;
+    uint32 block_index;
+    bool resume_decl;
+    bool unqueue;
+} LL_Resume_Info;
 
 LL_Type* ll_intern_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 size_t ll_type_hash(LL_Type* type, size_t seed);
@@ -192,9 +204,9 @@ LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* re
 LL_Typer ll_typer_create(Compiler_Context* cc);
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node);
 
-void ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt);
-void ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
-LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename);
+bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt, LL_Resume_Info* resume_info);
+bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
+LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename, bool* can_continue);
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);
 
@@ -215,7 +227,7 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
 
 LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Function_Instantiation inst);
 LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Type_Function* fn_type);
-bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* type_decl, LL_Type* provided_type, Code* site, bool is_top_level_this_arg);
+bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* type_decl, LL_Type* provided_type, Code* site, bool is_top_level_this_arg, bool* can_continue);
 
 static inline LL_Type* ll_get_base_type(LL_Type* type) {
     while (type && type->kind == LL_TYPE_NAMED) {

@@ -1,8 +1,10 @@
 #include "callconv.h"
 
 const X86_64_Operand_Register call_convention_registers_systemv[] = {
-    X86_64_OPERAND_REGISTER_rcx,
+    X86_64_OPERAND_REGISTER_rdi,
+    X86_64_OPERAND_REGISTER_rsi,
     X86_64_OPERAND_REGISTER_rdx,
+    X86_64_OPERAND_REGISTER_rcx,
     X86_64_OPERAND_REGISTER_r8,
     X86_64_OPERAND_REGISTER_r9,
 };
@@ -12,8 +14,36 @@ const X86_64_Operand_Register call_convention_vector_registers_systemv[] = {
     X86_64_OPERAND_REGISTER_xmm(1),
     X86_64_OPERAND_REGISTER_xmm(2),
     X86_64_OPERAND_REGISTER_xmm(3),
+    X86_64_OPERAND_REGISTER_xmm(4),
+    X86_64_OPERAND_REGISTER_xmm(5),
 };
 
+const X86_64_Operand_Register call_convention_registers_windows[] = {
+    X86_64_OPERAND_REGISTER_rcx,
+    X86_64_OPERAND_REGISTER_rdx,
+    X86_64_OPERAND_REGISTER_r8,
+    X86_64_OPERAND_REGISTER_r9,
+};
+
+const X86_64_Operand_Register call_convention_vector_registers_windows[] = {
+    X86_64_OPERAND_REGISTER_xmm(0),
+    X86_64_OPERAND_REGISTER_xmm(1),
+    X86_64_OPERAND_REGISTER_xmm(2),
+    X86_64_OPERAND_REGISTER_xmm(3),
+};
+
+X86_64_Call_Convention x86_64_call_convention_windows() {
+    X86_64_Call_Convention result;
+    result.registers = call_convention_registers_windows;
+    result.register_count = oc_len(call_convention_registers_windows);
+    result.register_next = 0;
+    result.vector_registers = call_convention_vector_registers_windows;
+    result.vector_register_count = oc_len(call_convention_vector_registers_windows);
+    result.vector_register_next = 0;
+
+    result.stack_offset = 0x20;
+    return result;
+}
 
 X86_64_Call_Convention x86_64_call_convention_systemv() {
     X86_64_Call_Convention result;

@@ -532,7 +532,7 @@ static LL_Ir_Operand ir_generate_member_access(Compiler_Context* cc, LL_Backend_
         Code* decl = (Code*)ident->resolved_decl;
         switch (decl->kind) {
         case CODE_KIND_VARIABLE_DECLARATION: result = LL_IR_OPERAND_LOCAL_BIT | CODE_AS(decl, Code_Variable_Declaration)->ir_index; break;
-        case CODE_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | CODE_AS(decl, Code_Parameter)->ir_index; break;
+        case CODE_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | CODE_AS(decl, Code_Variable_Declaration)->ir_index; break;
         default: oc_assert(false);
         }
 
@@ -678,7 +678,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
         Code_Scope* blk = CODE_AS(expr, Code_Scope);
 
         LL_Ir_Block_Ref break_block;
-        if (blk->flags & CODE_BLOCK_FLAG_EXPR) {
+        if (blk->flags & CODE_SCOPE_FLAG_EXPR) {
             Code_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Code_Ident));
             block_ident->base.type = expr->type;
             block_ident->str = oc_sprintf(&cc->arena, "block_result\n");
@@ -702,7 +702,7 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
 
         b->current_block = break_block;
 
-        if (blk->flags & CODE_BLOCK_FLAG_EXPR) {
+        if (blk->flags & CODE_SCOPE_FLAG_EXPR) {
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, blk->break_value);
         }
         break;
@@ -1039,7 +1039,7 @@ DO_BIN_OP_ASSIGN_OP:
             }
 
             if (inv->fn_decl) {
-                if (!inv->fn_decl->parameters.items[i].ident && parameter_type->kind == LL_TYPE_TYPE && inv->ordered_arguments.items[i]->has_const) {
+                if (!inv->fn_decl->parameters.items[i].base.ident && parameter_type->kind == LL_TYPE_TYPE && inv->ordered_arguments.items[i]->has_const) {
                     // we don't generate arguments for const only operands
                     continue;
                 }
@@ -1298,7 +1298,7 @@ HANDLE_SLICE_OP:
             }
             result = LL_IR_OPERAND_FUNCTION_BIT | CODE_AS(decl, Code_Function_Declaration)->ir_index;
             break;
-        case CODE_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | CODE_AS(decl, Code_Parameter)->ir_index; break;
+        case CODE_KIND_PARAMETER: result = LL_IR_OPERAND_PARMAETER_BIT | CODE_AS(decl, Code_Variable_Declaration)->ir_index; break;
         default: oc_assert(false);
         }
 
@@ -1555,7 +1555,7 @@ struct native_string native_read_entire_file(struct native_string filepath) {
 
 
 void native_write(long long int u) {
-    print("bruh {}\n", u);
+    print("{}\n", u);
 }
 
 #include <math.h>

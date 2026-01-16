@@ -15,10 +15,11 @@ typedef struct {
 } LL_Flattened;
 
 typedef struct {
-    Code* yielded_on;
-
-    LL_Flattened flattened;
-    uint32_t flattened_todo_cursor;
+    struct Code_Scope* yielded_in_scope;
+    size_t decl_yielded_hash;
+    string decl_str;
+    uint32 stmt_yielded_index;
+    Code* code;
 } LL_Queued;
 
 typedef enum {
@@ -69,11 +70,12 @@ typedef enum {
     LL_STORAGE_CLASS_MACRO  = (1 << 3),
     LL_STORAGE_CLASS_CONST  = (1 << 4),
     LL_STORAGE_CLASS_POLYMORPHIC = (1 << 5),
+    LL_STORAGE_CLASS_VARIADIC = (1 << 6),
 } LL_Storage_Class;
 
-typedef enum {
-    LL_PARAMETER_FLAG_VARIADIC = (1 << 0),
-} LL_Parameter_Flags;
+// typedef enum {
+//     LL_PARAMETER_FLAG_VARIADIC = (1 << 0),
+// } LL_Parameter_Flags;
 
 struct ll_type;
 
@@ -114,25 +116,28 @@ typedef struct {
     Code** items;
 } Code_List;
 
-typedef struct {
-    Code base;
-    Code* type;
-    Code_Ident* ident;
-    Code* initializer;
-    LL_Parameter_Flags flags;
-    uint32_t ir_index;
-} Code_Parameter;
+// typedef struct {
+//     Code base;
+//     Code* type;
+//     Code_Ident* ident;
+//     Code* initializer;
+//     LL_Parameter_Flags flags;
+//     uint32_t ir_index;
+// } Code_Parameter;
 
-typedef struct {
-    uint32_t count;
-    uint32_t capacity;
-    Code_Parameter* items;
-} Code_Parameter_List;
+// typedef struct {
+//     uint32_t count;
+//     uint32_t capacity;
+//     Code_Parameter* items;
+// } Code_Parameter_List;
 
-typedef enum {
-    CODE_BLOCK_FLAG_EXPR            = (1u << 0u),
-    CODE_BLOCK_FLAG_MACRO_EXPANSION = (1u << 1u),
-} Code_Scope_Flags;
+Enum(Code_Scope_Flags, uint32, 
+    CODE_SCOPE_FLAG_EXPR            = (1u << 0u),
+    CODE_SCOPE_FLAG_MACRO_EXPANSION = (1u << 1u),
+    CODE_SCOPE_FLAG_IMPERATIVE      = (1u << 2u),
+    CODE_SCOPE_FLAG_DECLARATIVE     = (1u << 3u),
+    CODE_SCOPE_FLAG_PARAMETERS      = (1u << 4u),
+);
 
 typedef struct Code_Declaration {
     Code base;
@@ -171,6 +176,7 @@ typedef struct {
     Code* left;
     Code* right;
     LL_Token_Info op;
+    bool is_var_decl;
 } Code_Operation;
 
 typedef struct {
@@ -245,7 +251,7 @@ typedef struct {
 typedef struct {
     Code_Declaration base;
 
-    Code_Parameter_List parameters;
+    Array(uint32, Code_Variable_Declaration) parameters;
     Code_Scope* body optional;
     LL_Storage_Class storage_class;
     uint32_t ir_index;
