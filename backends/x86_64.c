@@ -2180,7 +2180,7 @@ DO_OPCODE_ARITHMETIC_PREOP:
         case LL_IR_OPCODE_INVOKE: {
             uint32_t invokee = operands[invoke_offset++];
             uint32_t count = operands[invoke_offset++];
-            X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
+            X86_64_Call_Convention callconv = x86_64_call_convention_host();
             LL_Ir_Function* invokee_fn = &bir->fns.items[OPD_VALUE(invokee)];
             LL_Type_Function* fn_type = invokee_fn->fn_type;
             assert(fn_type->base.kind == LL_TYPE_FUNCTION);
@@ -2494,7 +2494,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
         }
 
         // move registers to stack, if already on stack just use that offset
-        X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
+        X86_64_Call_Convention callconv = x86_64_call_convention_host();
         LL_Type_Function* fn_type = fn->fn_type;
         oc_array_reserve(&cc->tmp_arena, &b->parameters, fn_type->parameter_count);
         assert(fn_type->base.kind == LL_TYPE_FUNCTION);

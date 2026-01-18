@@ -16,6 +16,7 @@ typedef struct {
 
 typedef struct {
     struct Code_Scope* yielded_in_scope;
+    struct ll_type_function* yielded_in_function;
     size_t decl_yielded_hash;
     string decl_str;
     uint32 stmt_yielded_index;
@@ -176,7 +177,7 @@ typedef struct {
     Code* left;
     Code* right;
     LL_Token_Info op;
-    bool is_var_decl;
+    // bool is_var_decl;
 } Code_Operation;
 
 typedef struct {

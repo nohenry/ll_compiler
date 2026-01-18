@@ -352,7 +352,7 @@ int64_t do_native_fn_call(
     uint32_t stack_used = 0;
     X86_64_Instruction_Parameters params = { 0 };
 
-    X86_64_Call_Convention callconv = x86_64_call_convention_systemv();
+    X86_64_Call_Convention callconv = x86_64_call_convention_host();
 
 
     switch (OPD_TYPE(invokee)) {

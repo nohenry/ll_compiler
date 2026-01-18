@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
 
     if (!cc.quiet) print_node(root, 0, &stdout_writer);
     ll_typer_run(&cc, &typer, root);
-    if (!cc.quiet) print_node(root, 0, &stdout_writer);
+    // if (!cc.quiet) print_node(root, 0, &stdout_writer);
 
 
     // ll_backend_generate_statement(&cc, &backend_c, root);
@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
     if (run) ll_backend_execute(&cc, &backend_elf, backend_ir.backend);
 #endif
 
+    void free(void*);
     free(parser.lexer.source.ptr);
 
     return 0;

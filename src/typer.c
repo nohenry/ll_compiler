@@ -16,8 +16,8 @@
         })
 
 LL_Typer ll_typer_create(Compiler_Context* cc) {
+    (void)cc;
     LL_Typer result = { 0 };
-    LL_Typer* typer = &result;
 
     return result;
 }
@@ -290,7 +290,7 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     #undef INSERT_ANY_TYPE
 
 
-    if (!cc->quiet) print_node(typer->root_scope, 0, &stdout_writer);
+    if (!cc->quiet) print_node((Code*)typer->root_scope, 0, &stdout_writer);
 
     typer->current_scope = (Code_Scope*)node;
     typer->waited_on_code = NULL;
@@ -322,14 +322,16 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
 
                 if (queued_item->yielded_in_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE) {
                     typer->current_scope = queued_item->yielded_in_scope->parent_scope;
+                    typer->current_fn = queued_item->yielded_in_function;
                     result = ll_typer_type_statement(cc, typer, (Code**)&queued_item->yielded_in_scope, &resume_info);
-                    print("try to do statement: {} {}\n", (int)result, (void*)queued_item->yielded_in_scope);
                 } else {
                     typer->current_scope = queued_item->yielded_in_scope;
+                    typer->current_fn = queued_item->yielded_in_function;
                     result = ll_typer_type_statement(cc, typer, &queued_item->yielded_in_scope->statements.items[queued_item->stmt_yielded_index], &resume_info);
                 }
             } else {
                 typer->current_scope = queued_item->yielded_in_scope;
+                typer->current_fn = queued_item->yielded_in_function;
                 resume_info.resume_decl = true;
                 resume_info.block_index = 0;
                 Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &typer->queue.items[i]->yielded_in_scope->declarations, typer->queue.items[i]->decl_str, typer->queue.items[i]->decl_yielded_hash);
@@ -349,9 +351,6 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
         if (number_of_insertions == 0 && number_of_deletions == 0) break;
     }
 
-
-    print("{}\n", typer->queue.count);
-
     for (uint32 i = 0; i < typer->queue.count; ++i) {
         typer->waited_on_code = NULL;
         LL_Queued* queued_item = typer->queue.items[i];
@@ -363,6 +362,13 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
             } else {
                 ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(queued_item->code, Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
                 // ll_typer_report_error_done(cc, typer);
+            }
+        } else {
+            if (queued_item->stmt_yielded_index != (uint32)-1) {
+                ll_typer_report_error(((LL_Error){ .main_token = queued_item->yielded_in_scope->statements.items[queued_item->stmt_yielded_index]->token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
+            } else {
+                Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &queued_item->yielded_in_scope->declarations, typer->queue.items[i]->decl_str, typer->queue.items[i]->decl_yielded_hash);
+                ll_typer_report_error(((LL_Error){ .main_token = (*v)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
             }
         }
     }
@@ -640,12 +646,12 @@ LL_Type* ll_typer_implicit_cast_leftright(Compiler_Context* cc, LL_Typer* typer,
 static inline LL_Queued* create_decl_queued(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, uint32 index, Code* code) {
     LL_Queued* queued = oc_arena_alloc(&cc->arena, sizeof(*queued));
     queued->yielded_in_scope = scope;
+    queued->yielded_in_function = typer->current_fn;
     queued->decl_yielded_hash = stbds_hash_string_atom(scope->declarations.entries[index]._key, MAP_DEFAULT_SEED);
     queued->decl_str = scope->declarations.entries[index]._key;
     queued->stmt_yielded_index = -1;
     queued->code = code;
     oc_array_append(&cc->arena, &typer->queue, queued);
-    print("create queued\n");
     if (typer->number_of_queued) typer->number_of_queued++;
 
     return queued;
@@ -654,12 +660,12 @@ static inline LL_Queued* create_decl_queued(Compiler_Context* cc, LL_Typer* type
 static inline LL_Queued* create_stmt_queued(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, uint32 index, Code* code) {
     LL_Queued* queued = oc_arena_alloc(&cc->arena, sizeof(*queued));
     queued->yielded_in_scope = scope;
+    queued->yielded_in_function = typer->current_fn;
     queued->decl_yielded_hash = -1;
     queued->stmt_yielded_index = index;
     queued->code = code;
     oc_array_append(&cc->arena, &typer->queue, queued);
     if (typer->number_of_queued) typer->number_of_queued++;
-    print("create stmt queued {} {} {}\n", (void*)scope, index, (void*)code);
 
     return queued;
 }
@@ -727,6 +733,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
             if (!resume_info || resume_info->resume_decl) {
                 for (i = 0; i < blk->declarations.capacity; ++i) {
                     if (blk->declarations.entries[i].filled) {
+                        if (blk->declarations.entries[i]._value->base.kind == CODE_KIND_VARIABLE_DECLARATION) continue;
                         result = ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value, NULL);
 
                         if (!result) {
@@ -739,20 +746,23 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
                 }
             }
 
-            if (resume_info) i = resume_info->block_index;
-            else i = 0;
-            if (!resume_info || !resume_info->resume_decl) {
-                for (; i < blk->statements.count; ++i) {
-                    result = ll_typer_type_statement(cc, typer, &blk->statements.items[i], NULL);
+            if (result) {
+                if (resume_info) i = resume_info->block_index;
+                else i = 0;
 
-                    if (!result) {
-                        if (!resume_info) {
-                            create_stmt_queued(cc, typer, blk, i, typer->waited_on_code);
-                        } else if (resume_info->code != typer->waited_on_code) {
-                            resume_info->unqueue = true;
-                            create_stmt_queued(cc, typer, blk, i, typer->waited_on_code);
+                if (!resume_info || !resume_info->resume_decl) {
+                    for (; i < blk->statements.count; ++i) {
+                        result = ll_typer_type_statement(cc, typer, &blk->statements.items[i], NULL);
+
+                        if (!result) {
+                            if (!resume_info) {
+                                create_stmt_queued(cc, typer, blk, i, typer->waited_on_code);
+                            } else if (resume_info->code != typer->waited_on_code) {
+                                resume_info->unqueue = true;
+                                create_stmt_queued(cc, typer, blk, i, typer->waited_on_code);
+                            }
+                            break;
                         }
-                        break;
                     }
                 }
             }
@@ -770,11 +780,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
         }
         var_decl->base.ident->base.type = declared_type;
 
-        print("{x}\n", (int)typer->current_scope->flags);
-        // print_node()
-        if (var_decl->initializer && typer->current_scope->flags) {
-        #if 0
-            print("this is really happending\n");
+        if (var_decl->initializer) {
             can_continue = ll_typer_type_expression(cc, typer, &var_decl->initializer, declared_type, NULL);
             if (!can_continue) return false;
 
@@ -812,15 +818,14 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
                 var_decl->base.base.has_const = true;
                 var_decl->base.base.const_value = var_decl->initializer->const_value;
             }
-            #endif
         }
 
         if (typer->current_scope && typer->current_scope->decl) {
             if (typer->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
                 var_decl->ir_index = typer->current_record->count;
                 oc_array_append(&cc->arena, typer->current_record, declared_type);
-                oc_todo("add this");
                 if (var_decl->initializer) {
+                    oc_todo("add this");
                     LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, var_decl->initializer);
                     // oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .field_scope = var_scope, .value = value, .has_init = true }));
                 } else {
@@ -1326,6 +1331,12 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             typer->waited_on_code = (*expr);
             return false;
         }
+        // if (string_eql(CODE_AS((*expr), Code_Ident)->str, lit("write_int"))) {
+        //     oc_breakpoint();
+        // }
+        // if (string_eql(CODE_AS((*expr), Code_Ident)->str, lit("int"))) {
+        //     oc_breakpoint();
+        // }
         // if (!decl) {
         //     ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS((*expr), Code_Ident)->str);
         //     ll_typer_report_error_done(cc, typer);
@@ -1347,7 +1358,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         //     }
         //     result = (*expr)->type;
         // } break;
-        // case LL_SCOPE_KIND_TYPENAME:
+        case CODE_KIND_TYPENAME:
         case CODE_KIND_STRUCT: {
             (*expr)->has_const = 1;
             (*expr)->const_value.as_type = decl->declared_type;
@@ -1664,28 +1675,39 @@ TRY_MEMBER_FUNCTION_CALL:
         } break;
         case '=': {
             can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
-            if (opr->is_var_decl) {
-                Code_Declaration* var_decl = CODE_AS(opr->left, Code_Ident)->resolved_decl;
-                oc_assert(var_decl);
+            if (!can_continue) return false;
+            // if (opr->is_var_decl) {
+            //     Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)CODE_AS(opr->left, Code_Ident)->resolved_decl;
+            //     oc_assert(var_decl);
 
-                if (!var_decl->ident->base.type) {
-                    can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
-                    if (!can_continue) return false;
+            //     if (!var_decl->base.ident->base.type) {
+            //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
+            //         if (!can_continue) return false;
 
-                    var_decl->ident->base.type = opr->right->type;
-                    return true;
-                }
+            //         if (var_decl->storage_class & LL_STORAGE_CLASS_CONST) {
+            //             if (!opr->right->has_const) {
+            //                 ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't assign runtime value to constant variable.");
+            //                 ll_typer_report_error_no_src("    try wrapping initializer with `const` keyword\n");
+            //                 ll_typer_report_error_done(cc, typer);
+            //             }
 
-            } else oc_assert(can_continue);
+            //             var_decl->base.ident->base.has_const = true;
+            //             var_decl->base.ident->base.const_value = var_decl->initializer->const_value;
+            //             var_decl->base.base.has_const = true;
+            //             var_decl->base.base.const_value = var_decl->initializer->const_value;
+            //         }
+
+            //         var_decl->base.ident->base.type = opr->right->type;
+            //         return true;
+            //     }
+
+            // } else oc_assert(can_continue);
 
             LL_Type* lhs_type = opr->left->type;
             can_continue = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
             if (!can_continue) return false;
 
             LL_Type* rhs_type = opr->right->type;
-            ll_print_type(lhs_type);
-            ll_print_type(rhs_type);
-            print("\n");
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, lhs_type)) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign value to left hand side");
@@ -2381,7 +2403,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
 
                     bool did_variadic = false;
-                    bool did_default = false;
+                    // bool did_default = false;
                     for (int arg_i = 0; arg_i < ordered_arg_count; arg_i++) {
                         Code_Variable_Declaration* parameter = &new_fn_decl->parameters.items[arg_i];
 
@@ -2522,7 +2544,6 @@ TRY_MEMBER_FUNCTION_CALL:
         can_continue = ll_typer_type_expression(cc, typer, &cf->ptr, NULL, NULL);
         if (!can_continue) return false;
         result = cf->ptr->type;
-        print("slice "); ll_print_type(result);
 
         if (result == typer->ty_type) {
             if (!cf->ptr->has_const) oc_todo("handle runtime");

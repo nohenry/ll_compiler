@@ -58,6 +58,7 @@ typedef struct {
     void* WINAPI VirtualProtect(void* BaseAddress, sword Size, sint32 flNewProtect, sint32* lpflOldProtect);
 
     HANDLE WINAPI GetStdHandle(sint32 nStdHandle);
+    sint32 WINAPI GetFileType(HANDLE handle);
 
     sint32 WINAPI WriteFile(
         HANDLE hFile,
@@ -566,7 +567,8 @@ extern Oc_Writer stderr_writer;
             static const sint32 h[] = { STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE };
             oc_assert(fd < oc_len(h));
             HANDLE handle = GetStdHandle(h[fd]);
-
+            sint32 file_type = GetFileType(handle);
+            return file_type == 0x0002;
         }
 
         bool oc_fd_supports_color(uint32 fd) {

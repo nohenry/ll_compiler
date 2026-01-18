@@ -109,7 +109,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
     (void)cc;
     (void)b;
     LL_Ir_Opcode opcode = opcode_list[i];
-    LL_Ir_Operand* operands = &opcode_list[i + 1];
+    LL_Ir_Operand* operands = (LL_Ir_Operand*)&opcode_list[i + 1];
     int offset = 0;
 
 
@@ -422,6 +422,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
         var_decl->ir_index = FUNCTION()->locals.count;
         oc_array_append(&cc->arena, &FUNCTION()->locals, var);
 
+        // #if 0
         if (var_decl->initializer) {
             LL_Ir_Operand last_copy_operand = b->copy_operand;
             b->copy_operand = LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index;
@@ -430,6 +431,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
 
             IR_APPEND_OP(LL_IR_OPCODE_STORE, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op);
         }
+        // #endif
 
         break;
     }

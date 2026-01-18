@@ -58,7 +58,15 @@ X86_64_Call_Convention x86_64_call_convention_systemv() {
     return result;
 }
 
-X86_64_Operand_Register x86_64_call_convention_next_reg(X86_64_Call_Convention* cc, LL_Type* type) {
+X86_64_Call_Convention x86_64_call_convention_host(void) {
+#ifdef OC_PLATFORM_WINDOWS
+    return x86_64_call_convention_windows();
+#elif OC_PLATFORM_UNIX
+    return x86_64_call_convention_systemv();
+#endif
+}
+
+uint32 x86_64_call_convention_next_reg(X86_64_Call_Convention* cc, LL_Type* type) {
     if (type->kind == LL_TYPE_FLOAT) {
         if (cc->vector_register_next >= cc->vector_register_count) {
             return X86_64_OPERAND_REGISTER_invalid;

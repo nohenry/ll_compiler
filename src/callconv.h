@@ -35,6 +35,7 @@ extern const X86_64_Operand_Register call_convention_vector_registers_systemv[];
 // extern const X86_64_Operand_Register x86_64_backend_active_registers[];
 
 
+X86_64_Call_Convention x86_64_call_convention_host(void);
 X86_64_Call_Convention x86_64_call_convention_systemv(void);
 uint32 x86_64_call_convention_next_reg(X86_64_Call_Convention* cc, LL_Type* type);
 uint32 x86_64_call_convention_next_mem(X86_64_Call_Convention* cc, LL_Type* type, uint32* stack_used_for_args);

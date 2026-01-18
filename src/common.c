@@ -20,6 +20,7 @@ size_t stbds_hash_string(string str, size_t seed)
 }
 
 size_t stbds_hash_string_atom(string str, size_t seed) {
+    (void)seed;
     size_t key = (size_t)str.ptr;
     key = (~key) + (key << 21); // key = (key << 21) - key - 1;
     key = key ^ (key >> 24);

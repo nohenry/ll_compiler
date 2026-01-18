@@ -1,8 +1,8 @@
 @echo off
 set flags=-std=gnu11 -Wall -Wextra  -Wswitch
 set debug_flags=%flags% -g -O0  -D_DEBUG
-REM set c_files=src/main.c src/lexer.c src/common.c src/parser.c src/typer.c src/backend.c src/eval.c src/callconv.c
-set c_files=src/main.c src/lexer.c src/common.c src/parser.c src/typer2.c
+set c_files=src/main.c src/lexer.c src/common.c src/parser.c src/typer.c src/backend.c src/eval.c src/callconv.c
+@REM set c_files=src/main.c src/lexer.c src/common.c src/parser.c src/typer2.c
 
 @echo on
 @REM clang -std=gnu11 src/main.c src/lexer.c src/common.c src/parser.c src/typer.c src/backend.c src/eval.c -g -Wall -Wextra -o main.exe

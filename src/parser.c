@@ -7,9 +7,8 @@
 #include "parser.h"
 #include "lexer.h"
 #include "ast.h"
+#include "typer.h"
 #include <stdio.h>
-
-void ll_print_type_raw(struct ll_type* type, Oc_Writer* fd);
 
 LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename) {
     (void)cc;
@@ -100,6 +99,7 @@ static inline void insert_into_block(Compiler_Context* cc, Code_Scope* block, Co
     switch (stmt->kind) {
     case CODE_KIND_VARIABLE_DECLARATION:
     case CODE_KIND_FUNCTION_DECLARATION:
+    case CODE_KIND_STRUCT:
         break;
     default:
         oc_array_append(&cc->arena, &block->statements, stmt);
@@ -301,6 +301,18 @@ Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
     Code_Scope* block = parser_parse_block(cc, parser, CODE_AS(result, Code_Declaration), CODE_SCOPE_FLAG_DECLARATIVE);
     CODE_AS(result, Code_Struct)->block = block;
 
+
+    Code_Declaration** existing_declaration = hash_map_get(&cc->arena, &parser->current_scope->declarations, ident->str);
+    if (existing_declaration) {
+        LL_Typer* typer = cc->typer;
+        ll_typer_report_error(((LL_Error) { .main_token = ident->base.token_info }), "Redeclaration of symbol {}", ident->str);
+        ll_typer_report_error_note(((LL_Error) { .main_token = (*existing_declaration)->ident->base.token_info }), "First declaration is here");
+        ll_typer_report_error_done(cc, typer);
+    }
+
+	hash_map_put(&cc->arena, &parser->current_scope->declarations, ident->str, (Code_Declaration*)result);
+
+
     result->token_info = struct_kw;
     return result;
 }
@@ -398,14 +410,14 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
 		// result.kind = RESULT_KIND_IDENT;
 		// result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
 
-		if (body_or_init && (parser->current_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE)) {
-            Code* assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
-                .left = (Code*)CODE_AS(result, Code_Variable_Declaration)->base.ident,
-                .right = CODE_AS(result, Code_Variable_Declaration)->initializer,
-                .op = CODE_AS(result, Code_Variable_Declaration)->base.base.token_info, // eql
-                .is_var_decl = true,
-            }));
-            oc_array_append(&cc->arena, &parser->current_scope->statements, assign);
+		if (/* body_or_init && */ (parser->current_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE)) {
+            // Code* assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
+            //     .left = (Code*)CODE_AS(result, Code_Variable_Declaration)->base.ident,
+            //     .right = CODE_AS(result, Code_Variable_Declaration)->initializer,
+            //     .op = CODE_AS(result, Code_Variable_Declaration)->base.base.token_info, // eql
+            //     .is_var_decl = true,
+            // }));
+            oc_array_append(&cc->arena, &parser->current_scope->statements, result);
             
             // CODE_AS(body_or_init, Code_Scope)->decl = (Code_Declaration*)result;
 
@@ -432,7 +444,14 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
 		}
     }
 
-	oc_assert(hash_map_get(&cc->arena, &parser->current_scope->declarations, ident->str) == NULL);
+    Code_Declaration** existing_declaration = hash_map_get(&cc->arena, &parser->current_scope->declarations, ident->str);
+    if (existing_declaration) {
+        LL_Typer* typer = cc->typer;
+        ll_typer_report_error(((LL_Error) { .main_token = ident->base.token_info }), "Redeclaration of symbol {}", ident->str);
+        ll_typer_report_error_note(((LL_Error) { .main_token = (*existing_declaration)->ident->base.token_info }), "First declaration is here");
+        ll_typer_report_error_done(cc, typer);
+    }
+
 	hash_map_put(&cc->arena, &parser->current_scope->declarations, ident->str, (Code_Declaration*)result);
 
 	return result;
@@ -1095,6 +1114,7 @@ void print_node_value(Code* node, Oc_Writer* w) {
             break;
         case CODE_KIND_TYPE_POINTER: break;
         case CODE_KIND_TYPENAME:
+            print("{} ", CODE_AS(node, Code_Declaration)->ident->str);
             ll_print_type_raw(CODE_AS(node, Code_Declaration)->declared_type, w);
             break;
         default: oc_unreachable("");
@@ -1268,7 +1288,6 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
             .base.token_info = node->token_info,
             .op = CODE_AS(node, Code_Operation)->op,
             .right = ast_clone_node_deep(cc, CODE_AS(node, Code_Operation)->right, params),
-            .is_var_decl = CODE_AS(node, Code_Operation)->is_var_decl,
         }));
         break;
 
