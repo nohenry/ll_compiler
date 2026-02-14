@@ -54,7 +54,9 @@ inline bool is_eql(void* a, void* b, size_t size) {
     })
 
 #define hash_map_reserve(arena, hm, reserve_capacity) do {                                                                                              \
-        __typeof__((hm)->entries) new_entries = oc_arena_realloc((arena), (hm)->entries, (hm)->capacity * sizeof(*(hm)->entries), (reserve_capacity) * sizeof(*(hm)->entries)); \
+        /* for now we don't use this, as we need to rehash copy from the old entries */ \
+        /* __typeof__((hm)->entries) new_entries = oc_arena_realloc((arena), (hm)->entries, (hm)->capacity * sizeof(*(hm)->entries), (reserve_capacity) * sizeof(*(hm)->entries)); */ \
+        __typeof__((hm)->entries) new_entries = oc_arena_alloc((arena), (reserve_capacity) * sizeof(*(hm)->entries)); \
         memset(new_entries, 0, (reserve_capacity) * sizeof(*(hm)->entries)); \
         if ((hm)->capacity) {                                                                                                                           \
             for (uint32 i = 0; i < ((hm)->capacity); ++i) {                                                                                               \
@@ -101,6 +103,53 @@ typedef struct string_intern_map_entry {
     struct string_intern_map_entry* next;
 } String_Intern_Map_Entry;
 
+typedef struct code Code;
+
+Enum(LL_Stage_Kind, uint8,
+    STAGE_TYPECHECK = 1,
+    STAGE_IR = 2,
+    STAGE_EVAL = 3,
+    COUNT_OF_STAGES,
+);
+
+Enum(LL_Stage_Flag, uint8,
+    STAGE_FLAG_TYPECHECK = (1u << STAGE_TYPECHECK),
+    STAGE_FLAG_IR        = (1u << STAGE_IR),
+    STAGE_FLAG_EVAL      = (1u << STAGE_EVAL),
+);
+
+typedef struct {
+    struct LL_Queued* target;
+    LL_Stage_Flag depends_on;
+} LL_Dependency;
+
+typedef struct LL_Queued {
+    struct Code_Scope* yielded_in_scope;
+    struct ll_type_function* yielded_in_function;
+    size_t decl_yielded_hash;
+    string decl_str;
+    uint32 stmt_yielded_index;
+    Code* code;
+
+    struct LL_Ir_State* ir_state;
+    LL_Stage_Kind max_completed_stage;
+
+    uint32 dependency_cursor;
+    Array(uint32, LL_Dependency) dependencies;
+} LL_Queued;
+
+typedef struct {
+    Array(uint32, LL_Queued*) input;
+    Array(uint32, LL_Queued*) output;
+} LL_Stage;
+
+
+typedef struct {
+    Code* code;
+    bool resume_decl;
+    bool unqueue;
+} LL_Resume_Info;
+
 typedef struct {
     Oc_Arena arena, tmp_arena;
     String_Intern_Map_Entry* string_interns[LL_DEFAULT_MAP_ENTRY_COUNT];
@@ -112,6 +161,9 @@ typedef struct {
     struct ll_lexer* lexer;
 	bool quiet;
     bool exit_0;
+
+
+    LL_Stage stages[COUNT_OF_STAGES];
 } Compiler_Context;
 
 extern string LL_KEYWORD_CONST;
@@ -232,3 +284,6 @@ bool ll_type_eql(struct ll_type* a, struct ll_type* b);
 uint32_t log2_u32(uint32_t x);
 
 size_t hash_combine(size_t lhs, size_t rhs);
+
+
+

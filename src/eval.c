@@ -1016,7 +1016,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
                 FRAME()->registers.items[OPD_VALUE(operands[0])].as_ptr = &FRAME()->parameters.items[OPD_VALUE(operands[1])];
                 break;
             case LL_IR_OPERAND_DATA_BIT:
-                oc_todo("handle this");
+                FRAME()->registers.items[OPD_VALUE(operands[0])].as_ptr = bir->data_items.items[OPD_VALUE(operands[1])].ptr;
                 break;
             default: oc_assert(false && "invalid operand"); break;
             }
@@ -1025,11 +1025,26 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)ir_get_operand_type(bir, FUNCTION(), operands[0]);
             assert(ptr_type->base.kind == LL_TYPE_POINTER);
 
-            LL_Eval_Value base = ll_eval_get_value(cc, b, bir, operands[1]);
+            oc_assert(OPD_TYPE(operands[0]) == LL_IR_OPERAND_REGISTER_BIT);
+            LL_Eval_Value base;
+            switch (OPD_TYPE(operands[1])) {
+            case LL_IR_OPERAND_LOCAL_BIT:
+                base.as_ptr = &FRAME()->locals.items[OPD_VALUE(operands[1])];
+                break;
+            case LL_IR_OPERAND_PARMAETER_BIT:
+                base.as_ptr = &FRAME()->parameters.items[OPD_VALUE(operands[1])];
+                break;
+            case LL_IR_OPERAND_DATA_BIT:
+                base.as_ptr = bir->data_items.items[OPD_VALUE(operands[1])].ptr;
+                break;
+            default: oc_assert(false && "invalid operand"); break;
+            }
+
             LL_Eval_Value index = ll_eval_get_value(cc, b, bir, operands[2]);
             LL_Eval_Value scale = ll_eval_get_value(cc, b, bir, operands[3]);
 
-            base.as_object += index.as_i64 * scale.as_i64;
+            base.as_ptr += index.as_i64 * scale.as_i64;
+            print("lea index {}\n", base.as_object);
 
             ll_eval_set_value(cc, b, bir, operands[0], base, false);
         } break;
@@ -1101,6 +1116,9 @@ LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     }
     b->frames.count++;
 
+LL_Backend backend_ir = { .backend = bir };
+ll_backend_write_to_file(cc, &backend_ir, "out.ir");
+
     LL_Ir_Block_Ref current_block = fn->entry;
     while (current_block) {
         bir->current_block = current_block;
@@ -1112,6 +1130,8 @@ LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
 
     bir->current_block = last_block;
     bir->current_function = last_function;
+
+    b->frames.count--;
 
     return return_value;
 }
@@ -1165,7 +1185,7 @@ void ll_eval_init(Compiler_Context* cc, LL_Eval_Context* b) {
 }
 
 
-LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, Code* expr) {
+LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, Code* expr, bool* can_continue) {
     LL_Eval_Value result;
     LL_Ir_Operand result_op;
     LL_Ir_Block_Ref entry_block_ref = bir->free_block ? bir->free_block : bir->blocks.count;
@@ -1221,12 +1241,12 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
     // bir->current_function = CURRENT_CONST_STACK | (bir->const_stack.count - 1); // top of stack is current
     bir->current_block = fn.entry;
 
-    result_op = ir_generate_expression(cc, bir, expr, false);
+    result_op = ir_generate_expression(cc, bir, expr, false, can_continue);
 
-// LL_Backend backend_ir = { .backend = bir };
-// ll_backend_write_to_file(cc, &backend_ir, "out.ir");
 
-    ll_eval_fn(cc, b, bir, 0, 0, NULL);
+    if (*can_continue) {
+        ll_eval_fn(cc, b, bir, 0, 0, NULL);
+    }
 
     bir->current_block = last_block;
     bir->current_function = last_function;
@@ -1236,8 +1256,8 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
 
     switch (OPD_TYPE(result_op)) {
     case LL_IR_OPERAND_IMMEDIATE_BIT: result.as_i64 = OPD_VALUE(result_op); break;
-    case LL_IR_OPERAND_REGISTER_BIT: result = FRAME()->registers.items[OPD_VALUE(result_op)]; break;
-    case LL_IR_OPERAND_LOCAL_BIT: result = FRAME()->locals.items[OPD_VALUE(result_op)]; break;
+    case LL_IR_OPERAND_REGISTER_BIT: result = FRAMEN(-1)->registers.items[OPD_VALUE(result_op)]; break;
+    case LL_IR_OPERAND_LOCAL_BIT: result = FRAMEN(-1)->locals.items[OPD_VALUE(result_op)]; break;
     }
 
     return result;

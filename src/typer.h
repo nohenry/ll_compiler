@@ -190,13 +190,6 @@ typedef struct {
     LL_Type* type;
 } LL_Typer_Matched_Polymorph;
 
-typedef struct {
-    Code* code;
-    uint32 block_index;
-    bool resume_decl;
-    bool unqueue;
-} LL_Resume_Info;
-
 LL_Type* ll_intern_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 size_t ll_type_hash(LL_Type* type, size_t seed);
 LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* return_type, LL_Type** parameter_types, size_t parameter_count, bool is_variadic);
@@ -228,6 +221,8 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
 LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Function_Instantiation inst);
 LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Type_Function* fn_type);
 bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* type_decl, LL_Type* provided_type, Code* site, bool is_top_level_this_arg, bool* can_continue);
+
+LL_Queued* create_stmt_queued(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, uint32 index, Code* code);
 
 static inline LL_Type* ll_get_base_type(LL_Type* type) {
     while (type && type->kind == LL_TYPE_NAMED) {

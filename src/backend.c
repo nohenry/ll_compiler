@@ -45,10 +45,12 @@ LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind) {
 }
 
 void ll_backend_generate_statement(Compiler_Context* cc, LL_Backend* b, Code* stmt) {
+    bool can_continue = true;
     switch (b->kind) {
-    case LL_BACKEND_IR: ir_generate_statement(cc, b->backend, stmt); break;
+    case LL_BACKEND_IR: ir_generate_statement(cc, b->backend, stmt, &can_continue); break;
     // case LL_BACKEND_C: backend_c_generate_root(cc, b->backend, stmt); break;
     }
+    oc_assert(can_continue);
 }
 
 void ll_backend_generate_statement_from_ir(Compiler_Context* cc, LL_Backend* b, LL_Backend_Ir* bir) {

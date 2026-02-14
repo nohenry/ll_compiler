@@ -34,6 +34,8 @@ typedef struct {
     uword len;
 } string;
 
+#define CSTR_TO_STRING(str) (_Generic((str), string : (str), default: lit(str)))
+
 #if OC_PLATFORM_WINDOWS
     #define WIN32_LEAN_AND_MEAN
     // #include "Windows.h"
@@ -308,7 +310,7 @@ typedef struct {
 
 #define OC_DEFAULT_MAP_ENTRY_COUNT 512
 #define OC_DEFAULT_MAP_SEED 0xf8abc103ba79eb85LLu
-#define OC_ARENA_CHUNK_SIZE (4096 * 8)
+#define OC_ARENA_CHUNK_SIZE (4096 * 80)
 
 #define OC_FD_INPUT  (0u)
 #define OC_FD_OUTPUT (1u)
@@ -334,6 +336,12 @@ typedef struct {
 #define oc_len(arr) (sizeof(arr)/sizeof((arr)[0]))
 #define oc_pun(value, type) ({ __typeof__(value) _v = (value); *(type*)&_v; })
 #define oc_oom() do { print("Out of memory: {}:{}\n", __FILE__, __LINE__); oc_exit(-1); } while (0)
+#define oc_format(arena, fmt, ...) ({        \
+    Oc_String_Builder sb;                    \
+    oc_sb_init(&sb, arena);                  \
+    wprint(&sb.writer, fmt, ## __VA_ARGS__); \
+    oc_sb_to_string(&sb);                    \
+})
 
 #define oc_array_aligned_append(arena, array, alignment, value)                                                     \
     do {                                                                                         \
@@ -418,31 +426,38 @@ typedef struct {
 		}                                                                                          \
 		(array)->count += (plus_count);                                                                 \
 	} while (0)
+#define oc_array_unordered_remove(arena, array, index)              \
+	do {                                                            \
+        (array)->items[index] = (array)->items[(array)->count - 1]; \
+		(array)->count--;                                           \
+	} while (0)
 
 static inline uword oc_align_forward(uword value, uword alignment_in_bytes) {
     return (value + alignment_in_bytes - 1) & ~(alignment_in_bytes - 1);
 }
 
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 /* --------    libc forwards  -------- */
-void *memset(void *s, int c, size_t n);
-void *memcpy(void *dest, const void *src, size_t n);
-int memcmp(const void *a, const void *b, size_t n);
-int strncmp(const char *a, const char *b, size_t n);
-int strcmp(const char *a, const char *b);
-size_t strlen(const char *s);
-_Noreturn void exit(int status);
+// void *memset(void *s, int c, size_t n);
+// void *memcpy(void *dest, const void *src, size_t n);
+// int memcmp(const void *a, const void *b, size_t n);
+// int strncmp(const char *a, const char *b, size_t n);
+// int strcmp(const char *a, const char *b);
+// size_t strlen(const char *s);
+// __declspec(dllimport) _Noreturn void exit(int status);
 // typedef void FILE;
-int fopen_s(FILE**, const char*, const char*);
+// int fopen_s(FILE**, const char*, const char*);
 // int fseek(FILE*, int, int);
 // size_t ftell(FILE*);
 // unsigned long long fwrite(const void *, unsigned long long a, unsigned long long b, FILE *);
 // unsigned long long fread(void *, unsigned long long a, unsigned long long b, FILE *);
 // void fclose(FILE*);
-void* realloc(void *, size_t);
-void* malloc(size_t);
-void* alloca(size_t);
+// __declspec(dllimport) void* realloc(void *, size_t);
+// __declspec(dllimport) void* malloc(size_t);
+// __declspec(dllimport) void* alloca(size_t);
 // #define SEEK_CUR    1
 // #define SEEK_END    2
 // #define SEEK_SET    0
@@ -535,7 +550,7 @@ extern Oc_Writer stderr_writer;
             while (total_written < data_size) {
                 uint32 written = 0;
                 if (!WriteFile(handle, data, data_size, (unsigned long*)&written, NULL)) {
-                    eprint("WriteFile failed\n");
+                    // eprint("WriteFile failed\n");
                     return 0;
                 }
                 total_written += written;
@@ -551,7 +566,7 @@ extern Oc_Writer stderr_writer;
             while (total_written < data_size) {
                 uint32 written = 0;
                 if (!WriteFile(handle, data, data_size, (unsigned long*)&written, NULL)) {
-                    eprint("WriteFile failed\n");
+                    // eprint("WriteFile failed\n");
                     return 0;
                 }
                 total_written += written;
@@ -637,7 +652,8 @@ _Noreturn int _oc_assert_fail(const char *assertion, const char *file, unsigned 
 
 Oc_Arena_Chunk* oc_arena_new_chunk(Oc_Arena* arena, uword size_in_bytes) {
     // Oc_Arena_Chunk* chunk = malloc(OC_ARENA_CHUNK_SIZE /* should be word aligned */);
-    uword aligned_bytes = oc_align_forward(size_in_bytes + sizeof(Oc_Arena_Chunk), OC_ARENA_CHUNK_SIZE);
+    // uword aligned_bytes = oc_align_forward(size_in_bytes + sizeof(Oc_Arena_Chunk), OC_ARENA_CHUNK_SIZE);
+    uword aligned_bytes = (size_in_bytes + OC_ARENA_CHUNK_SIZE - 1) / OC_ARENA_CHUNK_SIZE * OC_ARENA_CHUNK_SIZE;
     Oc_Arena_Chunk* chunk = oc_allocate_pages(aligned_bytes);
     if (arena->current && chunk == (void*)(arena->current->data + chunk->size)) {
         // if new chunk is right after current chunk, just extend current chunk
@@ -654,21 +670,25 @@ Oc_Arena_Chunk* oc_arena_new_chunk(Oc_Arena* arena, uword size_in_bytes) {
 Oc_Arena_Save oc_arena_save(Oc_Arena* arena) {
     return (Oc_Arena_Save) {
         .chunk = arena->current,
-        .used = arena->current->used,
+        .used = arena->current ? arena->current->used : 0,
     };
 }
 
 void oc_arena_restore(Oc_Arena* arena, Oc_Arena_Save restore_point) {
     arena->current = restore_point.chunk;
-    arena->current->used = restore_point.used;
+    if (arena->current) arena->current->used = restore_point.used;
 }
 
 void oc_arena_reset(Oc_Arena* arena) {
     arena->current = arena->head;
-    arena->current->used = sizeof(Oc_Arena_Chunk) / sizeof(uword);
+    arena->current->used = 0;
 }
 
 void* oc_arena_alloc_aligned(Oc_Arena* arena, uint64 size, uint64 alignment) {
+#ifdef OC_ENABLE_ASAN_MALLOC
+    (void)arena;
+    return _aligned_malloc(size, alignment);
+#else
     if (size == 0) return NULL;
     alignment = max(8, alignment);
     // 1 -> 0 -> 0 -> 1
@@ -689,6 +709,8 @@ void* oc_arena_alloc_aligned(Oc_Arena* arena, uint64 size, uint64 alignment) {
             if (arena->current->next == NULL) {
                 arena->current->next = oc_arena_new_chunk(arena, size);
                 if (!arena->current->next) oc_oom();
+            } else {
+                arena->current->next->used = 0;
             }
             arena->current = arena->current->next;
         }
@@ -700,9 +722,14 @@ void* oc_arena_alloc_aligned(Oc_Arena* arena, uint64 size, uint64 alignment) {
     arena->current->used += words + (aligned_result - result) / sizeof(uword);
 
     return aligned_result;
+#endif
 }
 
 void* oc_arena_alloc(Oc_Arena* arena, uint64 size) {
+#ifdef OC_ENABLE_ASAN_MALLOC
+    (void)arena;
+    return malloc(size);
+#else
     if (size == 0) return NULL;
     // 1 -> 0 -> 0 -> 1
     // 2 -> 1 -> 0 -> 1
@@ -718,6 +745,8 @@ void* oc_arena_alloc(Oc_Arena* arena, uint64 size) {
             if (arena->current->next == NULL) {
                 arena->current->next = oc_arena_new_chunk(arena, size);
                 if (!arena->current->next) oc_oom();
+            } else {
+                arena->current->next->used = 0;
             }
             arena->current = arena->current->next;
         }
@@ -726,9 +755,15 @@ void* oc_arena_alloc(Oc_Arena* arena, uint64 size) {
     void* result = arena->current->data + arena->current->used;
     arena->current->used += words;
     return result;
+#endif
 }
 
 void* oc_arena_aligned_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 size, uint64 alignment) {
+#ifdef OC_ENABLE_ASAN_MALLOC
+    (void)arena;
+    (void)old_size;
+    return _aligned_realloc(old_ptr, size, alignment);
+#else
     oc_assert(arena != NULL);
     // oc_assert(old_ptr != NULL);
     if (old_ptr == NULL)  return oc_arena_alloc_aligned(arena, size, alignment);
@@ -771,9 +806,15 @@ void* oc_arena_aligned_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, 
         arena->current->used += new_words;
         return new_ptr;
     }
+#endif
 }
 
 void* oc_arena_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 size) {
+#ifdef OC_ENABLE_ASAN_MALLOC
+    (void)arena;
+    (void)old_size;
+    return realloc(old_ptr, size);
+#else
     oc_assert(arena != NULL);
     // oc_assert(old_ptr != NULL);
     if (old_ptr == NULL)  return oc_arena_alloc(arena, size);
@@ -816,6 +857,7 @@ void* oc_arena_realloc(Oc_Arena* arena, void* old_ptr, uint64 old_size, uint64 s
         arena->current->used += new_words;
         return new_ptr;
     }
+#endif
 }
 
 void* oc_arena_dup(Oc_Arena* arena, void* data, uword size) {
@@ -964,16 +1006,17 @@ void oc_writer_format_and_write_float(Oc_Writer *writer, Oc_Format_Config cfg, d
         writer->write(writer, int_buffer + int_buffer_offset + 1, sizeof(int_buffer) - int_buffer_offset - 1);
     }
 
-    int decimal_places = 6;
+    int decimal_places = cfg.size ? cfg.size : 6;
     double e = 0.5;
     for (int i = 0; i < decimal_places; ++i) e /= 10.0;
-    dvalue += e;
+    // dvalue += e; why was this here??
 
     uint64 multiply = 10;
     double shifted = dvalue;
     double acc = 0.0;
     int_buffer_offset = 0;
     int_buffer[int_buffer_offset++] = '.';
+    int decimals = 0;
     if ((dvalue - acc) > e) {
         while ((dvalue - acc) > e) {
             double d = shifted * 10;
@@ -982,6 +1025,15 @@ void oc_writer_format_and_write_float(Oc_Writer *writer, Oc_Format_Config cfg, d
             int_buffer[int_buffer_offset++] = i + '0';
             shifted = d - i;
             multiply *= 10;
+            decimals++;
+        }
+        if (cfg.size && decimals < cfg.size) {
+            while (decimals < cfg.size) {
+                int_buffer[int_buffer_offset++] = '0';
+                decimals++;
+            }
+        } else if (cfg.size && decimals > cfg.size) {
+            int_buffer_offset -= (decimals - cfg.size);
         }
     } else {
         int_buffer[int_buffer_offset++] = '0';

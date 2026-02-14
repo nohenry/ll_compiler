@@ -191,8 +191,22 @@ typedef struct ll_backend_ir {
 
     uint8_t* initializer_ptr;
     bool last_op_was_load;
+
+    Code* waited_on_code;
+    LL_Dependency waited_dependency;
+
+    LL_Queued* queued;
 } LL_Backend_Ir;
 
+typedef struct LL_Ir_State {
+    uint32_t current_function;
+    LL_Ir_Block_Ref current_block, return_block;
+
+    LL_Ir_Operand copy_operand;
+
+    uint8_t* initializer_ptr;
+    bool last_op_was_load;
+} LL_Ir_State;
 
 
 #define OPERAND_FMT "{}{}"
@@ -208,9 +222,10 @@ typedef struct ll_backend_ir {
 
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b);
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath);
-void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt);
-void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt);
-LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Code* expr, bool ref);
+void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool* can_continue);
+void ir_generate_statement_with_state(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, LL_Ir_State* restore_state, bool* can_continue);
+void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool *can_continue);
+LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Code* expr, bool ref, bool* can_continue);
 LL_Type* ir_get_operand_type(LL_Backend_Ir* bir, LL_Ir_Function* fn, LL_Ir_Operand operand);
 
 size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i);

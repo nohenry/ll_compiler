@@ -375,7 +375,7 @@ LL_Ir_Operand ir_generate_rhs_load_if_needed(Compiler_Context* cc, LL_Backend_Ir
     }
 }
 
-void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
+void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool* can_continue) {
     uint32_t current_function = b->current_function;
     LL_Ir_Block_Ref current_block = b->current_block, return_block = b->return_block;
 
@@ -385,7 +385,7 @@ void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b,
 
 
 
-    ir_generate_statement(cc, b, stmt);
+    ir_generate_statement(cc, b, stmt, can_continue);
 
 
 
@@ -398,17 +398,128 @@ void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b,
     b->last_op_was_load = last_op_was_load;
 }
 
-void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
+void ir_generate_statement_with_state(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, LL_Ir_State* restore_state, bool* can_continue) {
+    uint32_t current_function = b->current_function;
+    LL_Ir_Block_Ref current_block = b->current_block, return_block = b->return_block;
+
+    LL_Ir_Operand copy_operand = b->copy_operand;
+    uint8_t* initializer_ptr = b->initializer_ptr;
+    bool last_op_was_load = b->last_op_was_load;
+
+
+    b->current_function = restore_state->current_function;
+    b->current_block = restore_state->current_block;
+    b->return_block = restore_state->return_block;
+
+    b->copy_operand = restore_state->copy_operand;
+    b->initializer_ptr = restore_state->initializer_ptr;
+    b->last_op_was_load = restore_state->last_op_was_load;
+
+    ir_generate_statement(cc, b, stmt, can_continue);
+
+
+
+    b->current_function = current_function;
+    b->current_block = current_block;
+    b->return_block = return_block;
+
+    b->copy_operand = copy_operand;
+    b->initializer_ptr = initializer_ptr;
+    b->last_op_was_load = last_op_was_load;
+}
+
+void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool* can_continue) {
     uint32_t i;
     switch (stmt->kind) {
     case CODE_KIND_BLOCK:
-        for (i = 0; i < CODE_AS(stmt, Code_Scope)->declarations.capacity; ++i) {
-            if (CODE_AS(stmt, Code_Scope)->declarations.entries[i].filled)
-                ir_generate_statement(cc, b, (Code*)CODE_AS(stmt, Code_Scope)->declarations.entries[i]._value);
+        // for (i = 0; i < CODE_AS(stmt, Code_Scope)->declarations.capacity; ++i) {
+        //     if (CODE_AS(stmt, Code_Scope)->declarations.entries[i].filled) {
+        //         ir_generate_statement(cc, b, (Code*)CODE_AS(stmt, Code_Scope)->declarations.entries[i]._value, can_continue);
+        //         if (!*can_continue) return 0;
+        //     }
+        // }
+        // for (i = 0; i < CODE_AS(stmt, Code_Scope)->statements.count; ++i) {
+        //     ir_generate_statement(cc, b, CODE_AS(stmt, Code_Scope)->statements.items[i], can_continue);
+        //     if (!*can_continue) return 0;
+        // }
+
+        Code_Scope* blk = CODE_AS(stmt, Code_Scope);
+
+        bool result = true;
+        if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
+            oc_assert(false);
+            // for (i = 0; i < blk->statements.count; ++i) {
+            //     result = ll_typer_type_statement(cc, typer, &blk->statements.items[i]);
+
+            //     if (!result) {
+            //         create_stmt_queued(cc, typer, blk, i);
+            //         // break;
+            //     }
+            // }
+        } else {
+            oc_assert(blk->flags & CODE_SCOPE_FLAG_IMPERATIVE);
+
+            // if (resume_info) i = resume_info->block_index;
+            // else i = 0;
+            i = 0;
+
+            // if (!resume_info || resume_info->resume_decl) {
+            //     for (i = 0; i < blk->declarations.capacity; ++i) {
+            //         if (blk->declarations.entries[i].filled) {
+            //             if (blk->declarations.entries[i]._value->base.kind == CODE_KIND_VARIABLE_DECLARATION) continue;
+            //             result = ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value, NULL);
+
+            //             if (!result) {
+            //                 if (!resume_info || resume_info->code != typer->waited_on_code) {
+            //                     blk->declarations.entries[i]._value->base.queued = create_decl_queued(cc, typer, blk, i, typer->waited_on_code);
+            //                 }
+            //                 break;
+            //             }
+            //         }
+            //     }
+            // }
+
+            // if (result) {
+                // if (resume_info) i = resume_info->block_index;
+                // else i = 0;
+
+                // if (!resume_info || !resume_info->resume_decl) {
+                    for (; i < blk->statements.count; ++i) {
+                        ir_generate_statement(cc, b, CODE_AS(stmt, Code_Scope)->statements.items[i], &result);
+
+                        if (!result) {
+                            LL_Queued* queued;
+                            if (blk->base.queued) {
+                                blk->base.queued->stmt_yielded_index = i;
+                                blk->base.queued->code = b->waited_on_code;
+                                queued = blk->base.queued;
+                            } else {
+                                queued = create_stmt_queued(cc, cc->typer, blk, i, b->waited_on_code);
+                            }
+
+                            if (!queued->ir_state) {
+                                oc_arena_alloc(&cc->arena, sizeof(*queued->ir_state));
+                            }
+
+                            queued->ir_state->current_function = b->current_function;
+                            queued->ir_state->current_block = b->current_block;
+                            queued->ir_state->return_block = b->return_block;
+                            queued->ir_state->copy_operand = b->copy_operand;
+                            queued->ir_state->initializer_ptr = b->initializer_ptr;
+                            queued->ir_state->last_op_was_load = b->last_op_was_load;
+
+                            b->queued = queued;
+
+                            b->waited_on_code = NULL;
+                            break;
+                        }
+                    }
+                // }
+            // }
         }
-        for (i = 0; i < CODE_AS(stmt, Code_Scope)->statements.count; ++i) {
-            ir_generate_statement(cc, b, CODE_AS(stmt, Code_Scope)->statements.items[i]);
-        }
+
+
+
         break;
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS(stmt, Code_Variable_Declaration);
@@ -426,7 +537,8 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
         if (var_decl->initializer) {
             LL_Ir_Operand last_copy_operand = b->copy_operand;
             b->copy_operand = LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index;
-            LL_Ir_Operand op = ir_generate_expression(cc, b, var_decl->initializer, false);
+            LL_Ir_Operand op = ir_generate_expression(cc, b, var_decl->initializer, false, can_continue);
+            if (!*can_continue) return;
             b->copy_operand = last_copy_operand;
 
             IR_APPEND_OP(LL_IR_OPCODE_STORE, LL_IR_OPERAND_LOCAL_BIT | var_decl->ir_index, op);
@@ -437,6 +549,10 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
     }
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS(stmt, Code_Function_Declaration);
+        if (fn_decl->base.base.queued) {
+            *can_continue = false;
+            return;
+        }
         // we do not generate macros
         if (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) return;
         if (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) return;
@@ -474,7 +590,8 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
             b->current_function = fn_decl->ir_index;
             b->current_block = fn.entry;
 
-            ir_generate_statement(cc, b, (Code*)fn_decl->body);
+            ir_generate_statement(cc, b, (Code*)fn_decl->body, can_continue);
+            if (!*can_continue) return;
 
             if (!b->blocks.items[b->current_block].did_branch) {
                 // b->current_block = FUNCTION()->exit;
@@ -495,7 +612,8 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt) {
     case CODE_KIND_CONST: {
     } break;
     default:
-        ir_generate_expression(cc, b, stmt, false);
+        ir_generate_expression(cc, b, stmt, false, can_continue);
+        if (!*can_continue) return;
         break;
     }
 }
@@ -670,7 +788,7 @@ LL_Ir_Operand ir_const_to_operand(Compiler_Context* cc, LL_Backend_Ir* b, LL_Typ
     return result;
 }
 
-LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Code* expr, bool lvalue) {
+LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Code* expr, bool lvalue, bool* can_continue) {
     LL_Ir_Operand result = 696969;
     LL_Ir_Opcode op, r1, r2;
     uint32_t i;
@@ -695,11 +813,14 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
         blk->break_block_ref = break_block;
 
         for (i = 0; i < CODE_AS(expr, Code_Scope)->declarations.capacity; ++i) {
-            if (CODE_AS(expr, Code_Scope)->declarations.entries[i].filled)
-                ir_generate_statement(cc, b, (Code*)CODE_AS(expr, Code_Scope)->declarations.entries[i]._value);
+            if (CODE_AS(expr, Code_Scope)->declarations.entries[i].filled) {
+                ir_generate_statement(cc, b, (Code*)CODE_AS(expr, Code_Scope)->declarations.entries[i]._value, can_continue);
+                if (!*can_continue) return 0;
+            }
         }
         for (i = 0; i < CODE_AS(expr, Code_Scope)->statements.count; ++i) {
-            ir_generate_statement(cc, b, CODE_AS(expr, Code_Scope)->statements.items[i]);
+            ir_generate_statement(cc, b, CODE_AS(expr, Code_Scope)->statements.items[i], can_continue);
+            if (!*can_continue) return 0;
         }
 
         b->current_block = break_block;
@@ -754,19 +875,22 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
         case '-': {
-            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false);
+            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false, can_continue);
+            if (!*can_continue) return 0;
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_NEG, expr->type, result);
             break;
         }
         case '*': {
-            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false);
+            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false, can_continue);
+            if (!*can_continue) return 0;
             if (!lvalue) {
                 result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, result);
             }
             break;
         }
         case '&': {
-            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, true);
+            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, true, can_continue);
+            if (!*can_continue) return 0;
             if (CODE_AS(expr, Code_Operation)->right->kind != CODE_KIND_INDEX && CODE_AS(expr, Code_Operation)->right->kind != CODE_KIND_BINARY_OP) {
                 result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
             }
@@ -856,27 +980,33 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
             op = LL_IR_OPCODE_NEQ;
             goto DO_BIN_OP_BOOLEAN;
 DO_BIN_OP_BOOLEAN:
-            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false);
+            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false, can_continue);
+            if (!*can_continue) return 0;
             r2 = ir_generate_lhs_load_if_needed(cc, b, CODE_AS(expr, Code_Operation)->right->type, r2);
 
-            r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false);
+            r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false, can_continue);
+            if (!*can_continue) return 0;
             r1 = ir_generate_lhs_load_if_needed(cc, b, CODE_AS(expr, Code_Operation)->left->type, r1);
 
             result = IR_APPEND_OP_DST(op, expr->type, r1, r2);
             return result;
         
         case LL_TOKEN_KIND_OR: {
-            r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false);
+            r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false, can_continue);
+            if (!*can_continue) return 0;
             r1 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, CODE_AS(expr, Code_Operation)->left->type, r1);
-            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false);
+            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false, can_continue);
+            if (!*can_continue) return 0;
             r2 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, CODE_AS(expr, Code_Operation)->right->type, r2);
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_OR, expr->type, r1, r2);
             return result;
         } break;
         case LL_TOKEN_KIND_AND: {
-            r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false);
+            r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false, can_continue);
+            if (!*can_continue) return 0;
             r1 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, CODE_AS(expr, Code_Operation)->left->type, r1);
-            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false);
+            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false, can_continue);
+            if (!*can_continue) return 0;
             r2 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, CODE_AS(expr, Code_Operation)->right->type, r2);
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_AND, expr->type, r1, r2);
             return result;
@@ -898,21 +1028,26 @@ DO_BIN_OP_BOOLEAN:
         case LL_TOKEN_KIND_ASSIGN_PLUS:
             op = LL_IR_OPCODE_ADD;
 DO_BIN_OP_ASSIGN_OP:
-            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false);
+            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false, can_continue);
+            if (!*can_continue) return 0;
             r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, CODE_AS(expr, Code_Operation)->right->type);
 
-            r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false);
+            r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false, can_continue);
+            if (!*can_continue) return 0;
             r1 = ir_generate_cast_if_needed(cc, b, expr->type, r1, CODE_AS(expr, Code_Operation)->left->type);
             r1 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r1);
 
             r1 = IR_APPEND_OP_DST(op, expr->type, r1, r2);
 
-            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, true);
+            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, true, can_continue);
+            if (!*can_continue) return 0;
             IR_APPEND_OP(LL_IR_OPCODE_STORE, result, r1);
             return r1;
         case '=':
-            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, true);
-            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false);
+            result = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, true, can_continue);
+            if (!*can_continue) return 0;
+            r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false, can_continue);
+            if (!*can_continue) return 0;
             r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, CODE_AS(expr, Code_Operation)->right->type);
             IR_APPEND_OP(LL_IR_OPCODE_STORE, result, r2);
             return r2;
@@ -925,11 +1060,13 @@ DO_BIN_OP_ASSIGN_OP:
             break;
         }
 
-        r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false);
+        r1 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->left, false, can_continue);
+        if (!*can_continue) return 0;
         r1 = ir_generate_cast_if_needed(cc, b, expr->type, r1, CODE_AS(expr, Code_Operation)->left->type);
         r1 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r1);
 
-        r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false);
+        r2 = ir_generate_expression(cc, b, CODE_AS(expr, Code_Operation)->right, false, can_continue);
+        if (!*can_continue) return 0;
         r2 = ir_generate_cast_if_needed(cc, b, expr->type, r2, CODE_AS(expr, Code_Operation)->right->type);
         r2 = ir_generate_lhs_load_if_needed(cc, b, expr->type, r2);
 
@@ -938,7 +1075,8 @@ DO_BIN_OP_ASSIGN_OP:
     case CODE_KIND_CAST: {
         Code_Cast* cast = CODE_AS(expr, Code_Cast);
         b->last_op_was_load = false;
-        result = ir_generate_expression(cc, b, cast->expr, false);
+        result = ir_generate_expression(cc, b, cast->expr, false, can_continue);
+        if (!*can_continue) return 0;
         if (b->last_op_was_load) {
             // merge cast into load
             oc_assert(OPD_TYPE(result) == LL_IR_OPERAND_REGISTER_BIT);
@@ -985,7 +1123,8 @@ DO_BIN_OP_ASSIGN_OP:
                     b->current_function = inv->resolved_fn_inst->ir_index;
                     b->current_block = fn.entry;
 
-                    ir_generate_statement(cc, b, inv->resolved_fn_inst->body);
+                    ir_generate_statement(cc, b, inv->resolved_fn_inst->body, can_continue);
+                    if (!*can_continue) return 0;
 
                     if (!b->blocks.items[b->current_block].did_branch) {
                         IR_APPEND_OP(LL_IR_OPCODE_RET);
@@ -998,7 +1137,8 @@ DO_BIN_OP_ASSIGN_OP:
 
             invokee = LL_IR_OPERAND_FUNCTION_BIT | inv->resolved_fn_inst->ir_index;
         } else {
-            invokee = ir_generate_expression(cc, b, inv->expr, true);
+            invokee = ir_generate_expression(cc, b, inv->expr, true, can_continue);
+            if (!*can_continue) return 0;
         }
 
         LL_Type_Function* fn_type = (LL_Type_Function*)inv->expr->type;
@@ -1047,7 +1187,8 @@ DO_BIN_OP_ASSIGN_OP:
                 }
             }
 
-            LL_Ir_Operand arg_operand = ir_generate_expression(cc, b, inv->ordered_arguments.items[i], arg_lvalue);
+            LL_Ir_Operand arg_operand = ir_generate_expression(cc, b, inv->ordered_arguments.items[i], arg_lvalue, can_continue);
+            if (!*can_continue) return 0;
             if (arg_lea) {
                 arg_operand = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, parameter_type, arg_operand);
             }
@@ -1087,7 +1228,8 @@ DO_BIN_OP_ASSIGN_OP:
         for (i = 0, k = 0; i < lit->count; ++i, ++k) {
             if (lit->items[i]->kind == CODE_KIND_KEY_VALUE) {
                 Code_Key_Value* kv = CODE_AS(lit->items[i], Code_Key_Value);
-                LL_Ir_Operand vvalue = ir_generate_expression(cc, b, kv->value, false);
+                LL_Ir_Operand vvalue = ir_generate_expression(cc, b, kv->value, false, can_continue);
+                if (!*can_continue) return 0;
                 if (kv->key->has_const && kv->value->has_const) {
 
                     if (layout.size <= 8) {
@@ -1104,13 +1246,15 @@ DO_BIN_OP_ASSIGN_OP:
                     }
                     k = kv->key->const_value.as_u64;
                 } else {
-                    LL_Ir_Operand kvalue = ir_generate_expression(cc, b, kv->key, false);
+                    LL_Ir_Operand kvalue = ir_generate_expression(cc, b, kv->key, false, can_continue);
+                    if (!*can_continue) return 0;
                     LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, element_type);
                     result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA_INDEX, ptr_type, b->copy_operand, kvalue, layout.size);
                     IR_APPEND_OP(LL_IR_OPCODE_STORE, result, vvalue);
                 }
             } else {
-                LL_Ir_Operand vvalue = ir_generate_expression(cc, b, lit->items[i], false);
+                LL_Ir_Operand vvalue = ir_generate_expression(cc, b, lit->items[i], false, can_continue);
+                if (!*can_continue) return 0;
                 switch (lit->items[i]->type->kind) {
                 case LL_TYPE_ARRAY:
                     b->initializer_ptr += size;
@@ -1156,10 +1300,12 @@ DO_BIN_OP_ASSIGN_OP:
         LL_Ir_Operand lvalue_op;
         switch (op->ptr->type->kind) {
         case LL_TYPE_POINTER:
-            lvalue_op = ir_generate_expression(cc, b, op->ptr, false);
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, false, can_continue);
+            if (!*can_continue) return 0;
             break;
         case LL_TYPE_STRING: {
-            lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, true, can_continue);
+            if (!*can_continue) return 0;
 
             LL_Type* ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, cc->typer->ty_char);
             LL_Type* ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
@@ -1168,7 +1314,8 @@ DO_BIN_OP_ASSIGN_OP:
             lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ptr_element_type, lvalue_op);
         } break;
         case LL_TYPE_SLICE: {
-            lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, true, can_continue);
+            if (!*can_continue) return 0;
 
             LL_Type* ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ((LL_Type_Slice*)op->ptr->type)->element_type);
             LL_Type* ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
@@ -1177,11 +1324,13 @@ DO_BIN_OP_ASSIGN_OP:
             lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, ptr_element_type, lvalue_op);
         } break;
         default:
-            lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, true, can_continue);
+            if (!*can_continue) return 0;
             break;
         }
 
-        LL_Ir_Operand rvalue_op = ir_generate_expression(cc, b, op->start, false);
+        LL_Ir_Operand rvalue_op = ir_generate_expression(cc, b, op->start, false, can_continue);
+        if (!*can_continue) return 0;
         LL_Backend_Layout layout = cc->target->get_layout(expr->type);
 
         LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, expr->type);
@@ -1194,8 +1343,10 @@ DO_BIN_OP_ASSIGN_OP:
     case CODE_KIND_SLICE: {
         Code_Slice* op = CODE_AS(expr, Code_Slice);
 
-        LL_Ir_Operand start_op = op->start ? ir_generate_expression(cc, b, op->start, false) : 0;
-        LL_Ir_Operand stop_op = op->stop ? ir_generate_expression(cc, b, op->stop, false) : 0;
+        LL_Ir_Operand start_op = op->start ? ir_generate_expression(cc, b, op->start, false, can_continue) : 0;
+        if (!*can_continue) return 0;
+        LL_Ir_Operand stop_op = op->stop ? ir_generate_expression(cc, b, op->stop, false, can_continue) : 0;
+        if (!*can_continue) return 0;
         LL_Ir_Operand lvalue_op, ptr_op, inc_op;
         LL_Type* size_type = cc->typer->ty_uint64;
         LL_Type* ptr_size_type = ll_typer_get_ptr_type(cc, cc->typer, size_type);
@@ -1217,7 +1368,8 @@ DO_BIN_OP_ASSIGN_OP:
             ptr_ptr_element_type = ll_typer_get_ptr_type(cc, cc->typer, ptr_element_type);
 
 HANDLE_SLICE_OP:
-            lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+            lvalue_op = ir_generate_expression(cc, b, op->ptr, true, can_continue);
+            if (!*can_continue) return 0;
             lvalue_op = IR_APPEND_OP_DST(LL_IR_OPCODE_CLONE, op->ptr->type, lvalue_op);
             if (op->start) {
                 alias1 = IR_APPEND_OP_DST(LL_IR_OPCODE_ALIAS, op->ptr->type, lvalue_op);
@@ -1255,7 +1407,7 @@ HANDLE_SLICE_OP:
             break;
         default:
             oc_todo("add error");
-            // lvalue_op = ir_generate_expression(cc, b, op->ptr, true);
+            // lvalue_op = ir_generate_expression(cc, b, op->ptr, true, can_continue);
             break;
         }
 
@@ -1292,11 +1444,17 @@ HANDLE_SLICE_OP:
         }
 
         Code* decl = (Code*)ident->resolved_decl;
+        if (!decl || !ident->base.type)  {
+            *can_continue = false;
+            b->waited_on_code = expr;
+            return 0;
+        }
         switch (decl->kind) {
         case CODE_KIND_VARIABLE_DECLARATION: result = LL_IR_OPERAND_LOCAL_BIT | CODE_AS(decl, Code_Variable_Declaration)->ir_index; break;
         case CODE_KIND_FUNCTION_DECLARATION:
             if (CODE_AS(decl, Code_Function_Declaration)->ir_index == 0) {
-                ir_generate_statement_restore_state(cc, b, decl);
+                ir_generate_statement_restore_state(cc, b, decl, can_continue);
+                if (!*can_continue) return 0;
             }
             result = LL_IR_OPERAND_FUNCTION_BIT | CODE_AS(decl, Code_Function_Declaration)->ir_index;
             break;
@@ -1319,7 +1477,8 @@ HANDLE_SLICE_OP:
     case CODE_KIND_RETURN: {
         Code_Control_Flow* cf = CODE_AS(expr, Code_Control_Flow);
         if (cf->expr) {
-            result = ir_generate_expression(cc, b, cf->expr, false);
+            result = ir_generate_expression(cc, b, cf->expr, false, can_continue);
+            if (!*can_continue) return 0;
             IR_APPEND_OP(LL_IR_OPCODE_RETVALUE, result);
         } else {
             IR_APPEND_OP(LL_IR_OPCODE_RET);
@@ -1330,7 +1489,8 @@ HANDLE_SLICE_OP:
     case CODE_KIND_BREAK: {
         Code_Control_Flow* cf = CODE_AS(expr, Code_Control_Flow);
         if (cf->expr) {
-            result = ir_generate_expression(cc, b, cf->expr, false);
+            result = ir_generate_expression(cc, b, cf->expr, false, can_continue);
+            if (!*can_continue) return 0;
 
             IR_APPEND_OP(LL_IR_OPCODE_STORE, cf->referenced_scope->break_value, result);
         }
@@ -1357,7 +1517,8 @@ HANDLE_SLICE_OP:
         LL_Ir_Block_Ref end_block = iff->else_clause ? ir_create_block(cc, b, true) : else_block;
 
         b->current_block = cond_block;
-        result = ir_generate_expression(cc, b, iff->cond, false);
+        result = ir_generate_expression(cc, b, iff->cond, false, can_continue);
+        if (!*can_continue) return 0;
         if ((result & LL_IR_OPERAND_TYPE_MASK) == LL_IR_OPERAND_IMMEDIATE_BIT) {
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, cc->typer->ty_bool, result);
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_NEQ, cc->typer->ty_bool, result, 0);
@@ -1368,13 +1529,17 @@ HANDLE_SLICE_OP:
 
         if (iff->body) {
             b->current_block = body_block;
-            ir_generate_statement(cc, b, iff->body);
+            ir_generate_statement(cc, b, iff->body, can_continue);
+            if (!*can_continue) return 0;
+
             IR_APPEND_OP(LL_IR_OPCODE_BRANCH, end_block);
         }
 
         if (iff->else_clause) {
             b->current_block = else_block;
-            ir_generate_statement(cc, b, iff->else_clause);
+            ir_generate_statement(cc, b, iff->else_clause, can_continue);
+            if (!*can_continue) return 0;
+
             IR_APPEND_OP(LL_IR_OPCODE_BRANCH, end_block);
         }
 
@@ -1386,7 +1551,10 @@ HANDLE_SLICE_OP:
     case CODE_KIND_FOR: {
         Code_Loop* loop = CODE_AS(expr, Code_Loop);
 
-        if (loop->init) ir_generate_statement(cc, b, loop->init);
+        if (loop->init) {
+            ir_generate_statement(cc, b, loop->init, can_continue);
+            if (!*can_continue) return 0;
+        }
 
         LL_Ir_Block_Ref cond_block = ir_create_block(cc, b, true);
         b->current_block = cond_block;
@@ -1416,17 +1584,20 @@ HANDLE_SLICE_OP:
 
         if (loop->cond) {
             b->current_block = cond_block;
-            result = ir_generate_expression(cc, b, loop->cond, false);
+            result = ir_generate_expression(cc, b, loop->cond, false, can_continue);
+            if (!*can_continue) return 0;
             IR_APPEND_OP(LL_IR_OPCODE_BRANCH_COND, result, body_block, end_block);
         }
 
         b->current_block = body_block;
         if (loop->body) {
-            ir_generate_statement(cc, b, loop->body);
+            ir_generate_statement(cc, b, loop->body, can_continue);
+            if (!*can_continue) return 0;
         }
 
         if (loop->update) {
-            ir_generate_expression(cc, b, loop->update, false);
+            ir_generate_expression(cc, b, loop->update, false, can_continue);
+            if (!*can_continue) return 0;
         }
         IR_APPEND_OP(LL_IR_OPCODE_BRANCH, cond_block);
 

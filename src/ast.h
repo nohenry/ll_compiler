@@ -7,22 +7,6 @@
 
 #define optional
 
-typedef struct code Code;
-
-typedef struct {
-    Code** items;
-    uint32_t count, capacity;
-} LL_Flattened;
-
-typedef struct {
-    struct Code_Scope* yielded_in_scope;
-    struct ll_type_function* yielded_in_function;
-    size_t decl_yielded_hash;
-    string decl_str;
-    uint32 stmt_yielded_index;
-    Code* code;
-} LL_Queued;
-
 typedef enum {
     CODE_KIND_LITERAL_INT,
     CODE_KIND_LITERAL_FLOAT,
