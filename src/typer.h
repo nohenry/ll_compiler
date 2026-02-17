@@ -171,7 +171,7 @@ typedef struct ll_typer {
             *ty_string,
             *ty_bool8, *ty_bool16, *ty_bool32, *ty_bool64, *ty_bool, *ty_anybool, *ty_code_ref, *ty_char, *ty_type;
     
-    LL_Type_Function* current_fn;
+    Code_Function_Declaration* current_function;
     LL_Type* block_type;
     Code_Scope* current_scope, *root_scope;
 
@@ -196,6 +196,7 @@ LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* re
 
 LL_Typer ll_typer_create(Compiler_Context* cc);
 void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node);
+void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node);
 
 bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt, LL_Resume_Info* resume_info);
 bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
@@ -222,7 +223,8 @@ LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, 
 LL_Function_Instantiation* ll_typer_function_instance_get(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Type_Function* fn_type);
 bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* type_decl, LL_Type* provided_type, Code* site, bool is_top_level_this_arg, bool* can_continue);
 
-LL_Queued* create_stmt_queued(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, uint32 index, Code* code);
+LL_Queued* create_stmt_queued(Compiler_Context* cc, LL_Typer* typer, LL_Stage_Kind stage, Code_Scope* scope, uint32 index, Code* code);
+
 
 static inline LL_Type* ll_get_base_type(LL_Type* type) {
     while (type && type->kind == LL_TYPE_NAMED) {
@@ -242,6 +244,7 @@ typedef struct {
 #define ll_typer_report_error_info(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_info_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 #define ll_typer_report_error_note(error, fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_note_raw((cc), (typer), (error), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
 #define ll_typer_report_error_no_src(fmt, ...) do { OC_MAP_SEQ(OC_MAKE_GENERIC1, __VA_ARGS__); ll_typer_report_error_no_src_raw((cc), (typer), fmt OC_MAP_SEQ(OC_MAKE_GENERIC1_PARAM, __VA_ARGS__)); } while (0)
+#define ll_typer_report_error_done(cc, typer) _ll_typer_report_error_done((cc), (typer), __FILE__, __LINE__);
 
 void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_Info line_info, LL_Token_Info start_info, LL_Token_Info end_info, bool print_dot_dot_dot, bool print_underline);
 void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error error, const char* fmt, ...);
@@ -250,4 +253,4 @@ void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
 void ll_typer_report_error_no_src_raw(Compiler_Context* cc, LL_Typer* typer, const char* fmt, ...);
 void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
-void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer);
+void _ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer, const char* file, size_t line);

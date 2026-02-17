@@ -120,22 +120,25 @@ Enum(LL_Stage_Flag, uint8,
 
 typedef struct {
     struct LL_Queued* target;
-    LL_Stage_Flag depends_on;
+    LL_Stage_Flag flags;
 } LL_Dependency;
 
 typedef struct LL_Queued {
-    struct Code_Scope* yielded_in_scope;
-    struct ll_type_function* yielded_in_function;
-    size_t decl_yielded_hash;
-    string decl_str;
-    uint32 stmt_yielded_index;
+    uint32 imperative_index;
+    uint32 index_in_stage;
+
+    struct Code_Function_Declaration* function;
+    struct Code_Scope* scope;
     Code* code;
 
     struct LL_Ir_State* ir_state;
     LL_Stage_Kind max_completed_stage;
 
-    uint32 dependency_cursor;
-    Array(uint32, LL_Dependency) dependencies;
+    // uint32 dependency_cursor;
+    // Array(uint32, LL_Dependency) dependencies;
+    uint32 dependency_counter[COUNT_OF_STAGES];
+    Array(uint32, LL_Dependency) dependants;
+    uint32 s;
 } LL_Queued;
 
 typedef struct {
@@ -163,8 +166,34 @@ typedef struct {
     bool exit_0;
 
 
+    Array(uint32, LL_Queued*) queued_stack;
     LL_Stage stages[COUNT_OF_STAGES];
+    uint32* number_of_queued;
+    LL_Stage_Kind current_stage;
 } Compiler_Context;
+
+#define current_queued() (cc->queued_stack.count > 0 ? cc->queued_stack.items[cc->queued_stack.count - 1] : NULL)
+// #define depend(queued, on_queued, _flags) do {                      \
+//     LL_Queued* q = (queued);                                        \
+//     LL_Dependency d = { .target = (on_queued), .flags = (_flags) }; \
+//     oc_array_append(&cc->arena, &q->dependencies, d  );                            \
+// } while (0)
+#define depend(queued, on_queued, _flags) do {                \
+    LL_Queued* q = (on_queued);                               \
+    LL_Queued* oq = (queued);                                 \
+    LL_Dependency d = { .target = oq, .flags = (_flags) };    \
+    oc_array_append(&cc->arena, &(q)->dependants, d);       \
+    for (uint32 i = 0; i < COUNT_OF_STAGES; ++i) {            \
+        if ((_flags) & (1 << i)) oq->dependency_counter[i]++; \
+    }                                                         \
+} while (0)
+
+void compiler_run_stages(Compiler_Context* cc);
+void output_graph(Compiler_Context* cc, LL_Stage_Kind stage_kind);
+void input_graph(Compiler_Context* cc, LL_Stage_Kind stage_kind);
+LL_Queued* create_queued(Compiler_Context* cc, struct Code_Function_Declaration* fn, struct Code_Scope* scope, Code* code);
+void actually_queue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued);
+void actually_unqueue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued);
 
 extern string LL_KEYWORD_CONST;
 extern string LL_KEYWORD_CAST;

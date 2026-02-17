@@ -233,7 +233,7 @@ typedef struct {
                        // for structs, it's the type field index
 } Code_Variable_Declaration;
 
-typedef struct {
+typedef struct Code_Function_Declaration {
     Code_Declaration base;
 
     Array(uint32, Code_Variable_Declaration) parameters;

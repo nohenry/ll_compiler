@@ -222,6 +222,7 @@ static void ir_print_block(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Block* 
 
 static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b, Oc_Writer* w) {
     uint32_t fi;
+    uint32 last_func = b->current_function;
     for (fi = 0; fi < b->fns.count; ++fi) {
         LL_Ir_Function* fn = &b->fns.items[fi];
         LL_Ir_Block_Ref block = fn->entry;
@@ -243,6 +244,8 @@ static void ir_print(Compiler_Context* cc, LL_Backend_Ir* b, Oc_Writer* w) {
         }
         wprint(w, "\n");
     }
+
+    b->current_function = last_func;
 }
 
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b) {
@@ -444,78 +447,67 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
         // }
 
         Code_Scope* blk = CODE_AS(stmt, Code_Scope);
+        LL_Queued* queued = current_queued();
 
         bool result = true;
         if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
-            oc_assert(false);
-            // for (i = 0; i < blk->statements.count; ++i) {
-            //     result = ll_typer_type_statement(cc, typer, &blk->statements.items[i]);
+            if (queued->imperative_index != (uint32)-1) {
+                i = blk->base.queued->imperative_index;
+                queued->imperative_index = (uint32)-1;
+            } else i = 0;
 
-            //     if (!result) {
-            //         create_stmt_queued(cc, typer, blk, i);
-            //         // break;
-            //     }
-            // }
+            for (; i < blk->declarations.capacity; ++i) {
+                if (blk->declarations.entries[i].filled) {
+                    ir_generate_statement(cc, b, (Code*)blk->declarations.entries[i]._value, &result);
+
+                    if (!result) {
+                        queued->imperative_index = i;
+
+                        if (!queued->ir_state) {
+                            queued->ir_state = oc_arena_alloc(&cc->arena, sizeof(*queued->ir_state));
+                        }
+
+                        queued->ir_state->current_function = b->current_function;
+                        queued->ir_state->current_block = b->current_block;
+                        queued->ir_state->return_block = b->return_block;
+                        queued->ir_state->copy_operand = b->copy_operand;
+                        queued->ir_state->initializer_ptr = b->initializer_ptr;
+                        queued->ir_state->last_op_was_load = b->last_op_was_load;
+
+                        b->waited_on_code = NULL;
+                        break;
+                    }
+                }
+            }
         } else {
             oc_assert(blk->flags & CODE_SCOPE_FLAG_IMPERATIVE);
 
-            // if (resume_info) i = resume_info->block_index;
-            // else i = 0;
-            i = 0;
+            if (queued->imperative_index != (uint32)-1) {
+                i = blk->base.queued->imperative_index;
+                queued->imperative_index = (uint32)-1;
+            } else i = 0;
 
-            // if (!resume_info || resume_info->resume_decl) {
-            //     for (i = 0; i < blk->declarations.capacity; ++i) {
-            //         if (blk->declarations.entries[i].filled) {
-            //             if (blk->declarations.entries[i]._value->base.kind == CODE_KIND_VARIABLE_DECLARATION) continue;
-            //             result = ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value, NULL);
+            for (; i < blk->statements.count; ++i) {
+                ir_generate_statement(cc, b, CODE_AS(stmt, Code_Scope)->statements.items[i], &result);
 
-            //             if (!result) {
-            //                 if (!resume_info || resume_info->code != typer->waited_on_code) {
-            //                     blk->declarations.entries[i]._value->base.queued = create_decl_queued(cc, typer, blk, i, typer->waited_on_code);
-            //                 }
-            //                 break;
-            //             }
-            //         }
-            //     }
-            // }
+                if (!result) {
+                    queued->imperative_index = i;
 
-            // if (result) {
-                // if (resume_info) i = resume_info->block_index;
-                // else i = 0;
-
-                // if (!resume_info || !resume_info->resume_decl) {
-                    for (; i < blk->statements.count; ++i) {
-                        ir_generate_statement(cc, b, CODE_AS(stmt, Code_Scope)->statements.items[i], &result);
-
-                        if (!result) {
-                            LL_Queued* queued;
-                            if (blk->base.queued) {
-                                blk->base.queued->stmt_yielded_index = i;
-                                blk->base.queued->code = b->waited_on_code;
-                                queued = blk->base.queued;
-                            } else {
-                                queued = create_stmt_queued(cc, cc->typer, blk, i, b->waited_on_code);
-                            }
-
-                            if (!queued->ir_state) {
-                                oc_arena_alloc(&cc->arena, sizeof(*queued->ir_state));
-                            }
-
-                            queued->ir_state->current_function = b->current_function;
-                            queued->ir_state->current_block = b->current_block;
-                            queued->ir_state->return_block = b->return_block;
-                            queued->ir_state->copy_operand = b->copy_operand;
-                            queued->ir_state->initializer_ptr = b->initializer_ptr;
-                            queued->ir_state->last_op_was_load = b->last_op_was_load;
-
-                            b->queued = queued;
-
-                            b->waited_on_code = NULL;
-                            break;
-                        }
+                    if (!queued->ir_state) {
+                        queued->ir_state = oc_arena_alloc(&cc->arena, sizeof(*queued->ir_state));
                     }
-                // }
-            // }
+
+                    queued->ir_state->current_function = b->current_function;
+                    queued->ir_state->current_block = b->current_block;
+                    queued->ir_state->return_block = b->return_block;
+                    queued->ir_state->copy_operand = b->copy_operand;
+                    queued->ir_state->initializer_ptr = b->initializer_ptr;
+                    queued->ir_state->last_op_was_load = b->last_op_was_load;
+
+                    b->waited_on_code = NULL;
+                    break;
+                }
+            }
         }
 
 
@@ -549,14 +541,13 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
     }
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS(stmt, Code_Function_Declaration);
-        if (fn_decl->base.base.queued) {
-            *can_continue = false;
-            return;
-        }
+
         // we do not generate macros
         if (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) return;
         if (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) return;
         if (fn_decl->ir_index != 0) return;
+
+        actually_queue(cc, STAGE_IR, fn_decl->base.base.queued);
 
         LL_Ir_Block_Ref entry_block_ref = b->blocks.count;
         LL_Ir_Block entry_block = { 0 };
@@ -591,7 +582,9 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
             b->current_block = fn.entry;
 
             ir_generate_statement(cc, b, (Code*)fn_decl->body, can_continue);
-            if (!*can_continue) return;
+            if (!*can_continue) {
+                return;
+            }
 
             if (!b->blocks.items[b->current_block].did_branch) {
                 // b->current_block = FUNCTION()->exit;

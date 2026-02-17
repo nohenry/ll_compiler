@@ -204,6 +204,14 @@ Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser, Code_Dec
 	Code* block_result = CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope){ .base.kind = CODE_KIND_BLOCK, .decl = decl, .flags = block_flags }));
     Code_Scope* block = (Code_Scope*)block_result;
 
+    // we don't queue declarative blocks since each of their declarations
+    // will be queued individually
+    LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, block_result);
+    if (block_flags & CODE_SCOPE_FLAG_IMPERATIVE) {
+        queued->imperative_index = 0;
+        actually_queue(cc, STAGE_TYPECHECK, queued);
+    }
+
     PEEK(&token);
     if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
         block->base.token_info = TOKEN_INFO(token);
@@ -312,6 +320,8 @@ Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
 
 	hash_map_put(&cc->arena, &parser->current_scope->declarations, ident->str, (Code_Declaration*)result);
 
+    LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
+    actually_queue(cc, STAGE_TYPECHECK, queued);
 
     result->token_info = struct_kw;
     return result;
@@ -334,8 +344,9 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
     bool fn = false;
     typeof(CODE_AS(type, Code_Function_Declaration)->parameters) parameters = { 0 };
     Code* body_or_init;
-    LL_Token_Info p_open, p_close, eql;
+    LL_Token_Info p_open = (LL_Token_Info) { 0 }, p_close = (LL_Token_Info) { 0 }, eql = (LL_Token_Info) { 0 };
 
+	Code* result = NULL;
     PEEK(&token);
     switch (token.kind) {
 #pragma GCC diagnostic push
@@ -361,6 +372,10 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             CONSUME();
             p_close = TOKEN_INFO(token);
 
+            result = CREATE_NODE(CODE_KIND_FUNCTION_DECLARATION, ((Code_Function_Declaration){ 0 }));
+            Code_Function_Declaration* last_function = parser->current_function;
+            parser->current_function = (Code_Function_Declaration*)result;
+
             PEEK(&token);
             if (token.kind == '{') {
                 body_or_init = (Code*)parser_parse_block(cc, parser, NULL, CODE_SCOPE_FLAG_IMPERATIVE);
@@ -368,6 +383,8 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
                 EXPECT(';', &token);
                 body_or_init = NULL;
             }
+
+            parser->current_function = last_function;
 
             break;
         case '=':
@@ -383,9 +400,9 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             break;
     }
 
-	Code* result;
     if (fn) {
-        result = CREATE_NODE(CODE_KIND_FUNCTION_DECLARATION, ((Code_Function_Declaration){
+        *CODE_AS(result, Code_Function_Declaration) = (Code_Function_Declaration){
+            .base.base.kind = CODE_KIND_FUNCTION_DECLARATION,
             .base.type = type,
             .base.ident = ident,
             .base.within_scope = parser->current_scope,
@@ -393,9 +410,15 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             .body = (Code_Scope*)body_or_init,
             .storage_class = storage_class,
             .p_open = p_open, .p_close = p_close,
-        }));
+        };
+        LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
+        actually_queue(cc, STAGE_TYPECHECK, queued);
+
         if (body_or_init) {
             CODE_AS(body_or_init, Code_Scope)->decl = (Code_Declaration*)result;
+            // depend(queued, body_or_init->queued, STAGE_TYP)
+            depend(body_or_init->queued, queued, STAGE_FLAG_TYPECHECK);
+            actually_unqueue(cc, STAGE_TYPECHECK, body_or_init->queued);
         }
     } else {
 		result = CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
@@ -407,41 +430,12 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             .storage_class = storage_class,
         }));
 
-		// result.kind = RESULT_KIND_IDENT;
-		// result.value = parser_extend_uninit_typecheck_value(cc, &parser->idents, 1);
-
-		if (/* body_or_init && */ (parser->current_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE)) {
-            // Code* assign = CREATE_NODE(CODE_KIND_BINARY_OP, ((Code_Operation){
-            //     .left = (Code*)CODE_AS(result, Code_Variable_Declaration)->base.ident,
-            //     .right = CODE_AS(result, Code_Variable_Declaration)->initializer,
-            //     .op = CODE_AS(result, Code_Variable_Declaration)->base.base.token_info, // eql
-            //     .is_var_decl = true,
-            // }));
+		if (parser->current_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE) {
             oc_array_append(&cc->arena, &parser->current_scope->statements, result);
-            
-            // CODE_AS(body_or_init, Code_Scope)->decl = (Code_Declaration*)result;
-
-			// oc_array_extend_count_unint(&cc->arena, &parser->ops_values[LL_OPERATION_ASSIGN], TC_ALIGNMENT, 2);
-			// LL_Typecheck_Value* tval = parser->ops_values[LL_OPERATION_ASSIGN].items + parser->ops_values[LL_OPERATION_ASSIGN].count - 2;
-            
-
-            // oc_array_aligned_append(&cc->arena, &parser->ops_lhs[LL_OPERATION_ASSIGN], TC_ALIGNMENT, ((LL_Usage) { result.kind, result.value}));
-            // oc_array_aligned_append(&cc->arena, &parser->ops_rhs[LL_OPERATION_ASSIGN], TC_ALIGNMENT, ((LL_Usage) { body_or_init.kind, body_or_init.value}));
-            // oc_array_append(&cc->arena, &parser->ops[LL_OPERATION_ASSIGN], body_or_init);
-
-            // parser_append_typecheck_value(cc,
-            //     &parser->ops_lhs[LL_OPERATION_ASSIGN],
-            //     parser->linear_grid[result.kind].types.items[result.value],
-            //     result.kind, result.value
-            // );
-            // parser_append_typecheck_value(cc,
-            //     &parser->ops_rhs[LL_OPERATION_ASSIGN],
-            //     parser->linear_grid[body_or_init.kind].types.items[body_or_init.value],
-            //     body_or_init.kind, body_or_init.value
-            // );
-
-			// parser_append_typecheck_value(cc, &parser->ops[LL_OPERATION_ASSIGN], NULL, 0, 0);
-		}
+		} else {
+            LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
+            actually_queue(cc, STAGE_TYPECHECK, queued);
+        }
     }
 
     Code_Declaration** existing_declaration = hash_map_get(&cc->arena, &parser->current_scope->declarations, ident->str);

@@ -227,17 +227,19 @@ void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL
     ll_print_type_raw(type, &stderr_writer);
 }
 
-void ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer) {
+void _ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer, const char* file, size_t line) {
     (void)cc;
     (void)typer;
+    print("{}:{}\n", file, line);
     if (cc->exit_0) oc_exit(0);
     oc_exit(-1);
 }
 
-void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
+void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     oc_assert(node->kind == CODE_KIND_BLOCK);
     typer->root_scope = (Code_Scope*)CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope) { 0 }));
     typer->current_scope = typer->root_scope;
+    CODE_AS(node, Code_Scope)->parent_scope = typer->current_scope;
     oc_array_append(&cc->arena, &typer->current_scope->statements, node);
     // hash_map_put(&cc->arena, &typer->current_scope->declarations, keyword, (Code_Declaration*)scope);
 
@@ -289,7 +291,10 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     #undef INSERT_BUILTIN_TYPE
     #undef INSERT_TYPE_SCOPE
     #undef INSERT_ANY_TYPE
+}
 
+void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
+    ll_typer_prerun(cc, typer, node);
 
     if (!cc->quiet) print_node((Code*)typer->root_scope, 0, &stdout_writer);
 
@@ -297,9 +302,6 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     typer->waited_on_code = NULL;
     CODE_AS(node, Code_Scope)->parent_scope = typer->root_scope;
     ll_typer_type_statement(cc, typer, &node, NULL);
-
-
-
 }
 
 LL_Type* ll_intern_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type) {
@@ -571,37 +573,33 @@ LL_Type* ll_typer_implicit_cast_leftright(Compiler_Context* cc, LL_Typer* typer,
     return NULL;
 }
 
-LL_Queued* create_decl_queued(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, uint32 index, Code* code) {
+LL_Queued* create_queued(Compiler_Context* cc, Code_Function_Declaration* fn, Code_Scope* scope, Code* code) {
+    static uint32 next_s = 0;
     LL_Queued* queued = oc_arena_alloc(&cc->arena, sizeof(*queued));
-    queued->yielded_in_scope = scope;
-    queued->yielded_in_function = typer->current_fn;
-    queued->decl_yielded_hash = stbds_hash_string_atom(scope->declarations.entries[index]._key, MAP_DEFAULT_SEED);
-    queued->decl_str = scope->declarations.entries[index]._key;
-    queued->stmt_yielded_index = -1;
+    memset(queued, 0, sizeof(*queued));
+    queued->function = fn;
+    queued->scope = scope;
     queued->code = code;
-    queued->max_completed_stage = 0;
-    scope->base.queued = queued;
-
-    oc_array_append(&cc->arena, &typer->queue, queued);
-    if (typer->number_of_queued) typer->number_of_queued++;
+    queued->index_in_stage = (uint32)-1;
+    queued->imperative_index = (uint32)-1;
+    queued->s = next_s++;
+    if (code) code->queued = queued;
 
     return queued;
 }
 
-LL_Queued* create_stmt_queued(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, uint32 index, Code* code) {
-    LL_Queued* queued = oc_arena_alloc(&cc->arena, sizeof(*queued));
-    queued->yielded_in_scope = scope;
-    queued->yielded_in_function = typer->current_fn;
-    queued->decl_yielded_hash = -1;
-    queued->stmt_yielded_index = index;
-    queued->code = code;
-    queued->max_completed_stage = 0;
-    scope->base.queued = queued;
+void actually_queue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued) {
+    queued->index_in_stage = cc->stages[stage].input.count;
+    oc_array_append(&cc->arena, &cc->stages[stage].input, queued);
+    if (cc->number_of_queued) (*cc->number_of_queued)++;
+}
 
-    oc_array_append(&cc->arena, &typer->queue, queued);
-    if (typer->number_of_queued) typer->number_of_queued++;
+void actually_unqueue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued) {
+    oc_assert(queued->index_in_stage != (uint32)-1);
+    oc_array_unordered_remove(&cc->arena, &cc->stages[stage].input, queued->index_in_stage);
+    cc->stages[stage].input.items[queued->index_in_stage]->index_in_stage = queued->index_in_stage;
 
-    return queued;
+    queued->index_in_stage = (uint32)-1;
 }
 
 bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt, LL_Resume_Info* resume_info) {
@@ -616,6 +614,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
         break;
     case CODE_KIND_BLOCK: {
         Code_Scope* blk = CODE_AS((*stmt), Code_Scope);
+        LL_Queued* queued = current_queued();
 
         // if (
         //     typer->current_scope->kind != LL_SCOPE_KIND_LOOP
@@ -635,22 +634,17 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
         
         bool result = true;
         if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
-            // if (blk->base.queued) i = blk->base.queued.;
-            // else i = 0;
-            i = 0;
+            if (queued->imperative_index != (uint32)-1) {
+                i = blk->base.queued->imperative_index;
+                queued->imperative_index = (uint32)-1;
+            } else i = 0;
 
             for (; i < blk->declarations.capacity; ++i) {
                 if (blk->declarations.entries[i].filled) {
                     result = ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value, NULL);
 
                     if (!result) {
-                        if (blk->base.queued) {
-                            blk->base.queued->stmt_yielded_index = i;
-                            blk->base.queued->code = typer->waited_on_code;
-                        } else {
-                            LL_Queued* queued = create_decl_queued(cc, typer, blk, i, typer->waited_on_code);
-                            blk->declarations.entries[i]._value->base.queued = queued;
-                        }
+                        queued->imperative_index = i;
                     }
                 }
             }
@@ -658,9 +652,9 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
         } else {
             oc_assert(blk->flags & CODE_SCOPE_FLAG_IMPERATIVE);
 
-            if (blk->base.queued) {
-                oc_assert(blk->base.queued->stmt_yielded_index != -1);
-                i = blk->base.queued->stmt_yielded_index;
+            if (queued->imperative_index != (uint32)-1) {
+                i = blk->base.queued->imperative_index;
+                queued->imperative_index = (uint32)-1;
             } else i = 0;
 
 
@@ -668,13 +662,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
                 result = ll_typer_type_statement(cc, typer, &blk->statements.items[i], NULL);
 
                 if (!result) {
-                    if (blk->base.queued) {
-                        blk->base.queued->stmt_yielded_index = i;
-                        blk->base.queued->code = typer->waited_on_code;
-                    } else {
-                        LL_Queued* queued = create_stmt_queued(cc, typer, blk, i, typer->waited_on_code);
-                        (void)queued;
-                    }
+                    queued->imperative_index = i;
                     break;
                 }
             }
@@ -735,19 +723,19 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
 
         if (typer->current_scope && typer->current_scope->decl) {
             if (typer->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
-                var_decl->ir_index = typer->current_record->count;
-                oc_array_append(&cc->arena, typer->current_record, declared_type);
-                if (var_decl->initializer) {
-                    oc_todo("add this");
-                    LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, var_decl->initializer, &can_continue);
-                    if (!can_continue) {
-                        typer->waited_on_code = *stmt;
-                        return false;
-                    }
-                    // oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .field_scope = var_scope, .value = value, .has_init = true }));
-                } else {
-                    // oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .has_init = false }));
-                }
+                // var_decl->ir_index = typer->current_record->count;
+                // oc_array_append(&cc->arena, typer->current_record, declared_type);
+                // if (var_decl->initializer) {
+                //     oc_todo("add this");
+                //     LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, var_decl->initializer, &can_continue);
+                //     if (!can_continue) {
+                //         typer->waited_on_code = *stmt;
+                //         return false;
+                //     }
+                //     // oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .field_scope = var_scope, .value = value, .has_init = true }));
+                // } else {
+                //     // oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .has_init = false }));
+                // }
             }
         }
 
@@ -842,8 +830,8 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
         fn_decl->base.ident->base.type = fn_type;
         fn_decl->base.ident->resolved_decl = &fn_decl->base;
 
-        LL_Type_Function* last_fn = typer->current_fn;
-        typer->current_fn = (LL_Type_Function*)fn_type;
+        // LL_Type_Function* last_fn = typer->current_fn;
+        // typer->current_fn = (LL_Type_Function*)fn_type;
 
         if (fn_decl->body) {
             typer->current_scope = fn_decl->body;
@@ -853,14 +841,14 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
                 ll_typer_report_error(((LL_Error) { .main_token = blk->c_open, .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Extern function shouldn't have a body");
                 ll_typer_report_error_done(cc, typer);
             }
-            if ((fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) == 0 && (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) == 0) {
-                ll_typer_type_statement(cc, typer, (Code**)&fn_decl->body, NULL);
-            }
+            // if ((fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) == 0 && (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) == 0) {
+            //     ll_typer_type_statement(cc, typer, (Code**)&fn_decl->body, NULL);
+            // }
 
             typer->current_scope = fn_decl->body->parent_scope;
         }
 
-        typer->current_fn = last_fn;
+        // typer->current_fn = last_fn;
 
         break;
     }
@@ -910,12 +898,39 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
     } break;
     case CODE_KIND_CONST: {
         Code_Marker* cf = CODE_AS((*stmt), Code_Marker);
-        (void)ll_typer_type_statement(cc, typer, &cf->expr, NULL);
-        (void)ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr, &can_continue);
-        if (!can_continue) {
-            typer->waited_on_code = *stmt;
-            return false;
+        LL_Queued* queued;
+        if (cf->expr->queued) {
+            queued = cf->expr->queued;
+            bool found = false;
+            // @Cleanup
+            for (uint32 i = 0; i < queued->dependants.count; ++i) {
+                if (queued->dependants.items[i].target == current_queued()) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                actually_queue(cc, queued->max_completed_stage + 1, queued);
+                depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
+                actually_unqueue(cc, cc->current_stage, current_queued());
+            }
+        } else {
+            queued = create_queued(cc, typer->current_function, typer->current_scope, cf->expr);
+            actually_queue(cc, STAGE_TYPECHECK, queued);
+            depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
+            actually_unqueue(cc, cc->current_stage, current_queued());
         }
+
+        return queued->max_completed_stage >= STAGE_FLAG_EVAL;
+
+        // oc_assert(queued->max_completed_stage >= STAGE_EVAL);
+
+        // (void)ll_typer_type_statement(cc, typer, &cf->expr, NULL);
+        // (void)ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr, &can_continue);
+        // if (!can_continue) {
+        //     typer->waited_on_code = *stmt;
+        //     return false;
+        // }
     } break;
     default: return ll_typer_type_expression(cc, typer, stmt, NULL, NULL);
     }
@@ -1491,6 +1506,14 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 if (!member_scope) {
                     goto TRY_MEMBER_FUNCTION_CALL;
                 }
+
+                LL_Queued* queued = (*member_scope)->base.queued;
+                if (queued->max_completed_stage < STAGE_TYPECHECK) {
+                    depend(current_queued(), queued, STAGE_FLAG_TYPECHECK);
+                    actually_unqueue(cc, cc->current_stage, current_queued());
+                    actually_queue(cc, STAGE_TYPECHECK, queued);
+                    return false;
+                }
                 
                 right_ident->resolved_decl = (*member_scope);
                 right_ident->base.type = (*member_scope)->ident->base.type;
@@ -1503,6 +1526,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 return true;
             } else {
 TRY_MEMBER_FUNCTION_CALL:
+                // if we have `a.foo()` we lookup foo as it's own function
                 can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, &result);
                 if (!can_continue) return false;
 
@@ -2363,11 +2387,12 @@ TRY_MEMBER_FUNCTION_CALL:
                         }
                     }
 
-                    LL_Type_Function* last_fn = typer->current_fn;
-                    typer->current_fn = (LL_Type_Function*)fn_type;
+                    // LL_Type_Function* last_fn = typer->current_fn;
+                    // typer->current_fn = (LL_Type_Function*)fn_type;
 
                     // type body
                     ll_typer_type_statement(cc, typer, (Code**)&new_fn_decl->body, NULL);
+                    oc_assert(false);
 
 
                     LL_Function_Instantiation inst = {
@@ -2378,8 +2403,8 @@ TRY_MEMBER_FUNCTION_CALL:
                     this_inst = ll_typer_function_instance_put(cc, typer, fn_decl, inst);
 
 
-                    typer->current_scope = old_scope;
-                    typer->current_fn = last_fn;
+                    // typer->current_scope = old_scope;
+                    // typer->current_fn = last_fn;
                 }
             }
 
@@ -2518,17 +2543,42 @@ TRY_MEMBER_FUNCTION_CALL:
     } break;
     case CODE_KIND_CONST: {
         Code_Marker* cf = CODE_AS((*expr), Code_Marker);
-        can_continue = ll_typer_type_expression(cc, typer, &cf->expr, expected_type, NULL);
-        if (!can_continue) return false;
-        result = cf->expr->type;
-        LL_Eval_Value const_value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr, &can_continue);
-        if (!can_continue) {
-            typer->waited_on_code = *expr;
-            return false;
+        // can_continue = ll_typer_type_expression(cc, typer, &cf->expr, expected_type, NULL);
+        // if (!can_continue) return false;
+        LL_Queued* queued;
+        if (cf->expr->queued) {
+            queued = cf->expr->queued;
+            bool found = false;
+            // @Cleanup
+            for (uint32 i = 0; i < queued->dependants.count; ++i) {
+                if (queued->dependants.items[i].target == current_queued()) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                actually_queue(cc, queued->max_completed_stage + 1, queued);
+                depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
+                actually_unqueue(cc, cc->current_stage, current_queued());
+            }
+        } else {
+            queued = create_queued(cc, typer->current_function, typer->current_scope, cf->expr);
+            actually_queue(cc, STAGE_TYPECHECK, queued);
+            depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
+            actually_unqueue(cc, cc->current_stage, current_queued());
         }
 
-        (*expr)->has_const = true;
-        (*expr)->const_value = const_value;
+        return queued->max_completed_stage >= STAGE_FLAG_EVAL;
+
+        // result = cf->expr->type;
+        // LL_Eval_Value const_value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr, &can_continue);
+        // if (!can_continue) {
+        //     typer->waited_on_code = *expr;
+        //     return false;
+        // }
+
+        // (*expr)->has_const = true;
+        // (*expr)->const_value = const_value;
     } break;
     case CODE_KIND_RETURN: {
         Code_Control_Flow* cf = CODE_AS((*expr), Code_Control_Flow);
@@ -2573,7 +2623,10 @@ TRY_MEMBER_FUNCTION_CALL:
 
 CODE_RETURN_EXIT_SCOPE:
         if (cf->expr) {
-            can_continue = ll_typer_type_expression(cc, typer, &cf->expr, typer->current_fn->return_type, NULL);
+            LL_Type_Function* fn_type = (LL_Type_Function*)typer->current_function->base.base.type;
+            oc_assert(fn_type->base.kind == LL_TYPE_FUNCTION);
+
+            can_continue = ll_typer_type_expression(cc, typer, &cf->expr, fn_type->return_type, NULL);
             if (!can_continue) return false;
         }
         result = NULL;
@@ -2735,25 +2788,13 @@ CODE_BREAK_EXIT_SCOPE:
             break;
         }
 
-        if (iff->body) {
-            ll_typer_type_statement(cc, typer, &iff->body, NULL);
-        }
-
-        if (iff->else_clause) {
-            ll_typer_type_statement(cc, typer, &iff->else_clause, NULL);
-        }
-
         result = NULL;
     } break;
     case CODE_KIND_WHILE:
     case CODE_KIND_FOR: {
         Code_Loop* loop = CODE_AS((*expr), Code_Loop);
 
-        // LL_Scope* loop_scope = create_scope(LL_SCOPE_KIND_LOOP, *expr);
-        // ll_typer_scope_put(cc, typer, loop_scope, false);
-        // typer->current_scope = loop_scope;
         loop->base.type = expected_type;
-        // loop->scope = loop_scope;
         if (loop->init) ll_typer_type_statement(cc, typer, &loop->init, NULL);
 
         if (loop->cond) {
@@ -2779,12 +2820,6 @@ CODE_BREAK_EXIT_SCOPE:
             if (!can_continue) return false;
             can_continue = ll_typer_type_expression(cc, typer, &loop->update, NULL, NULL);
         }
-
-        if (loop->body) {
-            ll_typer_type_statement(cc, typer, &loop->body, NULL);
-        }
-
-        // typer->current_scope = loop_scope->parent;
 
         result = expected_type;
     } break;

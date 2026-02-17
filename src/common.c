@@ -218,64 +218,223 @@ size_t hash_combine(size_t lhs, size_t rhs) {
 	return lhs;
 }
 
-
-
-bool compiller_consume_dependencies(Compiler_Context* cc, LL_Queued* queued) {
-    while (queued->dependency_cursor < queued->dependencies.count) {
-        LL_Dependency* dep = &queued->dependencies.items[queued->dependency_cursor];
-        LL_Stage_Flag max_flag = 1u << dep->target->max_completed_stage;
-        if (max_flag & dep->depends_on) {
-            dep->depends_on &= ~max_flag;
-            if (!dep->depends_on) {
-                queued->dependency_cursor++;
-                continue;
+void resolve_dependencies(Compiler_Context* cc, LL_Queued* queued, LL_Stage_Kind stage) {
+    for (uint32 i = 0; i < queued->dependants.count; ++i) {
+        LL_Dependency dep = queued->dependants.items[i];
+        if (dep.flags & (1 << stage)) {
+            dep.flags &= ~(1 << stage);
+            oc_assert(dep.target->dependency_counter[stage] > 0);
+            dep.target->dependency_counter[stage]--;
+            if (dep.target->dependency_counter[stage] == 0) {
+                actually_queue(cc, stage, dep.target);
             }
         }
-        break;
     }
-    return queued->dependency_cursor < queued->dependencies.count;
 }
+
+uint32 output_queued(Compiler_Context* cc, LL_Stage* stage, Oc_Writer* w, LL_Queued* queued) {
+
+    switch (queued->code->kind) {
+    case CODE_KIND_BLOCK: {
+        Code_Scope* scope = (Code_Scope*)queued->code;
+        wprint(w, "node{} [label=\"anon_scope {}\\n{}\\ndependencies: {}", queued->s, queued->s, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[STAGE_TYPECHECK]);
+        if (scope->c_open.kind != LL_TOKEN_KIND_NONE) {
+            LL_Line_Info line_info = lexer_get_line_info(cc->lexer, scope->c_open);
+            wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
+        }
+        wprint(w, "\"];\n");
+    } break;
+    case CODE_KIND_STRUCT:
+    case CODE_KIND_VARIABLE_DECLARATION:
+    case CODE_KIND_FUNCTION_DECLARATION: {
+        Code_Declaration* decl = (Code_Declaration*)queued->code;
+
+        wprint(w, "node{} [label=\"{}\\n{}\\ndependencies: {}", queued->s, decl->ident->str, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[STAGE_TYPECHECK]);
+        if (decl->base.token_info.kind != LL_TOKEN_KIND_NONE) {
+            LL_Line_Info line_info = lexer_get_line_info(cc->lexer, decl->base.token_info);
+            wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
+        }
+        if (queued->code->type) {
+            wprint(w, "\\n");
+            ll_print_type_raw(queued->code->type, w);
+        }
+        wprint(w, "\"];\n");
+    } break;
+    default: {
+        wprint(w, "node{} [label=\"{}\\n{}\\ndependencies: {}", queued->s, ast_get_node_kind(queued->code), (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[STAGE_TYPECHECK]);
+        if (queued->code->token_info.kind != LL_TOKEN_KIND_NONE) {
+            LL_Line_Info line_info = lexer_get_line_info(cc->lexer, queued->code->token_info);
+            wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
+        }
+        if (queued->code->type) {
+            wprint(w, "\\n");
+            ll_print_type_raw(queued->code->type, w);
+        }
+        wprint(w, "\"];\n");
+    } break;
+    }
+    // if (queued->code && queued->code->kind == CODE_KIND_IDENT) {
+    //     Code_Ident* ident = CODE_AS(queued->code, Code_Ident);
+    //     wprint(w, "node{} [label={}];\n", this_n, ident->str);
+    // } else if (!queued->code) {
+
+
+    // }
+
+    
+    // for (uint32 i = 0; i < queued->dependencies.count; ++i) {
+    //     LL_Dependency* dep = &queued->dependencies.items[i];
+    //     if (dep->target == queued) continue;
+    //     uint32 dep_n = output_queued(cc, stage, w, n, dep->target);
+
+    //     wprint(w, "node{} -> node{}\n", this_n, dep_n);
+    // }
+
+    for (uint32 i = 0; i < queued->dependants.count; ++i) {
+        LL_Dependency* dep = &queued->dependants.items[i];
+        if (dep->target == queued) continue;
+        uint32 dep_n = output_queued(cc, stage, w, dep->target);
+
+        // wprint(w, "node{} <- node{}\n", queued->s, dep_n);
+        wprint(w, "node{} -> node{}\n", dep_n, queued->s);
+        // wprint(w, "node{} -> node{}\n", queued->s, dep_n);
+    }
+    return queued->s;
+}
+
+const char* get_stage_name(LL_Stage_Kind stage_kind) {
+    switch (stage_kind) {
+    case 0: return "STAGE_NONE";
+    case STAGE_TYPECHECK: return "STAGE_TYPECHECK";
+    case STAGE_IR: return "STAGE_IR";
+    case STAGE_EVAL: return "STAGE_EVAL";
+    default: oc_assert(false);
+    }
+}
+void input_graph(Compiler_Context* cc, LL_Stage_Kind stage_kind) {
+    LL_Stage* stage = &cc->stages[stage_kind];
+    static int in_graph = 0;
+    Oc_String_Builder sb;
+    oc_sb_init(&sb, &cc->arena);
+
+    wprint(&sb.writer, "digraph Comiler {{\n");
+
+    for (uint32 i = 0; i < stage->input.count; ++i) {
+        output_queued(cc, stage, &sb.writer, stage->input.items[i]);
+    }
+
+    wprint(&sb.writer, "}");
+
+    string s = oc_format(&cc->arena, "in{}_{}.dot", in_graph, get_stage_name(stage_kind));
+    in_graph++;
+
+    FILE* f;
+    if (fopen_s(&f, s.ptr, "wb")) {
+        eprint("Unable to open output file: %s\n", s.ptr);
+        return;
+    }
+    fwrite(sb.items, 1, sb.count, f);
+    fclose(f);
+}
+
+void output_graph(Compiler_Context* cc, LL_Stage_Kind stage_kind) {
+    LL_Stage* stage = &cc->stages[stage_kind];
+    static int out_graph = 0;
+    Oc_String_Builder sb;
+    oc_sb_init(&sb, &cc->arena);
+
+    wprint(&sb.writer, "digraph Comiler {{\n");
+
+    for (uint32 i = 0; i < stage->output.count; ++i) {
+        output_queued(cc, stage, &sb.writer, stage->output.items[i]);
+    }
+
+    wprint(&sb.writer, "}");
+
+    string s = oc_format(&cc->arena, "out{}_{}.dot", out_graph, get_stage_name(stage_kind));
+    out_graph++;
+
+    FILE* f;
+    if (fopen_s(&f, s.ptr, "wb")) {
+        eprint("Unable to open output file: %s\n", s.ptr);
+        return;
+    }
+    fwrite(sb.items, 1, sb.count, f);
+    fclose(f);
+}
+
+// bool compiller_consume_dependencies(Compiler_Context* cc, LL_Queued* queued) {
+//     (void)cc;
+//     while (queued->dependency_cursor < queued->dependencies.count) {
+//         LL_Dependency* dep = &queued->dependencies.items[queued->dependency_cursor];
+//         LL_Stage_Flag max_flag = 1u << dep->target->max_completed_stage;
+//         if (max_flag & dep->flags) {
+//             dep->flags &= ~max_flag;
+//             if (!dep->flags) {
+//                 queued->dependency_cursor++;
+//                 continue;
+//             }
+//         }
+//         break;
+//     }
+//     return queued->dependency_cursor < queued->dependencies.count;
+// }
 
 void compiler_cycle_stage_typecheck(Compiler_Context* cc, uint32* number_of_deletions, uint32* number_of_insertions) {
     LL_Stage* stage = &cc->stages[STAGE_TYPECHECK];
     LL_Typer* typer = cc->typer;
 
-    typer->number_of_queued = &number_of_insertions;
+    cc->current_stage = STAGE_TYPECHECK;
 
-    for (uint32 i = 0; i < stage->input.count;) {
+    cc->number_of_queued = number_of_insertions;
+
+    for (uint32 i = 0; i < stage->input.count; ++i) {
         typer->waited_on_code = NULL;
         LL_Queued* queued_item = stage->input.items[i];
-        if (compiller_consume_dependencies(cc, queued_item)) continue;
+        oc_assert(queued_item->dependency_counter[STAGE_TYPECHECK] == 0);
+        oc_assert(queued_item->index_in_stage == i);
+        // if (compiller_consume_dependencies(cc, queued_item)) continue;
+        // queued_item->dependencies.count = 0;
+        // queued_item->dependency_cursor = 0;
         
         bool result = true;
 
         LL_Resume_Info resume_info = { .code = queued_item->code };
-        if (queued_item->stmt_yielded_index != (uint32)-1) {
-            if (queued_item->yielded_in_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE) {
-                typer->current_scope = queued_item->yielded_in_scope->parent_scope;
-                typer->current_fn = queued_item->yielded_in_function;
-                result = ll_typer_type_statement(cc, typer, (Code**)&queued_item->yielded_in_scope, &resume_info);
-            } else {
-                typer->current_scope = queued_item->yielded_in_scope;
-                typer->current_fn = queued_item->yielded_in_function;
-                result = ll_typer_type_statement(cc, typer, &queued_item->yielded_in_scope->statements.items[queued_item->stmt_yielded_index], &resume_info);
-            }
+        oc_array_append(&cc->arena, &cc->queued_stack, queued_item);
+
+        if (queued_item->imperative_index != (uint32)-1) {
+            Code_Scope** scope = (Code_Scope**)&queued_item->code;
+            oc_assert((*scope)->flags & CODE_SCOPE_FLAG_IMPERATIVE);
+            typer->current_scope = *scope;
+            typer->current_function = queued_item->function;
+            result = ll_typer_type_statement(cc, typer, (Code**)scope, &resume_info);
         } else {
-            typer->current_scope = queued_item->yielded_in_scope;
-            typer->current_fn = queued_item->yielded_in_function;
-            Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &stage->input.items[i]->yielded_in_scope->declarations, stage->input.items[i]->decl_str, stage->input.items[i]->decl_yielded_hash);
-            result = ll_typer_type_statement(cc, typer, (Code**)v, &resume_info);
+            // oc_assert(queued_item->scope->flags & CODE_SCOPE_FLAG_DECLARATIVE);
+            typer->current_scope = queued_item->scope;
+            typer->current_function = queued_item->function;
+            result = ll_typer_type_statement(cc, typer, &queued_item->code, &resume_info);
         }
 
+        cc->queued_stack.count--;
+
         if (result) {
-            oc_array_append(&cc->arena, &stage->output, stage->input.items[i]);
+            if (queued_item->max_completed_stage < STAGE_TYPECHECK) {
+                queued_item->max_completed_stage = STAGE_TYPECHECK;
+            }
+            resolve_dependencies(cc, queued_item, STAGE_TYPECHECK);
+
+            queued_item->index_in_stage = stage->output.count;
+            oc_array_append(&cc->arena, &stage->output, queued_item);
+
             stage->input.items[i] = stage->input.items[stage->input.count - 1];
+            stage->input.items[i]->index_in_stage = i;
+            
             stage->input.count--;
-            *number_of_deletions++;
-        } else {
-            i++;
+            (*number_of_deletions)++;
+            i--;
         }
     }
+    print("finish cycle\n");
 }
 
 
@@ -283,6 +442,8 @@ void compiler_cycle_stage_typecheck(Compiler_Context* cc, uint32* number_of_dele
 void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, uint32* number_of_insertions) {
     LL_Stage* stage = &cc->stages[STAGE_IR];
     LL_Typer* typer = cc->typer;
+    
+    cc->current_stage = STAGE_IR;
 
     {
         LL_Stage* last_stage = &cc->stages[STAGE_TYPECHECK];
@@ -292,33 +453,45 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
         last_stage->output.count = 0;
     }
 
-    typer->number_of_queued = &number_of_insertions;
+    cc->number_of_queued = number_of_insertions;
+    output_graph(cc, STAGE_IR);
 
-    for (uint32 i = 0; i < stage->input.count;) {
+    for (uint32 i = 0; i < stage->input.count; ++i) {
         typer->waited_on_code = NULL;
         LL_Queued* queued_item = stage->input.items[i];
-        if (compiller_consume_dependencies(cc, queued_item)) continue;
+        oc_assert(queued_item->index_in_stage == i);
+        // if (compiller_consume_dependencies(cc, queued_item)) continue;
+        // queued_item->dependencies.count = 0;
+        // queued_item->dependency_cursor = 0;
         
         bool result = true;
+        oc_array_append(&cc->arena, &cc->queued_stack, queued_item);
 
-        if (queued_item->stmt_yielded_index != (uint32)-1) {
-            if (queued_item->yielded_in_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE) {
-                ir_generate_statement_restore_with_state(cc, cc->bir, (Code**)&queued_item->yielded_in_scope, queued_item->ir_state, &result);
-            } else {
-                ir_generate_statement_restore_with_state(cc, cc->bir, &queued_item->yielded_in_scope->statements.items[queued_item->stmt_yielded_index], queued_item->ir_state, &result);
-            }
+        if (queued_item->imperative_index != (uint32)-1) {
+            oc_assert(queued_item->scope->flags & CODE_SCOPE_FLAG_IMPERATIVE);
+            ir_generate_statement_with_state(cc, cc->bir, (Code*)queued_item->scope, queued_item->ir_state, &result);
         } else {
-            Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &stage->input.items[i]->yielded_in_scope->declarations, stage->input.items[i]->decl_str, stage->input.items[i]->decl_yielded_hash);
-            ir_generate_statement_restore_with_state(cc, cc->bir, (Code**)v, queued_item->ir_state, &result);
+            oc_assert(queued_item->scope->flags & CODE_SCOPE_FLAG_DECLARATIVE);
+            ir_generate_statement_with_state(cc, cc->bir, queued_item->code, queued_item->ir_state, &result);
         }
 
+        cc->queued_stack.count--;
+
         if (result) {
-            oc_array_append(&cc->arena, &stage->output, stage->input.items[i]);
+            if (queued_item->max_completed_stage < STAGE_IR) {
+                queued_item->max_completed_stage = STAGE_IR;
+            }
+            resolve_dependencies(cc, queued_item, STAGE_IR);
+
+            queued_item->index_in_stage = stage->output.count;
+            oc_array_append(&cc->arena, &stage->output, queued_item);
+
             stage->input.items[i] = stage->input.items[stage->input.count - 1];
+            stage->input.items[i]->index_in_stage = i;
+            
             stage->input.count--;
-            *number_of_deletions++;
-        } else {
-            i++;
+            (*number_of_deletions)++;
+            i--;
         }
     }
 }
@@ -333,9 +506,12 @@ void compiler_run_stages(Compiler_Context* cc) {
         number_of_deletions = 0;
         number_of_insertions = 0;
 
+        input_graph(cc, STAGE_TYPECHECK);
         compiler_cycle_stage_typecheck(cc, &number_of_deletions, &number_of_insertions);
+        output_graph(cc, STAGE_TYPECHECK);
         compiler_cycle_stage_ir(cc, &number_of_deletions, &number_of_insertions);
-        compiler_cycle_stage_eval(cc, &number_of_deletions, &number_of_insertions);
+        output_graph(cc, STAGE_IR);
+        // compiler_cycle_stage_eval(cc, &number_of_deletions, &number_of_insertions);
 
         if (number_of_insertions == 0 && number_of_deletions == 0) break;
     }
@@ -345,7 +521,7 @@ void compiler_run_stages(Compiler_Context* cc) {
     //     LL_Queued* queued_item = typer->queue.items[i];
 
     //     if (queued_item->code) {
-    //         if (queued_item->stmt_yielded_index != (uint32)-1) {
+    //         if (queued_item->imperative_index != (uint32)-1) {
     //             ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(queued_item->code, Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
     //             // ll_typer_report_error_done(cc, typer);
     //         } else {
@@ -353,10 +529,10 @@ void compiler_run_stages(Compiler_Context* cc) {
     //             // ll_typer_report_error_done(cc, typer);
     //         }
     //     } else {
-    //         if (queued_item->stmt_yielded_index != (uint32)-1) {
-    //             ll_typer_report_error(((LL_Error){ .main_token = queued_item->yielded_in_scope->statements.items[queued_item->stmt_yielded_index]->token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
+    //         if (queued_item->imperative_index != (uint32)-1) {
+    //             ll_typer_report_error(((LL_Error){ .main_token = queued_item->scope->statements.items[queued_item->imperative_index]->token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
     //         } else {
-    //             Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &queued_item->yielded_in_scope->declarations, typer->queue.items[i]->decl_str, typer->queue.items[i]->decl_yielded_hash);
+    //             Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &queued_item->scope->declarations, typer->queue.items[i]->decl_str, typer->queue.items[i]->decl_yielded_hash);
     //             ll_typer_report_error(((LL_Error){ .main_token = (*v)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
     //         }
     //     }

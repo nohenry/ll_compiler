@@ -10,6 +10,7 @@ typedef struct ll_parser {
     Array(uint32, Code*) ops[COUNT_OF_CODE_KIND];
 
     Code_Scope* current_scope;
+    Code_Function_Declaration* current_function;
 } LL_Parser;
 
 LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename);
