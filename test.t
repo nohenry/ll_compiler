@@ -4,13 +4,12 @@
 // let c = b;
 
 void main() {
-    let c = 123;
-
-    let bbb = do_fun(false);
-    // bbb = true;
-    // a();
+    const {
+        const int a = const get_value();
+    }
 }
 
 
-int do_fun(bool b) {
+int get_value() {
+    return 8;
 }

@@ -21,7 +21,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/main.exe",
-            "args": ["--run", "./tests/cases/const.t"],
+            "args": ["./tests/cases/const.t", "--ir"],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}",
             "environment": [],

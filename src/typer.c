@@ -616,7 +616,7 @@ bool ll_typer_handle_const_eval(Compiler_Context* cc, LL_Typer* typer, Code_Mark
         LL_Ir_Function fn = {
             .entry = entry_block_ref,
             .exit = entry_block_ref,
-            .flags = 0,
+            .flags = LL_IR_FUNCTION_FLAG_APPEND_RET_FOR_EXPR,
             .generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
             .block_count = 1,
         };
@@ -647,7 +647,11 @@ bool ll_typer_handle_const_eval(Compiler_Context* cc, LL_Typer* typer, Code_Mark
         depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
         actually_unqueue(cc, cc->current_stage, current_queued());
     }
+    queued->needs_eval = true;
     queued->fn_ir_override = const_eval->fn_ir_index;
+    const_eval->base.type = const_eval->expr->type;
+    const_eval->base.has_const = const_eval->expr->has_const;
+    const_eval->base.const_value = const_eval->expr->const_value;
 
     return queued->max_completed_stage >= STAGE_EVAL;
 }
@@ -1437,13 +1441,14 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 LL_Type* provided_type;
                 if (init->items[i]->kind == CODE_KIND_KEY_VALUE) {
                     Code_Key_Value* kv = CODE_AS((*expr), Code_Key_Value);
-                    LL_Eval_Value key = ll_eval_node(cc, cc->eval_context, cc->bir, kv->key, &can_continue);
-                    if (!can_continue) {
-                        typer->waited_on_code = *expr;
-                        return false;
-                    }
+                    oc_assert((kv->key->has_const)); // @Cleanup @Errors report non const error
+                    // LL_Eval_Value key = ll_eval_node(cc, cc->eval_context, cc->bir, kv->key, &can_continue);
+                    // if (!can_continue) {
+                    //     typer->waited_on_code = *expr;
+                    //     return false;
+                    // }
 
-                    element_index = (uint32_t)key.as_u64;
+                    element_index = (uint32_t)kv->key->const_value.as_u64;
                     can_continue = ll_typer_type_expression(cc, typer, &kv->value, arr_type->element_type, NULL);
                     if (!can_continue) return false;
                     provided_type = kv->value->type;
@@ -2464,18 +2469,20 @@ TRY_MEMBER_FUNCTION_CALL:
             can_continue = ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
             if (!can_continue) return false;
 
-            uint64_t array_width;
+            uint64_t array_width = 0;
             if (cf->start->has_const) {
                 array_width = cf->start->const_value.as_u64;
-            } else {
-                LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->start, &can_continue);
-                if (!can_continue) {
-                    typer->waited_on_code = *expr;
-                    return false;
-                }
+            } oc_assert(false); // @Cleanup @Errors
+            // @Cleanup: should we allow autoconst here?
+            // else {
+            //     LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->start, &can_continue);
+            //     if (!can_continue) {
+            //         typer->waited_on_code = *expr;
+            //         return false;
+            //     }
 
-                array_width = value.as_u64;
-            }
+            //     array_width = value.as_u64;
+            // }
 
             result = ll_typer_get_array_type(cc, typer, cf->ptr->const_value.as_type, array_width);
 
@@ -2908,18 +2915,20 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         *can_continue = ll_typer_type_expression(cc, typer, &CODE_AS(typename, Code_Slice)->start, NULL, NULL);
         if (!*can_continue) return false;
 
-        uint64_t array_width;
+        uint64_t array_width = 0;
         if (CODE_AS(typename, Code_Slice)->start->has_const) {
             array_width = CODE_AS(typename, Code_Slice)->start->const_value.as_u64;
-        } else {
-            LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, CODE_AS(typename, Code_Slice)->start, can_continue);
-            if (!can_continue) {
-                typer->waited_on_code = typename;
-                return NULL;
-            }
+        } else assert(false); // @Cleanup @Errors
+        // @Cleanup: should we allow auto const here?
+        //  else {
+        //     LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, CODE_AS(typename, Code_Slice)->start, can_continue);
+        //     if (!can_continue) {
+        //         typer->waited_on_code = typename;
+        //         return NULL;
+        //     }
 
-            array_width = value.as_u64;
-        }
+        //     array_width = value.as_u64;
+        // }
 
         result = ll_typer_get_array_type(cc, typer, element_type, array_width);
         break;
@@ -3035,17 +3044,19 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* typ
             *can_continue = ll_typer_type_expression(cc, typer, &slice->start, NULL, NULL);
             if (!*can_continue) return false;
 
-            uint64_t array_width;
+            uint64_t array_width = 0;
             if (slice->start->has_const) {
                 array_width = slice->start->const_value.as_u64;
-            } else {
-                LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, slice->start, can_continue);
-                if (!*can_continue) {
-                    typer->waited_on_code = type_decl;
-                    return false;
-                }
-                array_width = value.as_u64;
-            }
+            } oc_assert(false); // @Cleanup @Errors
+            // @Cleanup: should we allow auto const here?
+            // else {
+            //     LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, slice->start, can_continue);
+            //     if (!*can_continue) {
+            //         typer->waited_on_code = type_decl;
+            //         return false;
+            //     }
+            //     array_width = value.as_u64;
+            // }
 
             if (provided_type->width != array_width) {
                 ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected array to have {} elements but got one of {} elements", array_width, provided_type->width);

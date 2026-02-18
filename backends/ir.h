@@ -109,6 +109,8 @@ typedef struct {
 typedef enum {
     LL_IR_FUNCTION_FLAG_EXTERN = (1u << 0u),
     LL_IR_FUNCTION_FLAG_NATIVE = (1u << 1u),
+
+    LL_IR_FUNCTION_FLAG_APPEND_RET_FOR_EXPR = (1u << 2u),
 } LL_Ir_Function_Flags;
 
 #define LL_IR_FUNCTION_OFFSET_INVALID ((int64_t)-1)
@@ -161,9 +163,6 @@ typedef enum {
     LL_BACKEND_IR_FLAG_LHS_IMMEDIATE = (1u << 1u),
 } LL_Backend_Ir_Flags;
 
-#define CURRENT_CONST_STACK (0x80000000u)
-#define CURRENT_INDEX (0x7FFFFFFFu)
-
 struct ll_native_function_map_entry {
     struct ll_native_function_map_entry* next;
     string name;
@@ -176,7 +175,6 @@ typedef struct {
 
 typedef struct ll_backend_ir {
     LL_Ir_Function_List fns;
-    LL_Ir_Function_List const_stack;
     LL_Ir_Data_Item_List data_items;
 
     uint32_t current_function;
@@ -219,6 +217,7 @@ typedef struct LL_Ir_State {
         "" \
         ), (v & LL_IR_OPERAND_VALUE_MASK)
 
+void ir_append_expr_ret(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode value);
 void ir_init(Compiler_Context* cc, LL_Backend_Ir* b);
 bool ir_write_to_file(Compiler_Context* cc, LL_Backend_Ir* b, char* filepath);
 void ir_generate_statement_restore_state(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool* can_continue);

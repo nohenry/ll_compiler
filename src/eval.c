@@ -5,7 +5,7 @@
 #include "../backends/aarch64.h"
 #include "../backends/ir.h"
 
-#define FUNCTION() (&bir->fns.items[bir->current_function & CURRENT_INDEX])
+#define FUNCTION() (&bir->fns.items[b->current_function])
 #define FRAME() (&b->frames.items[b->frames.count - 1])
 #define FRAMEN(n) (&b->frames.items[b->frames.count - 1 - (n)])
 
@@ -807,8 +807,9 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
         case LL_IR_OPCODE_RET:
             break;
         case LL_IR_OPCODE_RETVALUE: {
-            LL_Type_Function* fn_type = (LL_Type_Function*)FUNCTION()->ident->base.type;
-            oc_assert(fn_type->base.kind == LL_TYPE_FUNCTION);
+            // @Cleanup: why was this here?
+            // LL_Type_Function* fn_type = (LL_Type_Function*)FUNCTION()->ident->base.type;
+            // oc_assert(fn_type->base.kind == LL_TYPE_FUNCTION);
             FRAME()->return_value = ll_eval_get_value(cc, b, bir, operands[0]);
         } break;
         case LL_IR_OPCODE_STORE: {
@@ -1092,12 +1093,14 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 }
 
 LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, uint32_t fn_index, uint32_t argument_count, LL_Ir_Operand* arguments) {
+    // @Threading: fns array can realloc
     LL_Ir_Function* fn = &bir->fns.items[fn_index];
     oc_array_append(&cc->arena, &b->frames, ((LL_Eval_Frame) { 0 }));
 
-    int32_t last_function = bir->current_function;
-    LL_Ir_Block_Ref last_block = bir->current_block;
-    bir->current_function = fn_index;
+    // @Note: we save/restore function because ll_eval_fn is called recursively in a single
+    //        node evaluation for function invocations
+    uint32 last_function = b->current_function;
+    b->current_function = fn_index;
 
     // @NOTE: these storage locations should be stable so we can take references to them.
 
@@ -1121,17 +1124,15 @@ ll_backend_write_to_file(cc, &backend_ir, "out.ir");
 
     LL_Ir_Block_Ref current_block = fn->entry;
     while (current_block) {
-        bir->current_block = current_block;
         FRAME()->next_block = bir->blocks.items[current_block].next;
         ll_eval_block(cc, b, bir, &bir->blocks.items[current_block]);
         current_block = FRAME()->next_block;
     }
     LL_Eval_Value return_value = FRAME()->return_value;
 
-    bir->current_block = last_block;
-    bir->current_function = last_function;
-
     b->frames.count--;
+
+    b->current_function = last_function;
 
     return return_value;
 }
@@ -1182,84 +1183,35 @@ void ll_eval_init(Compiler_Context* cc, LL_Eval_Context* b) {
     b->native_fn_stub_writer.append_u64 = (void (*)(void *, unsigned long long))ll_eval_native_stub_append_op_segment_u64;
     b->native_fn_stub_writer.append_many = (void (*)(void *, unsigned char *, unsigned long long))ll_eval_native_stub_append_op_many;
     b->native_fn_stub_writer.end_instruction = ll_eval_native_stub_end_instruction;
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_int"), native_write);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_float32"), native_write_float32);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_float64"), native_write_float64);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_string"), native_write_string);
+    ll_native_fn_put(cc, &b->native_funcs, lit("write_many"), native_write_many);
+    ll_native_fn_put(cc, &b->native_funcs, lit("read_entire_file"), native_read_entire_file);
+    ll_native_fn_put(cc, &b->native_funcs, lit("malloc"), native_malloc);
+    ll_native_fn_put(cc, &b->native_funcs, lit("realloc"), native_realloc);
+    ll_native_fn_put(cc, &b->native_funcs, lit("breakpoint"), native_breakpoint);
 }
 
-
-LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, Code* expr, bool* can_continue) {
+/**
+ * Evaluates node, assumes ir is already generated for it
+ */
+LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir* bir, Code* expr) {
     LL_Eval_Value result;
-    LL_Ir_Operand result_op;
-    LL_Ir_Block_Ref entry_block_ref = bir->free_block ? bir->free_block : bir->blocks.count;
-    LL_Ir_Block entry_block = { 0 };
-    entry_block.generated_offset = -1;
-    if (bir->free_block) {
-        bir->free_block = bir->blocks.items[bir->free_block].next;
-        memcpy(&bir->blocks.items[entry_block_ref], &entry_block, sizeof(entry_block));
-    } else {
-        oc_array_append(&cc->arena, &bir->blocks, entry_block);
+    uint32 function_index = 0;
+    oc_assert(expr);
+    oc_assert(expr->queued);
+    if (expr->queued->fn_ir_override != 0) {
+        function_index = expr->queued->fn_ir_override;
+    } else if (expr->queued->function) {
+        function_index = expr->queued->function->ir_index;
     }
+    oc_assert(function_index != 0);
 
-
-
-
-    {
-        ll_native_fn_put(cc, &b->native_funcs, lit("write_int"), native_write);
-        ll_native_fn_put(cc, &b->native_funcs, lit("write_float32"), native_write_float32);
-        ll_native_fn_put(cc, &b->native_funcs, lit("write_float64"), native_write_float64);
-        ll_native_fn_put(cc, &b->native_funcs, lit("write_string"), native_write_string);
-        ll_native_fn_put(cc, &b->native_funcs, lit("write_many"), native_write_many);
-        ll_native_fn_put(cc, &b->native_funcs, lit("read_entire_file"), native_read_entire_file);
-        ll_native_fn_put(cc, &b->native_funcs, lit("malloc"), native_malloc);
-        ll_native_fn_put(cc, &b->native_funcs, lit("realloc"), native_realloc);
-        ll_native_fn_put(cc, &b->native_funcs, lit("breakpoint"), native_breakpoint);
-    }
-
-
-
-
-
-
-    LL_Ir_Function fn = {
-        .entry = entry_block_ref,
-        .exit = entry_block_ref,
-        .flags = 0,
-        .generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
-        .block_count = 1,
-    };
-
-    int32_t last_function = bir->current_function;
-    LL_Ir_Block_Ref last_block = bir->current_block;
-
-    if (bir->const_stack.count) {
-        bir->current_function = (uint32_t)bir->fns.count; // top of stack is current
-        oc_array_append(&cc->arena, &bir->fns, fn);
-    } else {
-        bir->current_function = 0; // top of stack is current
-        bir->fns.items[0] = fn;
-    }
-    oc_array_append(&cc->arena, &bir->const_stack, fn);
-
-    // bir->current_function = CURRENT_CONST_STACK | (bir->const_stack.count - 1); // top of stack is current
-    bir->current_block = fn.entry;
-
-    result_op = ir_generate_expression(cc, bir, expr, false, can_continue);
-
-
-    if (*can_continue) {
-        ll_eval_fn(cc, b, bir, 0, 0, NULL);
-    }
-
-    bir->current_block = last_block;
-    bir->current_function = last_function;
-    bir->free_block = fn.entry;
-
-    bir->const_stack.count--;
-
-    switch (OPD_TYPE(result_op)) {
-    case LL_IR_OPERAND_IMMEDIATE_BIT: result.as_i64 = OPD_VALUE(result_op); break;
-    case LL_IR_OPERAND_REGISTER_BIT: result = FRAMEN(-1)->registers.items[OPD_VALUE(result_op)]; break;
-    case LL_IR_OPERAND_LOCAL_BIT: result = FRAMEN(-1)->locals.items[OPD_VALUE(result_op)]; break;
-    }
-
+    result = ll_eval_fn(cc, b, bir, function_index, 0, NULL);
+    expr->has_const = true;
+    expr->const_value = result;
     return result;
 }
 

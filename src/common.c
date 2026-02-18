@@ -3,6 +3,7 @@
 #include "common.h"
 #include "ast.h"
 #include "typer.h"
+#include "eval.h"
 #include "../backends/ir.h"
 
 size_t stbds_hash_string(string str, size_t seed)
@@ -227,7 +228,7 @@ void resolve_dependencies(Compiler_Context* cc, LL_Queued* queued, LL_Stage_Kind
             dep.target->dependency_counter[stage]--;
             if (dep.target->dependency_counter[stage] == 0) {
                 oc_assert(dep.target->max_completed_stage < stage);
-                actually_queue(cc, stage, dep.target);
+                actually_queue(cc, dep.target->max_completed_stage + 1, dep.target);
             }
             if (dep.flags == 0) {
                 oc_array_unordered_remove(&cc->arena, &queued->dependants, i);
@@ -478,10 +479,15 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
         oc_array_append(&cc->arena, &cc->queued_stack, queued_item);
 
         if (queued_item->fn_ir_override) {
+            // we are an expression
             cc->bir->current_function = queued_item->fn_ir_override;
             cc->bir->current_block = cc->bir->fns.items[cc->bir->current_function].exit;
+            oc_assert(cc->bir->fns.items[cc->bir->current_function].flags & LL_IR_FUNCTION_FLAG_APPEND_RET_FOR_EXPR);
+            LL_Ir_Operand value = ir_generate_expression(cc, cc->bir, queued_item->code, false, &result);
+            ir_append_expr_ret(cc, cc->bir, value);
+        } else {
+            ir_generate_statement(cc, cc->bir, queued_item->code, &result);
         }
-        ir_generate_statement(cc, cc->bir, queued_item->code, &result);
 
         cc->queued_stack.count--;
 
@@ -504,6 +510,64 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
     }
 }
 
+void compiler_cycle_stage_eval(Compiler_Context* cc, uint32* number_of_deletions, uint32* number_of_insertions) {
+    LL_Stage* stage = &cc->stages[STAGE_EVAL];
+    LL_Typer* typer = cc->typer;
+    
+    cc->current_stage = STAGE_EVAL;
+
+    {
+        LL_Stage* last_stage = &cc->stages[STAGE_IR];
+        for (uint32 i = 0; i < last_stage->output.count; ++i) {
+            LL_Queued* queued = last_stage->output.items[i];
+            if (queued->needs_eval) {
+                queued->index_in_stage = stage->input.count;
+                oc_array_append(&cc->arena, &stage->input, queued);
+                oc_array_unordered_remove(&cc->arena, &last_stage->output, i);
+                --i;
+            } else {
+                queued->index_in_stage = -1;
+            }
+        }
+    }
+    input_graph(cc, STAGE_EVAL);
+
+    cc->number_of_queued = number_of_insertions;
+
+    for (uint32 i = 0; i < stage->input.count; ++i) {
+        typer->waited_on_code = NULL;
+        LL_Queued* queued_item = stage->input.items[i];
+        oc_assert(queued_item->index_in_stage == i);
+        // if (compiller_consume_dependencies(cc, queued_item)) continue;
+        // queued_item->dependencies.count = 0;
+        // queued_item->dependency_cursor = 0;
+        
+        bool result = true;
+        oc_array_append(&cc->arena, &cc->queued_stack, queued_item);
+
+        LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, queued_item->code);
+        (void)value;
+
+        cc->queued_stack.count--;
+
+        if (result) {
+            if (queued_item->max_completed_stage < STAGE_EVAL) {
+                queued_item->max_completed_stage = STAGE_EVAL;
+            }
+            resolve_dependencies(cc, queued_item, STAGE_EVAL);
+
+            queued_item->index_in_stage = stage->output.count;
+            oc_array_append(&cc->arena, &stage->output, queued_item);
+
+            stage->input.items[i] = stage->input.items[stage->input.count - 1];
+            stage->input.items[i]->index_in_stage = i;
+            
+            stage->input.count--;
+            (*number_of_deletions)++;
+            i--;
+        }
+    }
+}
 
 
 void compiler_run_stages(Compiler_Context* cc) {
@@ -519,7 +583,8 @@ void compiler_run_stages(Compiler_Context* cc) {
         output_graph(cc, STAGE_TYPECHECK);
         compiler_cycle_stage_ir(cc, &number_of_deletions, &number_of_insertions);
         output_graph(cc, STAGE_IR);
-        // compiler_cycle_stage_eval(cc, &number_of_deletions, &number_of_insertions);
+        compiler_cycle_stage_eval(cc, &number_of_deletions, &number_of_insertions);
+        output_graph(cc, STAGE_EVAL);
 
         if (number_of_insertions == 0 && number_of_deletions == 0) break;
     }

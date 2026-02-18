@@ -5,7 +5,7 @@
 #include "../src/eval.h"
 
 #define NEXTREG(type_) ir_get_next_reg(cc, b, (type_))
-#define FUNCTION() ((b->current_function & CURRENT_CONST_STACK) ? (&b->const_stack.items[b->current_function & CURRENT_INDEX]) : (&b->fns.items[b->current_function & CURRENT_INDEX]))
+#define FUNCTION() (&b->fns.items[b->current_function])
 #define BLOCK() (&b->blocks.items[b->current_block])
 
 #define IR_APPEND_OP(opcode, ...) do { \
@@ -38,6 +38,10 @@ static LL_Ir_Operand ir_append_op_dst(Compiler_Context* cc, LL_Backend_Ir* b, LL
     oc_array_append_many(&cc->arena, &b->blocks.items[block].ops, operands, operands_count);
     b->last_op_was_load = (opcode == LL_IR_OPCODE_LOAD);
     return dst;
+}
+
+void ir_append_expr_ret(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode value) {
+    IR_APPEND_OP(LL_IR_OPCODE_RETVALUE, value);
 }
 
 size_t ir_get_op_count(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_list, size_t i) {

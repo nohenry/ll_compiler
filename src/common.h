@@ -140,6 +140,8 @@ typedef struct LL_Queued {
     uint32 dependency_counter[COUNT_OF_STAGES];
     Array(uint32, LL_Dependency) dependants;
     uint32 s;
+
+    bool needs_eval;
 } LL_Queued;
 
 typedef struct {
