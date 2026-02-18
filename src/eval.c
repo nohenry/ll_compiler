@@ -1212,6 +1212,12 @@ LL_Eval_Value ll_eval_node(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_
     oc_assert(function_index != 0);
 
     result = ll_eval_fn(cc, b, bir, function_index, 0, NULL);
+    LL_Ir_Function* fn = &bir->fns.items[function_index];
+    bir->blocks.items[fn->exit].next = bir->free_block;
+    bir->free_block = fn->entry;
+
+    oc_array_append(&cc->arena, &bir->free_functions, function_index);
+
     expr->has_const = true;
     expr->const_value = result;
     return result;

@@ -2427,6 +2427,7 @@ void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend
     for (fi = 1; fi < bir->fns.count; ++fi) {
         LL_Ir_Function* fn = &bir->fns.items[fi];
         LL_Ir_Block_Ref block = fn->entry;
+        if (fn->flags & LL_IR_FUNCTION_FLAG_CONST_EVAL) continue;
         if (fn->flags & LL_IR_FUNCTION_FLAG_NATIVE) {
             size_t function_offset = b->section_text.count;
             fn->generated_offset = (int64_t)function_offset;

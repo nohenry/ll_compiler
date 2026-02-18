@@ -611,21 +611,12 @@ bool ll_typer_handle_const_eval(Compiler_Context* cc, LL_Typer* typer, Code_Mark
 
     if (const_eval->fn_ir_index == 0) {
         LL_Backend_Ir* bir = cc->bir;
-        LL_Ir_Block_Ref entry_block_ref = bir->blocks.count;
-        LL_Ir_Block entry_block = { 0 };
-        entry_block.generated_offset = -1;
-        oc_array_append(&cc->arena, &bir->blocks, entry_block);
 
         LL_Ir_Function fn = {
-            .entry = entry_block_ref,
-            .exit = entry_block_ref,
-            .flags = LL_IR_FUNCTION_FLAG_APPEND_RET_FOR_EXPR,
-            .generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
-            .block_count = 1,
+            .flags = LL_IR_FUNCTION_FLAG_APPEND_RET_FOR_EXPR | LL_IR_FUNCTION_FLAG_CONST_EVAL,
         };
-        const_eval->fn_ir_index = bir->fns.count;
+        const_eval->fn_ir_index = ir_insert_function(cc, bir, fn);
         oc_assert(const_eval->fn_ir_index != 0);
-        oc_array_append(&cc->arena, &bir->fns, fn);
     }
 
     LL_Queued* queued;

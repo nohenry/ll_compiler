@@ -111,6 +111,7 @@ typedef enum {
     LL_IR_FUNCTION_FLAG_NATIVE = (1u << 1u),
 
     LL_IR_FUNCTION_FLAG_APPEND_RET_FOR_EXPR = (1u << 2u),
+    LL_IR_FUNCTION_FLAG_CONST_EVAL = (1u << 3u),
 } LL_Ir_Function_Flags;
 
 #define LL_IR_FUNCTION_OFFSET_INVALID ((int64_t)-1)
@@ -181,6 +182,7 @@ typedef struct ll_backend_ir {
     LL_Ir_Block_Ref current_block, return_block;
     LL_Ir_Block_List blocks;
 
+    Array(uint32, uint32) free_functions;
     LL_Ir_Block_Ref free_block;
 
     LL_Backend_Ir_Flags flags;
@@ -231,7 +233,7 @@ void ir_print_op(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Opcode* opcode_li
 
 void ir_calculate_struct_offsets(LL_Type* type);
 
-
+uint32 ir_insert_function(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Function fn);
 
 void ll_native_fn_put(Compiler_Context* cc, LL_Native_Function_Map* b, string name, void* ptr);
 void* ll_native_fn_get(Compiler_Context* cc, LL_Native_Function_Map* b, string name);

@@ -336,6 +336,34 @@ LL_Ir_Block_Ref ir_create_block(Compiler_Context* cc, LL_Backend_Ir* b, bool app
     return result;
 }
 
+uint32 ir_insert_function(Compiler_Context* cc, LL_Backend_Ir* b, LL_Ir_Function fn) {
+    LL_Ir_Function* dst;
+    uint32 index;
+    if (b->free_functions.count) {
+        index = b->free_functions.items[b->free_functions.count - 1];
+        b->free_functions.count--;
+    } else {
+        index = b->fns.count;
+        oc_array_extend_count_unint(&cc->arena, &b->fns, 1);
+        memset(&b->fns.items[index], 0, sizeof(b->fns.items[index]));
+    }
+
+    dst = &b->fns.items[index];
+
+    // @Robustness is this okay to set this without restoring here? (needed for create block)
+    b->current_function = index;
+    dst->ident = fn.ident;
+    dst->fn_type = fn.fn_type;
+    dst->entry = dst->exit = ir_create_block(cc, b, false);
+    dst->generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
+    dst->locals.count = 0;
+    dst->registers.count = 0;
+    dst->flags = fn.flags;
+    dst->block_count = 1;
+    dst->literals.count = 0;
+    return index;
+}
+
 LL_Ir_Operand ir_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Ir* b, LL_Type* to_type, LL_Ir_Operand from, LL_Type* from_type) {
     if (to_type == from_type) return from;
 
@@ -580,31 +608,19 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
 
         actually_queue(cc, STAGE_IR, fn_decl->base.base.queued);
 
-        LL_Ir_Block_Ref entry_block_ref = b->blocks.count;
-        LL_Ir_Block entry_block = { 0 };
-        entry_block.generated_offset = -1;
-        oc_array_append(&cc->arena, &b->blocks, entry_block);
-
         LL_Ir_Function fn = {
             .ident = fn_decl->base.ident,
             .fn_type = (LL_Type_Function*)fn_decl->base.ident->base.type,
-            .entry = entry_block_ref,
-            .exit = entry_block_ref,
             .flags = 0,
-            .generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
-            .block_count = 1,
         };
-
-        fn_decl->ir_index = b->fns.count;
-        oc_assert(fn_decl->ir_index != 0);
-
         if (fn_decl->storage_class & LL_STORAGE_CLASS_EXTERN) {
             fn.flags |= LL_IR_FUNCTION_FLAG_EXTERN;
         }
         if (fn_decl->storage_class & LL_STORAGE_CLASS_NATIVE) {
             fn.flags |= LL_IR_FUNCTION_FLAG_NATIVE;
         }
-        oc_array_append(&cc->arena, &b->fns, fn);
+        fn_decl->ir_index = ir_insert_function(cc, b, fn);
+        oc_assert(fn_decl->ir_index != 0);
 
         if (false && fn_decl->body) {
             int32_t last_function = b->current_function;
@@ -1122,24 +1138,13 @@ DO_BIN_OP_ASSIGN_OP:
         LL_Ir_Operand invokee;
         if (inv->resolved_fn_inst) {
             if (inv->resolved_fn_inst->ir_index == 0) {
-                LL_Ir_Block_Ref entry_block_ref = b->blocks.count;
-                LL_Ir_Block entry_block = { 0 };
-                entry_block.generated_offset = -1;
-                oc_array_append(&cc->arena, &b->blocks, entry_block);
 
                 LL_Ir_Function fn = {
                     .fn_type = inv->resolved_fn_inst->fn_type,
-                    // .fn_decl = inv->fn_decl,
-                    .entry = entry_block_ref,
-                    .exit = entry_block_ref,
                     .flags = 0,
-                    .generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
-                    .block_count = 1,
                 };
-
-                inv->resolved_fn_inst->ir_index = b->fns.count;
+                inv->resolved_fn_inst->ir_index = ir_insert_function(cc, b, fn);
                 oc_assert(inv->resolved_fn_inst->ir_index != 0);
-                oc_array_append(&cc->arena, &b->fns, fn);
 
                 if (inv->resolved_fn_inst->body) {
                     int32_t last_function = b->current_function;
