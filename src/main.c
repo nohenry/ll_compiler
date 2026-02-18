@@ -94,20 +94,6 @@ int main(int argc, char** argv) {
     compiler_run_stages(&cc);
     if (output_ir) ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
 
-    return 0;
-    // if (!cc.quiet) print_node(root, 0, &stdout_writer);
-
-
-    // ll_backend_generate_statement(&cc, &backend_c, root);
-    // ll_backend_write_to_file(&cc, &backend_c, "out.c");
-
-    ll_backend_generate_statement(&cc, &backend_ir, root);
-    if (output_ir) ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
-
-    /* LL_Backend backend = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_GAS); */
-    /* ll_backend_generate_statement_from_ir(&cc, &backend, backend_ir.backend); */
-    /* ll_backend_write_to_file(&cc, &backend, "out.s"); */
-
     ll_backend_generate_statement_from_ir(&cc, &backend_elf, backend_ir.backend);
     ll_backend_write_to_file(&cc, &backend_elf, "out.bin");
     if (run) ll_backend_execute(&cc, &backend_elf, backend_ir.backend);

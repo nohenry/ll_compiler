@@ -177,6 +177,7 @@ void x86_64_assert_abort(void* w, const char* fmt, ...) {
 }
 
 void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
+    memset(b, 0, sizeof(*b));
     b->arena = &cc->arena;
     b->w.append_u8 = x86_64_append_op_segment_u8;
     b->w.append_u16 = x86_64_append_op_segment_u16;
@@ -186,11 +187,6 @@ void x86_64_backend_init(Compiler_Context* cc, X86_64_Backend* b) {
     b->w.end_instruction = x86_64_end_instruction;
     b->w.log_error = x86_64_log_error;
     b->w.assert_abort = x86_64_assert_abort;
-    memset(&b->ops, 0, sizeof(b->ops));
-    memset(&b->internal_relocations, 0, sizeof(b->internal_relocations));
-    memset(&b->branch_relocations, 0, sizeof(b->branch_relocations));
-    memset(&b->fn_relocations, 0, sizeof(b->fn_relocations));
-
 
     ll_native_fn_put(cc, &b->native_funcs, lit("write_int"), native_write);
     ll_native_fn_put(cc, &b->native_funcs, lit("write_float32"), native_write_float32);
@@ -2416,14 +2412,14 @@ DO_OPCODE_ARITHMETIC_PREOP:
 void x86_64_backend_generate(Compiler_Context* cc, X86_64_Backend* b, LL_Backend_Ir* bir) {
     b->ir = bir;
     size_t fi;
-    // we skip fi 0 since it's used for constant evaluation
-
+    
     for (fi = 0; fi < bir->data_items.count; ++fi) {
         bir->data_items.items[fi].binary_offset = b->section_data.count;
         oc_array_append_many(&cc->arena, &b->section_data, bir->data_items.items[fi].ptr, bir->data_items.items[fi].len);
         oc_array_append(&cc->arena, &b->section_data, 0);
     }
-
+    
+    // we skip fi 0 since it's nil
     for (fi = 1; fi < bir->fns.count; ++fi) {
         LL_Ir_Function* fn = &bir->fns.items[fi];
         LL_Ir_Block_Ref block = fn->entry;
