@@ -143,6 +143,7 @@ typedef struct Code_Scope {
     Hash_Map(string, Code_Declaration*) declarations;
 
     LL_Token_Info c_open, c_close;
+    LL_Ir_Block_Ref block_ref;
     uint32 break_value;
     uint32 break_block_ref;
 } Code_Scope;
@@ -189,6 +190,8 @@ typedef struct {
 typedef struct {
     Code base;
     Code* expr;
+
+    uint32 fn_ir_index; // 0 is nil
 } Code_Marker;
 
 enum {
@@ -259,6 +262,7 @@ typedef struct {
 typedef struct {
     Code_Declaration base;
     Code_Scope* block;
+    Array(uint32, struct ll_type*) member_types;
 } Code_Struct;
 
 typedef struct {

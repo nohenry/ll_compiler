@@ -11,6 +11,8 @@ typedef struct ll_parser {
 
     Code_Scope* current_scope;
     Code_Function_Declaration* current_function;
+
+    uint32 block_ordering;
 } LL_Parser;
 
 LL_Parser parser_create_from_file(Compiler_Context* cc, char* filename);

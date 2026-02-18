@@ -228,11 +228,14 @@ Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser, Code_Dec
 
     block->parent_scope = parser->current_scope;
     parser->current_scope = block;
+    uint32 last_ordering = parser->block_ordering;
+    parser->block_ordering = 0;
     while (token.kind != '}') {
         Code* stmt = parser_parse_statement(cc, parser);
         insert_into_block(cc, block, stmt);
         PEEK(&token);
     }
+    parser->block_ordering = last_ordering;
     parser->current_scope = block->parent_scope;
 
     CONSUME();
@@ -306,9 +309,13 @@ Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
     }
 
     Code* result = CREATE_NODE(CODE_KIND_STRUCT, ((Code_Struct){ .base.ident = ident }));
+    LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
     Code_Scope* block = parser_parse_block(cc, parser, CODE_AS(result, Code_Declaration), CODE_SCOPE_FLAG_DECLARATIVE);
     CODE_AS(result, Code_Struct)->block = block;
-
+    if (!block->declarations.count_filled) {
+        // so we only queueu the struct when it has no fields, because otherwise it depends on those fields and doesn't need to be queued.
+        actually_queue(cc, STAGE_TYPECHECK, queued);
+    }
 
     Code_Declaration** existing_declaration = hash_map_get(&cc->arena, &parser->current_scope->declarations, ident->str);
     if (existing_declaration) {
@@ -319,9 +326,6 @@ Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
     }
 
 	hash_map_put(&cc->arena, &parser->current_scope->declarations, ident->str, (Code_Declaration*)result);
-
-    LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
-    actually_queue(cc, STAGE_TYPECHECK, queued);
 
     result->token_info = struct_kw;
     return result;
@@ -435,6 +439,14 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
 		} else {
             LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
             actually_queue(cc, STAGE_TYPECHECK, queued);
+
+            if (parser->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
+                CODE_AS(result, Code_Variable_Declaration)->ir_index = parser->block_ordering++; // need to maintain ordering for later
+
+                // struct depends on its fields
+                LL_Queued* struct_queued = parser->current_scope->decl->base.queued;
+                depend(struct_queued, queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR);
+            }
         }
     }
 

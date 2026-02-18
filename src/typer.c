@@ -589,6 +589,7 @@ LL_Queued* create_queued(Compiler_Context* cc, Code_Function_Declaration* fn, Co
 }
 
 void actually_queue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued) {
+    if (queued->index_in_stage != (uint32)-1) return;
     queued->index_in_stage = cc->stages[stage].input.count;
     oc_array_append(&cc->arena, &cc->stages[stage].input, queued);
     if (cc->number_of_queued) (*cc->number_of_queued)++;
@@ -600,6 +601,55 @@ void actually_unqueue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queu
     cc->stages[stage].input.items[queued->index_in_stage]->index_in_stage = queued->index_in_stage;
 
     queued->index_in_stage = (uint32)-1;
+}
+
+bool ll_typer_handle_const_eval(Compiler_Context* cc, LL_Typer* typer, Code_Marker* const_eval) {
+    oc_assert(const_eval->base.kind == CODE_KIND_CONST);
+
+    if (const_eval->fn_ir_index == 0) {
+        LL_Backend_Ir* bir = cc->bir;
+        LL_Ir_Block_Ref entry_block_ref = bir->blocks.count;
+        LL_Ir_Block entry_block = { 0 };
+        entry_block.generated_offset = -1;
+        oc_array_append(&cc->arena, &bir->blocks, entry_block);
+
+        LL_Ir_Function fn = {
+            .entry = entry_block_ref,
+            .exit = entry_block_ref,
+            .flags = 0,
+            .generated_offset = LL_IR_FUNCTION_OFFSET_INVALID,
+            .block_count = 1,
+        };
+        const_eval->fn_ir_index = bir->fns.count;
+        oc_assert(const_eval->fn_ir_index != 0);
+        oc_array_append(&cc->arena, &bir->fns, fn);
+    }
+
+    LL_Queued* queued;
+    if (const_eval->expr->queued) {
+        queued = const_eval->expr->queued;
+        bool found = false;
+        // @Cleanup
+        for (uint32 i = 0; i < queued->dependants.count; ++i) {
+            if (queued->dependants.items[i].target == current_queued()) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            actually_queue(cc, queued->max_completed_stage + 1, queued);
+            depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
+            actually_unqueue(cc, cc->current_stage, current_queued());
+        }
+    } else {
+        queued = create_queued(cc, typer->current_function, typer->current_scope, const_eval->expr);
+        actually_queue(cc, STAGE_TYPECHECK, queued);
+        depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
+        actually_unqueue(cc, cc->current_stage, current_queued());
+    }
+    queued->fn_ir_override = const_eval->fn_ir_index;
+
+    return queued->max_completed_stage >= STAGE_EVAL;
 }
 
 bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt, LL_Resume_Info* resume_info) {
@@ -723,6 +773,9 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
 
         if (typer->current_scope && typer->current_scope->decl) {
             if (typer->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
+                Code_Struct* strct = CODE_AS(typer->current_scope->decl, Code_Struct);
+                oc_array_reserve(&cc->arena, &strct->member_types, var_decl->ir_index+1);
+                strct->member_types.items[var_decl->ir_index] = declared_type;
                 // var_decl->ir_index = typer->current_record->count;
                 // oc_array_append(&cc->arena, typer->current_record, declared_type);
                 // if (var_decl->initializer) {
@@ -855,73 +908,57 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
     case CODE_KIND_STRUCT: {
         Code_Struct* strct = CODE_AS(*stmt, Code_Struct);
 
-        // LL_Scope* struct_scope = create_scope(LL_SCOPE_KIND_STRUCT, *stmt);
-        // struct_scope->ident = strct->ident;
-        // ll_typer_scope_put(cc, typer, struct_scope, false);
-
         LL_Type_Named named_type = { 0 };
         named_type.base.kind = LL_TYPE_NAMED;
         named_type.scope = strct->block;
 
         strct->base.declared_type = oc_arena_dup(&cc->arena, &named_type, sizeof(named_type));
+
+        LL_Type* actual_class_type = ll_typer_get_struct_type(cc, typer, strct->member_types.items, strct->member_types.count);
+        ((LL_Type_Named*)strct->base.declared_type)->actual_type = actual_class_type;
+
+        break;
+
+        // LL_Scope* struct_scope = create_scope(LL_SCOPE_KIND_STRUCT, *stmt);
+        // struct_scope->ident = strct->ident;
+        // ll_typer_scope_put(cc, typer, struct_scope, false);
+
         // struct_scope->decl->type = oc_arena_dup(&cc->arena, &named_type, sizeof(named_type));
         // struct_scope->declared_type = struct_scope->decl->type;
         // struct_scope->ident->base.type = struct_scope->decl->type;
 
-        LL_Typer_Current_Record record = { 0 };
-        LL_Typer_Record_Values record_values = { 0 };
+        // LL_Typer_Current_Record record = { 0 };
+        // LL_Typer_Record_Values record_values = { 0 };
         
-        LL_Type_Named* last_named = typer->current_named;
-        LL_Typer_Current_Record* last_current_record = typer->current_record;
-        LL_Typer_Record_Values* last_current_record_values = typer->current_record_values;
+        // LL_Type_Named* last_named = typer->current_named;
+        // LL_Typer_Current_Record* last_current_record = typer->current_record;
+        // LL_Typer_Record_Values* last_current_record_values = typer->current_record_values;
 
-        typer->current_named = (LL_Type_Named*)strct->base.declared_type;
-        typer->current_record = &record;
-        typer->current_record_values = &record_values;
-        typer->current_scope = strct->block;
+        // typer->current_named = (LL_Type_Named*)strct->base.declared_type;
+        // typer->current_record = &record;
+        // typer->current_record_values = &record_values;
+        // typer->current_scope = strct->block;
 
-        for (i = 0; i < strct->block->declarations.capacity; ++i) {
-            if (strct->block->declarations.entries[i].filled)
-                ll_typer_type_statement(cc, typer, (Code**)&strct->block->declarations.entries[i]._value, NULL);
-        }
-        for (i = 0; i < strct->block->statements.count; ++i) {
-            ll_typer_type_statement(cc, typer, &strct->block->statements.items[i], NULL);
-        }
+        // for (i = 0; i < strct->block->declarations.capacity; ++i) {
+        //     if (strct->block->declarations.entries[i].filled)
+        //         ll_typer_type_statement(cc, typer, (Code**)&strct->block->declarations.entries[i]._value, NULL);
+        // }
+        // for (i = 0; i < strct->block->statements.count; ++i) {
+        //     ll_typer_type_statement(cc, typer, &strct->block->statements.items[i], NULL);
+        // }
 
-        typer->current_scope = strct->block->parent_scope;
-        typer->current_record_values = last_current_record_values;
-        typer->current_record = last_current_record;
-        typer->current_named = last_named;
+        // typer->current_scope = strct->block->parent_scope;
+        // typer->current_record_values = last_current_record_values;
+        // typer->current_record = last_current_record;
+        // typer->current_named = last_named;
 
-        LL_Type* actual_class_type = ll_typer_get_struct_type(cc, typer, record.items, record.count);
-        ((LL_Type_Named*)strct->base.declared_type)->actual_type = actual_class_type;
+        // LL_Type* actual_class_type = ll_typer_get_struct_type(cc, typer, record.items, record.count);
+        // ((LL_Type_Named*)strct->base.declared_type)->actual_type = actual_class_type;
     } break;
     case CODE_KIND_CONST: {
         Code_Marker* cf = CODE_AS((*stmt), Code_Marker);
-        LL_Queued* queued;
-        if (cf->expr->queued) {
-            queued = cf->expr->queued;
-            bool found = false;
-            // @Cleanup
-            for (uint32 i = 0; i < queued->dependants.count; ++i) {
-                if (queued->dependants.items[i].target == current_queued()) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                actually_queue(cc, queued->max_completed_stage + 1, queued);
-                depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
-                actually_unqueue(cc, cc->current_stage, current_queued());
-            }
-        } else {
-            queued = create_queued(cc, typer->current_function, typer->current_scope, cf->expr);
-            actually_queue(cc, STAGE_TYPECHECK, queued);
-            depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
-            actually_unqueue(cc, cc->current_stage, current_queued());
-        }
+        return ll_typer_handle_const_eval(cc, typer, cf);
 
-        return queued->max_completed_stage >= STAGE_FLAG_EVAL;
 
         // oc_assert(queued->max_completed_stage >= STAGE_EVAL);
 
@@ -2543,32 +2580,7 @@ TRY_MEMBER_FUNCTION_CALL:
     } break;
     case CODE_KIND_CONST: {
         Code_Marker* cf = CODE_AS((*expr), Code_Marker);
-        // can_continue = ll_typer_type_expression(cc, typer, &cf->expr, expected_type, NULL);
-        // if (!can_continue) return false;
-        LL_Queued* queued;
-        if (cf->expr->queued) {
-            queued = cf->expr->queued;
-            bool found = false;
-            // @Cleanup
-            for (uint32 i = 0; i < queued->dependants.count; ++i) {
-                if (queued->dependants.items[i].target == current_queued()) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                actually_queue(cc, queued->max_completed_stage + 1, queued);
-                depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
-                actually_unqueue(cc, cc->current_stage, current_queued());
-            }
-        } else {
-            queued = create_queued(cc, typer->current_function, typer->current_scope, cf->expr);
-            actually_queue(cc, STAGE_TYPECHECK, queued);
-            depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
-            actually_unqueue(cc, cc->current_stage, current_queued());
-        }
-
-        return queued->max_completed_stage >= STAGE_FLAG_EVAL;
+        return ll_typer_handle_const_eval(cc, typer, cf);
 
         // result = cf->expr->type;
         // LL_Eval_Value const_value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->expr, &can_continue);

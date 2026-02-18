@@ -226,18 +226,22 @@ void resolve_dependencies(Compiler_Context* cc, LL_Queued* queued, LL_Stage_Kind
             oc_assert(dep.target->dependency_counter[stage] > 0);
             dep.target->dependency_counter[stage]--;
             if (dep.target->dependency_counter[stage] == 0) {
+                oc_assert(dep.target->max_completed_stage < stage);
                 actually_queue(cc, stage, dep.target);
+            }
+            if (dep.flags == 0) {
+                oc_array_unordered_remove(&cc->arena, &queued->dependants, i);
+                --i;
             }
         }
     }
 }
 
-uint32 output_queued(Compiler_Context* cc, LL_Stage* stage, Oc_Writer* w, LL_Queued* queued) {
-
+uint32 output_queued(Compiler_Context* cc, LL_Stage_Kind stage_kind, Oc_Writer* w, LL_Queued* queued) {
     switch (queued->code->kind) {
     case CODE_KIND_BLOCK: {
         Code_Scope* scope = (Code_Scope*)queued->code;
-        wprint(w, "node{} [label=\"anon_scope {}\\n{}\\ndependencies: {}", queued->s, queued->s, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[STAGE_TYPECHECK]);
+        wprint(w, "node{} [label=\"anon_scope {}\\n{}\\ndependencies: {}", queued->s, queued->s, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
         if (scope->c_open.kind != LL_TOKEN_KIND_NONE) {
             LL_Line_Info line_info = lexer_get_line_info(cc->lexer, scope->c_open);
             wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
@@ -249,7 +253,7 @@ uint32 output_queued(Compiler_Context* cc, LL_Stage* stage, Oc_Writer* w, LL_Que
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Declaration* decl = (Code_Declaration*)queued->code;
 
-        wprint(w, "node{} [label=\"{}\\n{}\\ndependencies: {}", queued->s, decl->ident->str, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[STAGE_TYPECHECK]);
+        wprint(w, "node{} [label=\"{} {}\\n{}\\ndependencies: {}", queued->s, decl->ident->str, queued->s, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
         if (decl->base.token_info.kind != LL_TOKEN_KIND_NONE) {
             LL_Line_Info line_info = lexer_get_line_info(cc->lexer, decl->base.token_info);
             wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
@@ -261,7 +265,7 @@ uint32 output_queued(Compiler_Context* cc, LL_Stage* stage, Oc_Writer* w, LL_Que
         wprint(w, "\"];\n");
     } break;
     default: {
-        wprint(w, "node{} [label=\"{}\\n{}\\ndependencies: {}", queued->s, ast_get_node_kind(queued->code), (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[STAGE_TYPECHECK]);
+        wprint(w, "node{} [label=\"{} {}\\n{}\\ndependencies: {}", queued->s, ast_get_node_kind(queued->code), queued->s, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
         if (queued->code->token_info.kind != LL_TOKEN_KIND_NONE) {
             LL_Line_Info line_info = lexer_get_line_info(cc->lexer, queued->code->token_info);
             wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
@@ -293,7 +297,7 @@ uint32 output_queued(Compiler_Context* cc, LL_Stage* stage, Oc_Writer* w, LL_Que
     for (uint32 i = 0; i < queued->dependants.count; ++i) {
         LL_Dependency* dep = &queued->dependants.items[i];
         if (dep->target == queued) continue;
-        uint32 dep_n = output_queued(cc, stage, w, dep->target);
+        uint32 dep_n = output_queued(cc, stage_kind, w, dep->target);
 
         // wprint(w, "node{} <- node{}\n", queued->s, dep_n);
         wprint(w, "node{} -> node{}\n", dep_n, queued->s);
@@ -320,7 +324,7 @@ void input_graph(Compiler_Context* cc, LL_Stage_Kind stage_kind) {
     wprint(&sb.writer, "digraph Comiler {{\n");
 
     for (uint32 i = 0; i < stage->input.count; ++i) {
-        output_queued(cc, stage, &sb.writer, stage->input.items[i]);
+        output_queued(cc, stage_kind, &sb.writer, stage->input.items[i]);
     }
 
     wprint(&sb.writer, "}");
@@ -346,7 +350,7 @@ void output_graph(Compiler_Context* cc, LL_Stage_Kind stage_kind) {
     wprint(&sb.writer, "digraph Comiler {{\n");
 
     for (uint32 i = 0; i < stage->output.count; ++i) {
-        output_queued(cc, stage, &sb.writer, stage->output.items[i]);
+        output_queued(cc, stage_kind, &sb.writer, stage->output.items[i]);
     }
 
     wprint(&sb.writer, "}");
@@ -448,13 +452,19 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
     {
         LL_Stage* last_stage = &cc->stages[STAGE_TYPECHECK];
         for (uint32 i = 0; i < last_stage->output.count; ++i) {
-            oc_array_append(&cc->arena, &stage->input, last_stage->output.items[i]);
+            LL_Queued* queued = last_stage->output.items[i];
+            if (queued->dependency_counter[STAGE_IR] == 0) {
+                queued->index_in_stage = stage->input.count;
+                oc_array_append(&cc->arena, &stage->input, queued);
+            } else {
+                queued->index_in_stage = -1;
+            }
         }
         last_stage->output.count = 0;
     }
+    input_graph(cc, STAGE_IR);
 
     cc->number_of_queued = number_of_insertions;
-    output_graph(cc, STAGE_IR);
 
     for (uint32 i = 0; i < stage->input.count; ++i) {
         typer->waited_on_code = NULL;
@@ -467,13 +477,11 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
         bool result = true;
         oc_array_append(&cc->arena, &cc->queued_stack, queued_item);
 
-        if (queued_item->imperative_index != (uint32)-1) {
-            oc_assert(queued_item->scope->flags & CODE_SCOPE_FLAG_IMPERATIVE);
-            ir_generate_statement_with_state(cc, cc->bir, (Code*)queued_item->scope, queued_item->ir_state, &result);
-        } else {
-            oc_assert(queued_item->scope->flags & CODE_SCOPE_FLAG_DECLARATIVE);
-            ir_generate_statement_with_state(cc, cc->bir, queued_item->code, queued_item->ir_state, &result);
+        if (queued_item->fn_ir_override) {
+            cc->bir->current_function = queued_item->fn_ir_override;
+            cc->bir->current_block = cc->bir->fns.items[cc->bir->current_function].exit;
         }
+        ir_generate_statement(cc, cc->bir, queued_item->code, &result);
 
         cc->queued_stack.count--;
 

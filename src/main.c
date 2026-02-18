@@ -92,6 +92,8 @@ int main(int argc, char** argv) {
 
     ll_typer_prerun(&cc, &typer, root);
     compiler_run_stages(&cc);
+    if (output_ir) ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
+
     return 0;
     // if (!cc.quiet) print_node(root, 0, &stdout_writer);
 

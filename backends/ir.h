@@ -2,6 +2,7 @@
 
 #include "stdint.h"
 #include "../src/typer.h"
+#include "../src/common.h"
 
 typedef uint32_t LL_Ir_Operand;
 #define LL_IR_OPERAND_VALUE_MASK 0xFFFFFFFu
@@ -99,8 +100,6 @@ typedef struct ll_ir_block {
     int64_t generated_offset;
     int64_t fixup_offset;
 } LL_Ir_Block;
-
-typedef uint32_t LL_Ir_Block_Ref;
 
 typedef struct {
     uint32_t count, capacity;

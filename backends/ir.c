@@ -435,19 +435,36 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
     uint32_t i;
     switch (stmt->kind) {
     case CODE_KIND_BLOCK:
-        // for (i = 0; i < CODE_AS(stmt, Code_Scope)->declarations.capacity; ++i) {
-        //     if (CODE_AS(stmt, Code_Scope)->declarations.entries[i].filled) {
-        //         ir_generate_statement(cc, b, (Code*)CODE_AS(stmt, Code_Scope)->declarations.entries[i]._value, can_continue);
-        //         if (!*can_continue) return 0;
-        //     }
-        // }
-        // for (i = 0; i < CODE_AS(stmt, Code_Scope)->statements.count; ++i) {
-        //     ir_generate_statement(cc, b, CODE_AS(stmt, Code_Scope)->statements.items[i], can_continue);
-        //     if (!*can_continue) return 0;
-        // }
-
         Code_Scope* blk = CODE_AS(stmt, Code_Scope);
         LL_Queued* queued = current_queued();
+        if (queued->fn_ir_override) {
+            b->current_function = queued->fn_ir_override;
+            blk->block_ref = FUNCTION()->entry;
+        } else if (queued->function) {
+            LL_Queued* fn_queued = queued->function->base.base.queued;
+            if (fn_queued->max_completed_stage < STAGE_IR) {
+                depend(queued, fn_queued, STAGE_FLAG_IR);
+                actually_unqueue(cc, cc->current_stage, queued);
+                actually_queue(cc, STAGE_FLAG_IR, fn_queued);
+                *can_continue = false;
+                return;
+            }
+
+            b->current_function = queued->function->ir_index;
+            if (blk->block_ref == LL_IR_BLOCK_REF_INVALID) {
+                if (blk->decl == &queued->function->base) {
+                    oc_assert(FUNCTION()->entry == FUNCTION()->exit); // this should be the first time, so these should both by the entry block
+                    blk->block_ref = FUNCTION()->entry;
+                } else {
+                    blk->block_ref = ir_create_block(cc, b, false);
+                }
+            }
+        } else {
+            if (blk->block_ref == LL_IR_BLOCK_REF_INVALID) {
+                blk->block_ref = ir_create_block(cc, b, false);
+            }
+        }
+        b->current_block = blk->block_ref;
 
         bool result = true;
         if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
@@ -458,7 +475,11 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
 
             for (; i < blk->declarations.capacity; ++i) {
                 if (blk->declarations.entries[i].filled) {
-                    ir_generate_statement(cc, b, (Code*)blk->declarations.entries[i]._value, &result);
+                    if (queued->ir_state) {
+                        ir_generate_statement_with_state(cc, b, (Code*)blk->declarations.entries[i]._value, queued->ir_state, &result);
+                    } else {
+                        ir_generate_statement(cc, b, (Code*)blk->declarations.entries[i]._value, &result);
+                    }
 
                     if (!result) {
                         queued->imperative_index = i;
@@ -488,7 +509,11 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
             } else i = 0;
 
             for (; i < blk->statements.count; ++i) {
-                ir_generate_statement(cc, b, CODE_AS(stmt, Code_Scope)->statements.items[i], &result);
+                if (queued->ir_state) {
+                    ir_generate_statement_with_state(cc, b, blk->statements.items[i], queued->ir_state, &result);
+                } else {
+                    ir_generate_statement(cc, b, blk->statements.items[i], &result);
+                }
 
                 if (!result) {
                     queued->imperative_index = i;
@@ -515,6 +540,8 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
         break;
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS(stmt, Code_Variable_Declaration);
+        if (var_decl->base.within_scope->flags & CODE_SCOPE_FLAG_DECLARATIVE) return;
+
         if (var_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break;
         if (var_decl->storage_class & LL_STORAGE_CLASS_CONST) break;
         oc_assert(b->current_function != IR_INVALID_FUNCTION);
@@ -575,7 +602,7 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
         }
         oc_array_append(&cc->arena, &b->fns, fn);
 
-        if (fn_decl->body) {
+        if (false && fn_decl->body) {
             int32_t last_function = b->current_function;
             LL_Ir_Block_Ref last_block = b->current_block;
             b->current_function = fn_decl->ir_index;

@@ -127,6 +127,7 @@ typedef struct LL_Queued {
     uint32 imperative_index;
     uint32 index_in_stage;
 
+    uint32 fn_ir_override;
     struct Code_Function_Declaration* function;
     struct Code_Scope* scope;
     Code* code;
@@ -171,6 +172,9 @@ typedef struct {
     uint32* number_of_queued;
     LL_Stage_Kind current_stage;
 } Compiler_Context;
+
+typedef uint32_t LL_Ir_Block_Ref;
+#define LL_IR_BLOCK_REF_INVALID ((LL_Ir_Block_Ref)0u)
 
 #define current_queued() (cc->queued_stack.count > 0 ? cc->queued_stack.items[cc->queued_stack.count - 1] : NULL)
 // #define depend(queued, on_queued, _flags) do {                      \
