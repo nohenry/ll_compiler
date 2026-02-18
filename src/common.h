@@ -133,7 +133,7 @@ typedef struct LL_Queued {
     Code* code;
 
     struct LL_Ir_State* ir_state;
-    LL_Stage_Kind max_completed_stage;
+    LL_Stage_Kind stage, max_completed_stage;
 
     // uint32 dependency_cursor;
     // Array(uint32, LL_Dependency) dependencies;
@@ -187,10 +187,11 @@ typedef uint32_t LL_Ir_Block_Ref;
 #define depend(queued, on_queued, _flags) do {                \
     LL_Queued* q = (on_queued);                               \
     LL_Queued* oq = (queued);                                 \
-    LL_Dependency d = { .target = oq, .flags = (_flags) };    \
+    uint32 flag_mask = ((uint32)-1) >> (32 - q->max_completed_stage - 1); \
+    LL_Dependency d = { .target = oq, .flags = (_flags) & ~flag_mask };    \
     oc_array_append(&cc->arena, &(q)->dependants, d);       \
     for (uint32 i = 0; i < COUNT_OF_STAGES; ++i) {            \
-        if ((_flags) & (1 << i)) oq->dependency_counter[i]++; \
+        if (((_flags) & (1 << i)) && i > q->max_completed_stage) oq->dependency_counter[i]++; \
     }                                                         \
 } while (0)
 

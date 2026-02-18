@@ -1027,25 +1027,25 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
             assert(ptr_type->base.kind == LL_TYPE_POINTER);
 
             oc_assert(OPD_TYPE(operands[0]) == LL_IR_OPERAND_REGISTER_BIT);
-            LL_Eval_Value base;
-            switch (OPD_TYPE(operands[1])) {
-            case LL_IR_OPERAND_LOCAL_BIT:
-                base.as_ptr = &FRAME()->locals.items[OPD_VALUE(operands[1])];
-                break;
-            case LL_IR_OPERAND_PARMAETER_BIT:
-                base.as_ptr = &FRAME()->parameters.items[OPD_VALUE(operands[1])];
-                break;
-            case LL_IR_OPERAND_DATA_BIT:
-                base.as_ptr = bir->data_items.items[OPD_VALUE(operands[1])].ptr;
-                break;
-            default: oc_assert(false && "invalid operand"); break;
-            }
+            // LL_Eval_Value base;
+            // switch (OPD_TYPE(operands[1])) {
+            // case LL_IR_OPERAND_LOCAL_BIT:
+            //     base.as_ptr = &FRAME()->locals.items[OPD_VALUE(operands[1])];
+            //     break;
+            // case LL_IR_OPERAND_PARMAETER_BIT:
+            //     base.as_ptr = &FRAME()->parameters.items[OPD_VALUE(operands[1])];
+            //     break;
+            // case LL_IR_OPERAND_DATA_BIT:
+            //     base.as_ptr = bir->data_items.items[OPD_VALUE(operands[1])].ptr;
+            //     break;
+            // default: oc_assert(false && "invalid operand"); break;
+            // }
 
+            LL_Eval_Value base = ll_eval_get_value(cc, b, bir, operands[1]);
             LL_Eval_Value index = ll_eval_get_value(cc, b, bir, operands[2]);
             LL_Eval_Value scale = ll_eval_get_value(cc, b, bir, operands[3]);
 
-            base.as_ptr += index.as_i64 * scale.as_i64;
-            print("lea index {}\n", base.as_object);
+            base.as_object += index.as_i64 * scale.as_i64;
 
             ll_eval_set_value(cc, b, bir, operands[0], base, false);
         } break;
@@ -1097,19 +1097,8 @@ LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
     LL_Ir_Function* fn = &bir->fns.items[fn_index];
     oc_array_append(&cc->arena, &b->frames, ((LL_Eval_Frame) { 0 }));
 
-    // @Note: we save/restore function because ll_eval_fn is called recursively in a single
-    //        node evaluation for function invocations
-    uint32 last_function = b->current_function;
-    b->current_function = fn_index;
 
     // @NOTE: these storage locations should be stable so we can take references to them.
-
-    FRAME()->registers.count = 0;
-    oc_array_reserve(&cc->arena, &FRAME()->registers, FUNCTION()->registers.count);
-
-    FRAME()->locals.count = 0;
-    oc_array_reserve(&cc->arena, &FRAME()->locals, FUNCTION()->locals.count);
-
     FRAME()->parameters.count = 0;
     oc_array_reserve(&cc->arena, &FRAME()->parameters, argument_count);
     b->frames.count--;
@@ -1118,6 +1107,19 @@ LL_Eval_Value ll_eval_fn(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_Ir
         FRAMEN(-1)->parameters.items[ai] = argument_value;
     }
     b->frames.count++;
+
+    // @Note: we save/restore function because ll_eval_fn is called recursively in a single
+    //        node evaluation for function invocations
+    uint32 last_function = b->current_function;
+    b->current_function = fn_index;
+
+    FRAME()->registers.count = 0;
+    oc_array_reserve(&cc->arena, &FRAME()->registers, FUNCTION()->registers.count);
+    memset(FRAME()->registers.items, 0, FRAME()->registers.count * sizeof(*FRAME()->registers.items));
+
+    FRAME()->locals.count = 0;
+    oc_array_reserve(&cc->arena, &FRAME()->locals, FUNCTION()->locals.count);
+    memset(FRAME()->locals.items, 0, FRAME()->locals.count * sizeof(*FRAME()->locals.items));
 
 LL_Backend backend_ir = { .backend = bir };
 ll_backend_write_to_file(cc, &backend_ir, "out.ir");

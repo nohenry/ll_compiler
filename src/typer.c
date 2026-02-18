@@ -590,13 +590,16 @@ LL_Queued* create_queued(Compiler_Context* cc, Code_Function_Declaration* fn, Co
 
 void actually_queue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued) {
     if (queued->index_in_stage != (uint32)-1) return;
+    if (stage >= COUNT_OF_STAGES) return;
     queued->index_in_stage = cc->stages[stage].input.count;
+    queued->stage = stage;
     oc_array_append(&cc->arena, &cc->stages[stage].input, queued);
     if (cc->number_of_queued) (*cc->number_of_queued)++;
 }
 
 void actually_unqueue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued) {
     oc_assert(queued->index_in_stage != (uint32)-1);
+    oc_assert(queued->stage == stage);
     oc_array_unordered_remove(&cc->arena, &cc->stages[stage].input, queued->index_in_stage);
     cc->stages[stage].input.items[queued->index_in_stage]->index_in_stage = queued->index_in_stage;
 
@@ -636,7 +639,7 @@ bool ll_typer_handle_const_eval(Compiler_Context* cc, LL_Typer* typer, Code_Mark
                 break;
             }
         }
-        if (!found) {
+        if (!found && queued->max_completed_stage < STAGE_EVAL) {
             actually_queue(cc, queued->max_completed_stage + 1, queued);
             depend(current_queued(), queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR | STAGE_FLAG_EVAL);
             actually_unqueue(cc, cc->current_stage, current_queued());
@@ -2472,7 +2475,7 @@ TRY_MEMBER_FUNCTION_CALL:
             uint64_t array_width = 0;
             if (cf->start->has_const) {
                 array_width = cf->start->const_value.as_u64;
-            } oc_assert(false); // @Cleanup @Errors
+            } else oc_assert(false); // @Cleanup @Errors
             // @Cleanup: should we allow autoconst here?
             // else {
             //     LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, cf->start, &can_continue);
@@ -3047,7 +3050,7 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* typ
             uint64_t array_width = 0;
             if (slice->start->has_const) {
                 array_width = slice->start->const_value.as_u64;
-            } oc_assert(false); // @Cleanup @Errors
+            } else oc_assert(false); // @Cleanup @Errors
             // @Cleanup: should we allow auto const here?
             // else {
             //     LL_Eval_Value value = ll_eval_node(cc, cc->eval_context, cc->bir, slice->start, can_continue);

@@ -221,16 +221,17 @@ size_t hash_combine(size_t lhs, size_t rhs) {
 
 void resolve_dependencies(Compiler_Context* cc, LL_Queued* queued, LL_Stage_Kind stage) {
     for (uint32 i = 0; i < queued->dependants.count; ++i) {
-        LL_Dependency dep = queued->dependants.items[i];
-        if (dep.flags & (1 << stage)) {
-            dep.flags &= ~(1 << stage);
-            oc_assert(dep.target->dependency_counter[stage] > 0);
-            dep.target->dependency_counter[stage]--;
-            if (dep.target->dependency_counter[stage] == 0) {
-                oc_assert(dep.target->max_completed_stage < stage);
-                actually_queue(cc, dep.target->max_completed_stage + 1, dep.target);
-            }
-            if (dep.flags == 0) {
+        LL_Dependency* dep = &queued->dependants.items[i];
+        if (dep->flags & (1 << stage)) {
+            dep->flags &= ~(1 << stage);
+            oc_assert(dep->target->dependency_counter[stage] > 0);
+            dep->target->dependency_counter[stage]--;
+            // if (dep->target->dependency_counter[stage] == 0) {
+            //     oc_assert(dep->target->max_completed_stage < stage);
+            //     actually_queue(cc, dep->target->max_completed_stage + 1, dep->target);
+            // }
+            if (dep->flags == 0) {
+                actually_queue(cc, dep->target->max_completed_stage + 1, dep->target);
                 oc_array_unordered_remove(&cc->arena, &queued->dependants, i);
                 --i;
             }
@@ -238,11 +239,23 @@ void resolve_dependencies(Compiler_Context* cc, LL_Queued* queued, LL_Stage_Kind
     }
 }
 
+const char* get_stage_name(LL_Stage_Kind stage_kind) {
+    switch (stage_kind) {
+    case (LL_Stage_Kind)-1:
+    case 0: return "STAGE_NONE";
+    case STAGE_TYPECHECK: return "STAGE_TYPECHECK";
+    case STAGE_IR: return "STAGE_IR";
+    case STAGE_EVAL: return "STAGE_EVAL";
+    case STAGE_EVAL+1: return "STAGE_MAX";
+    default: oc_assert(false);
+    }
+}
+
 uint32 output_queued(Compiler_Context* cc, LL_Stage_Kind stage_kind, Oc_Writer* w, LL_Queued* queued) {
     switch (queued->code->kind) {
     case CODE_KIND_BLOCK: {
         Code_Scope* scope = (Code_Scope*)queued->code;
-        wprint(w, "node{} [label=\"anon_scope {}\\n{}\\ndependencies: {}", queued->s, queued->s, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
+        wprint(w, "node{} [label=\"anon_scope {}\\n{}: {}\\ndependencies: {}", queued->s, queued->s, get_stage_name(queued->stage), (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
         if (scope->c_open.kind != LL_TOKEN_KIND_NONE) {
             LL_Line_Info line_info = lexer_get_line_info(cc->lexer, scope->c_open);
             wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
@@ -254,7 +267,7 @@ uint32 output_queued(Compiler_Context* cc, LL_Stage_Kind stage_kind, Oc_Writer* 
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Declaration* decl = (Code_Declaration*)queued->code;
 
-        wprint(w, "node{} [label=\"{} {}\\n{}\\ndependencies: {}", queued->s, decl->ident->str, queued->s, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
+        wprint(w, "node{} [label=\"{} {}\\n{}: {}\\ndependencies: {}", queued->s, decl->ident->str, queued->s, get_stage_name(queued->stage), (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
         if (decl->base.token_info.kind != LL_TOKEN_KIND_NONE) {
             LL_Line_Info line_info = lexer_get_line_info(cc->lexer, decl->base.token_info);
             wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
@@ -266,7 +279,7 @@ uint32 output_queued(Compiler_Context* cc, LL_Stage_Kind stage_kind, Oc_Writer* 
         wprint(w, "\"];\n");
     } break;
     default: {
-        wprint(w, "node{} [label=\"{} {}\\n{}\\ndependencies: {}", queued->s, ast_get_node_kind(queued->code), queued->s, (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
+        wprint(w, "node{} [label=\"{} {}\\n{}: {}\\ndependencies: {}", queued->s, ast_get_node_kind(queued->code), queued->s, get_stage_name(queued->stage), (sint64)(sint32)queued->index_in_stage, queued->dependency_counter[stage_kind]);
         if (queued->code->token_info.kind != LL_TOKEN_KIND_NONE) {
             LL_Line_Info line_info = lexer_get_line_info(cc->lexer, queued->code->token_info);
             wprint(w, "\\nline {}, col {}", line_info.line, line_info.column);
@@ -307,15 +320,6 @@ uint32 output_queued(Compiler_Context* cc, LL_Stage_Kind stage_kind, Oc_Writer* 
     return queued->s;
 }
 
-const char* get_stage_name(LL_Stage_Kind stage_kind) {
-    switch (stage_kind) {
-    case 0: return "STAGE_NONE";
-    case STAGE_TYPECHECK: return "STAGE_TYPECHECK";
-    case STAGE_IR: return "STAGE_IR";
-    case STAGE_EVAL: return "STAGE_EVAL";
-    default: oc_assert(false);
-    }
-}
 void input_graph(Compiler_Context* cc, LL_Stage_Kind stage_kind) {
     LL_Stage* stage = &cc->stages[stage_kind];
     static int in_graph = 0;
@@ -428,18 +432,19 @@ void compiler_cycle_stage_typecheck(Compiler_Context* cc, uint32* number_of_dele
             }
             resolve_dependencies(cc, queued_item, STAGE_TYPECHECK);
 
-            queued_item->index_in_stage = stage->output.count;
+            queued_item->index_in_stage = (uint32)-1;
             oc_array_append(&cc->arena, &stage->output, queued_item);
 
-            stage->input.items[i] = stage->input.items[stage->input.count - 1];
-            stage->input.items[i]->index_in_stage = i;
+            if (stage->input.count > 1) {
+                stage->input.items[i] = stage->input.items[stage->input.count - 1];
+                stage->input.items[i]->index_in_stage = i;
+            }
             
             stage->input.count--;
             (*number_of_deletions)++;
             i--;
         }
     }
-    print("finish cycle\n");
 }
 
 
@@ -456,6 +461,7 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
             LL_Queued* queued = last_stage->output.items[i];
             if (queued->dependency_counter[STAGE_IR] == 0) {
                 queued->index_in_stage = stage->input.count;
+                queued->stage = STAGE_IR;
                 oc_array_append(&cc->arena, &stage->input, queued);
             } else {
                 queued->index_in_stage = -1;
@@ -497,11 +503,13 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
             }
             resolve_dependencies(cc, queued_item, STAGE_IR);
 
-            queued_item->index_in_stage = stage->output.count;
+            queued_item->index_in_stage = (uint32)-1;
             oc_array_append(&cc->arena, &stage->output, queued_item);
 
-            stage->input.items[i] = stage->input.items[stage->input.count - 1];
-            stage->input.items[i]->index_in_stage = i;
+            if (stage->input.count > 1) {
+                stage->input.items[i] = stage->input.items[stage->input.count - 1];
+                stage->input.items[i]->index_in_stage = i;
+            }
             
             stage->input.count--;
             (*number_of_deletions)++;
@@ -521,8 +529,11 @@ void compiler_cycle_stage_eval(Compiler_Context* cc, uint32* number_of_deletions
         for (uint32 i = 0; i < last_stage->output.count; ++i) {
             LL_Queued* queued = last_stage->output.items[i];
             if (queued->needs_eval) {
-                queued->index_in_stage = stage->input.count;
-                oc_array_append(&cc->arena, &stage->input, queued);
+                if (queued->index_in_stage == (uint32)-1) {
+                    queued->index_in_stage = stage->input.count;
+                    queued->stage = STAGE_EVAL;
+                    oc_array_append(&cc->arena, &stage->input, queued);
+                }
                 oc_array_unordered_remove(&cc->arena, &last_stage->output, i);
                 --i;
             } else {
@@ -556,11 +567,13 @@ void compiler_cycle_stage_eval(Compiler_Context* cc, uint32* number_of_deletions
             }
             resolve_dependencies(cc, queued_item, STAGE_EVAL);
 
-            queued_item->index_in_stage = stage->output.count;
+            queued_item->index_in_stage = (uint32)-1;
             oc_array_append(&cc->arena, &stage->output, queued_item);
 
-            stage->input.items[i] = stage->input.items[stage->input.count - 1];
-            stage->input.items[i]->index_in_stage = i;
+            if (stage->input.count > 1) {
+                stage->input.items[i] = stage->input.items[stage->input.count - 1];
+                stage->input.items[i]->index_in_stage = i;
+            }
             
             stage->input.count--;
             (*number_of_deletions)++;
