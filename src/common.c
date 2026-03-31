@@ -408,7 +408,6 @@ void compiler_cycle_stage_typecheck(Compiler_Context* cc, uint32* number_of_dele
         
         bool result = true;
 
-        LL_Resume_Info resume_info = { .code = queued_item->code };
         oc_array_append(&cc->arena, &cc->queued_stack, queued_item);
 
         if (queued_item->imperative_index != (uint32)-1) {
@@ -416,12 +415,12 @@ void compiler_cycle_stage_typecheck(Compiler_Context* cc, uint32* number_of_dele
             oc_assert((*scope)->flags & CODE_SCOPE_FLAG_IMPERATIVE);
             typer->current_scope = *scope;
             typer->current_function = queued_item->function;
-            result = ll_typer_type_statement(cc, typer, (Code**)scope, &resume_info);
+            result = ll_typer_type_statement(cc, typer, (Code**)scope);
         } else {
             // oc_assert(queued_item->scope->flags & CODE_SCOPE_FLAG_DECLARATIVE);
             typer->current_scope = queued_item->scope;
             typer->current_function = queued_item->function;
-            result = ll_typer_type_statement(cc, typer, &queued_item->code, &resume_info);
+            result = ll_typer_type_statement(cc, typer, &queued_item->code);
         }
 
         cc->queued_stack.count--;

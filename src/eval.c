@@ -1063,7 +1063,13 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
                 if (fn->flags & LL_IR_FUNCTION_FLAG_NATIVE) {
                     size_t old_section_size = b->native_fn_stub_section.count;
 
-                    int64_t offset = do_native_fn_call_aarch64(cc, b, bir, invokee, count, operands + invoke_offset);
+                    #if defined(__x86_64__)
+                        int64_t offset = do_native_fn_call(cc, b, bir, invokee, count, operands + invoke_offset);
+                    #elif defined(__arch64__)
+                        int64_t offset = do_native_fn_call_aarch64(cc, b, bir, invokee, count, operands + invoke_offset);
+                    #else
+                        #error "Invalid architecture"
+                    #endif
                     if (offset == -1) break;
                     if (!b->native_fn_exe_code) break;
                     

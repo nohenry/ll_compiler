@@ -21,7 +21,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/main.exe",
-            "args": ["./tests/cases/const.t", "--ir"],
+            "args": ["./tests/cases/dynamic_array.t", "--ir"],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}",
             "environment": [],

@@ -301,7 +301,7 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     typer->current_scope = (Code_Scope*)node;
     typer->waited_on_code = NULL;
     CODE_AS(node, Code_Scope)->parent_scope = typer->root_scope;
-    ll_typer_type_statement(cc, typer, &node, NULL);
+    ll_typer_type_statement(cc, typer, &node);
 }
 
 LL_Type* ll_intern_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type) {
@@ -598,8 +598,10 @@ void actually_queue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued
 }
 
 void actually_unqueue(Compiler_Context* cc, LL_Stage_Kind stage, LL_Queued* queued) {
-    oc_assert(queued->index_in_stage != (uint32)-1);
-    oc_assert(queued->stage == stage);
+    if (queued->index_in_stage == (uint32)-1) return;
+    if (queued->stage != stage) return;
+    // oc_assert(queued->index_in_stage != (uint32)-1);
+    // oc_assert(queued->stage == stage);
     oc_array_unordered_remove(&cc->arena, &cc->stages[stage].input, queued->index_in_stage);
     cc->stages[stage].input.items[queued->index_in_stage]->index_in_stage = queued->index_in_stage;
 
@@ -650,7 +652,101 @@ bool ll_typer_handle_const_eval(Compiler_Context* cc, LL_Typer* typer, Code_Mark
     return queued->max_completed_stage >= STAGE_EVAL;
 }
 
-bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt, LL_Resume_Info* resume_info) {
+bool ll_typer_handle_block(Compiler_Context* cc, LL_Typer* typer, LL_Type* expected_type, Code_Scope** block, bool is_expr) {
+    uint32 i;
+    Code_Scope* blk = *block;
+    LL_Queued* queued = blk->base.queued;
+
+    LL_Type* last_block_type = NULL;
+    if (is_expr) {
+        last_block_type = typer->block_type;
+        typer->block_type = expected_type;
+        blk->base.type = expected_type;
+    }
+
+    LL_Queued* last_queued = current_queued();
+    if (last_queued != queued) {
+        oc_array_append(&cc->arena, &cc->queued_stack, queued);
+    }
+
+    // if (
+    //     typer->current_scope->kind != LL_SCOPE_KIND_LOOP
+    //     && typer->current_scope->kind != LL_SCOPE_KIND_PACKAGE
+    // ) {
+    //     if (blk->flags & CODE_SCOPE_FLAG_MACRO_EXPANSION) {
+    //         block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *stmt);
+    //     } else {
+    //         block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *stmt);
+    //     }
+
+    //     ll_typer_scope_put(cc, typer, block_scope, false);
+    //     typer->current_scope = block_scope;
+    // }
+
+    typer->current_scope = blk;
+    
+    bool result = true;
+    if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
+        if (queued->imperative_index != (uint32)-1) {
+            i = blk->base.queued->imperative_index;
+            queued->imperative_index = (uint32)-1;
+        } else i = 0;
+
+        for (; i < blk->declarations.capacity; ++i) {
+            if (blk->declarations.entries[i].filled) {
+                result = ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value);
+
+                if (!result) {
+                    queued->imperative_index = i;
+                }
+            }
+        }
+        oc_assert(blk->statements.count == 0);
+    } else {
+        oc_assert(blk->flags & CODE_SCOPE_FLAG_IMPERATIVE);
+
+        if (queued->imperative_index != (uint32)-1) {
+            i = blk->base.queued->imperative_index;
+            queued->imperative_index = (uint32)-1;
+        } else i = 0;
+
+
+        for (; i < blk->statements.count; ++i) {
+            if (blk->statements.items[i]->queued) {
+                if (blk->statements.items[i]->queued->max_completed_stage < STAGE_TYPECHECK) {
+                    depend(queued, blk->statements.items[i]->queued, STAGE_TYPECHECK);
+                    actually_unqueue(cc, STAGE_TYPECHECK, queued);
+                    queued->imperative_index = i;
+                    break;
+                }
+            }
+            result = ll_typer_type_statement(cc, typer, &blk->statements.items[i]);
+
+            if (!result) {
+                queued->imperative_index = i;
+                break;
+            }
+        }
+    }
+    typer->current_scope = blk->parent_scope;
+    if (is_expr) typer->block_type = last_block_type;
+    if (last_queued != queued) {
+        cc->queued_stack.count--;
+    }
+
+    if (!result) {
+        // is these are equal, it means we came directly from the queue
+        if (last_queued != queued) {
+            depend(last_queued, queued, STAGE_TYPECHECK);
+            actually_unqueue(cc, STAGE_TYPECHECK, last_queued);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt) {
     uint32_t i;
     LL_Type** types;
     bool can_continue;
@@ -661,65 +757,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
     case CODE_KIND_TYPENAME:
         break;
     case CODE_KIND_BLOCK: {
-        Code_Scope* blk = CODE_AS((*stmt), Code_Scope);
-        LL_Queued* queued = current_queued();
-
-        // if (
-        //     typer->current_scope->kind != LL_SCOPE_KIND_LOOP
-        //     && typer->current_scope->kind != LL_SCOPE_KIND_PACKAGE
-        // ) {
-        //     if (blk->flags & CODE_SCOPE_FLAG_MACRO_EXPANSION) {
-        //         block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *stmt);
-        //     } else {
-        //         block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *stmt);
-        //     }
-
-        //     ll_typer_scope_put(cc, typer, block_scope, false);
-        //     typer->current_scope = block_scope;
-        // }
-
-        typer->current_scope = blk;
-        
-        bool result = true;
-        if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
-            if (queued->imperative_index != (uint32)-1) {
-                i = blk->base.queued->imperative_index;
-                queued->imperative_index = (uint32)-1;
-            } else i = 0;
-
-            for (; i < blk->declarations.capacity; ++i) {
-                if (blk->declarations.entries[i].filled) {
-                    result = ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value, NULL);
-
-                    if (!result) {
-                        queued->imperative_index = i;
-                    }
-                }
-            }
-            oc_assert(blk->statements.count == 0);
-        } else {
-            oc_assert(blk->flags & CODE_SCOPE_FLAG_IMPERATIVE);
-
-            if (queued->imperative_index != (uint32)-1) {
-                i = blk->base.queued->imperative_index;
-                queued->imperative_index = (uint32)-1;
-            } else i = 0;
-
-
-            for (; i < blk->statements.count; ++i) {
-                result = ll_typer_type_statement(cc, typer, &blk->statements.items[i], NULL);
-
-                if (!result) {
-                    queued->imperative_index = i;
-                    break;
-                }
-            }
-        }
-        typer->current_scope = blk->parent_scope;
-
-        // if (resume_info && !result) return false;
-        if (!result) return false;
-
+        return ll_typer_handle_block(cc, typer, NULL, (Code_Scope**)stmt, false);
     } break;
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS((*stmt), Code_Variable_Declaration);
@@ -876,6 +914,8 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
             return_type = typer->ty_void;
         }
 
+
+
         LL_Type* fn_type = ll_typer_get_fn_type(cc, typer, return_type, types, fn_decl->parameters.count, did_variadic);
         (*stmt)->type = fn_type;
         fn_decl->base.ident->base.type = fn_type;
@@ -891,6 +931,17 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt,
                 Code_Scope* blk = CODE_AS(fn_decl->body, Code_Scope);
                 ll_typer_report_error(((LL_Error) { .main_token = blk->c_open, .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Extern function shouldn't have a body");
                 ll_typer_report_error_done(cc, typer);
+            }
+
+            if (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) {
+                fn_decl->body->base.queued->dependency_counter[STAGE_TYPECHECK]--;
+                for (uint32 i = 0; i < fn_decl->base.base.queued->dependants.count; ++i) {
+                    LL_Dependency* dep = &fn_decl->base.base.queued->dependants.items[i];
+                    if (dep->target == fn_decl->body->base.queued) {
+                        oc_array_unordered_remove(&cc->arena, &fn_decl->base.base.queued->dependants, i);
+                        break;
+                    }
+                }
             }
             // if ((fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) == 0 && (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) == 0) {
             //     ll_typer_type_statement(cc, typer, (Code**)&fn_decl->body, NULL);
@@ -1243,43 +1294,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 
     switch ((*expr)->kind) {
     case CODE_KIND_BLOCK: {
-        LL_Type* last_block_type = typer->block_type;
-        typer->block_type = expected_type;
-        Code_Scope* blk = CODE_AS((*expr), Code_Scope);
-        blk->base.type = expected_type;
-
-        // LL_Scope* block_scope = NULL; 
-        // if (typer->current_scope->kind != LL_SCOPE_KIND_LOOP) {
-        //     if (blk->flags & CODE_SCOPE_FLAG_MACRO_EXPANSION) {
-        //         block_scope = create_scope(LL_SCOPE_KIND_MACRO_EXPANSION, *expr);
-        //     } else {
-        //         block_scope = create_scope(LL_SCOPE_KIND_BLOCK_VALUE, *expr);
-        //     }
-
-        //     ll_typer_scope_put(cc, typer, block_scope, false);
-        //     typer->current_scope = block_scope;
-        // }
-
-        // blk->scope = block_scope;
-        typer->current_scope = blk;
-
-        for (i = 0; i < CODE_AS((*expr), Code_Scope)->declarations.capacity; ++i) {
-            if (CODE_AS((*expr), Code_Scope)->declarations.entries[i].filled)
-                ll_typer_type_statement(cc, typer, (Code**)&CODE_AS((*expr), Code_Scope)->declarations.entries[i]._value, NULL);
-        }
-        for (i = 0; i < CODE_AS((*expr), Code_Scope)->statements.count; ++i) {
-            ll_typer_type_statement(cc, typer, &CODE_AS((*expr), Code_Scope)->statements.items[i], NULL);
-        }
-
-        typer->current_scope = blk->parent_scope;
-
-        // if (block_scope) {
-        //     typer->current_scope = block_scope->parent;
-        // }
-
-        result = typer->block_type;
-        typer->block_type = last_block_type;
-        break;
+        return ll_typer_handle_block(cc, typer, expected_type, (Code_Scope**)expr, true);
     }
     case CODE_KIND_IDENT: {
         if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
@@ -1354,9 +1369,14 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         } break;
         }
 
-        if (!result) {
-            typer->waited_on_code = (*expr);
-            return false;
+        // @Robustness in theory function bodies (which reference parameters) will only be queued once parameters are typechecked,
+        //             but it's possible for result to be NULL if it's generic.
+        if (decl->base.kind != CODE_KIND_PARAMETER) {
+            if (!result) {
+                depend(current_queued(), decl->base.queued, STAGE_TYPECHECK);
+                typer->waited_on_code = (*expr);
+                return false;
+            }
         }
 
         if (possible_const->has_const) {
@@ -2427,7 +2447,7 @@ TRY_MEMBER_FUNCTION_CALL:
                     // typer->current_fn = (LL_Type_Function*)fn_type;
 
                     // type body
-                    ll_typer_type_statement(cc, typer, (Code**)&new_fn_decl->body, NULL);
+                    ll_typer_type_statement(cc, typer, (Code**)&new_fn_decl->body);
                     oc_assert(false);
 
 
@@ -2633,6 +2653,7 @@ TRY_MEMBER_FUNCTION_CALL:
 
         ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried returning outside of a function");
         ll_typer_report_error_done(cc, typer);
+        break;
 
 CODE_RETURN_EXIT_SCOPE:
         if (cf->expr) {
@@ -2648,20 +2669,59 @@ CODE_RETURN_EXIT_SCOPE:
         Code_Control_Flow* cf = CODE_AS((*expr), Code_Control_Flow);
 
         Code_Scope* current_scope = typer->current_scope;
-        cf->referenced_scope = NULL;
-
         LL_Type* break_type = NULL;
 
+        // cf->referenced_scope = NULL;
+        if (cf->referenced_scope != NULL) {
+            oc_assert(cf->referenced_scope->base.queued);
+            oc_assert(cf->referenced_scope->base.queued->max_completed_stage >= STAGE_TYPECHECK);
+            if (current_scope->flags & CODE_SCOPE_FLAG_EXPR) {
+                break_type = current_scope->base.type;
+            } else oc_assert(false);
+            goto CODE_BREAK_EXIT_SCOPE;
+        }
+
         while (current_scope) {
-            oc_todo("");
-            // if (current_scope->decl) {
-            //     switch (current_scope->decl->base.kind) {
-            //     case CODE_KIND_FUNCTION_DECLARATION:
-            //         cf->referenced_scope = current_scope;
-            //         goto CODE_RETURN_EXIT_SCOPE;
-            //     default: break;
-            //     }
-            // }
+            if (current_scope->decl) {
+                switch (current_scope->decl->base.kind) {
+                case CODE_KIND_FOR:
+                    if (cf->target == CODE_CONTROL_FLOW_TARGET_ANY || cf->target == CODE_CONTROL_FLOW_TARGET_FOR) {
+                        cf->referenced_scope = current_scope;
+
+                        break_type = current_scope->decl->base.type;
+                        goto CODE_BREAK_EXIT_SCOPE;
+                    }
+                    break;
+                case CODE_KIND_FUNCTION_DECLARATION:
+                    ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried breaking without a block to break out of");
+                    ll_typer_report_error_done(cc, typer);
+                    goto CODE_BREAK_EXIT_SCOPE;
+                case CODE_KIND_STRUCT:
+                case CODE_KIND_TYPENAME:
+                    ll_typer_report_error(((LL_Error){ .main_token = cf->base.token_info }), "Tried breaking without a block to break out of");
+                    ll_typer_report_error_done(cc, typer);
+                    goto CODE_BREAK_EXIT_SCOPE;
+                default: break;
+                }
+            } else {
+                if (current_scope->flags & CODE_SCOPE_FLAG_EXPR) {
+                    if (cf->target == CODE_CONTROL_FLOW_TARGET_ANY || cf->target == CODE_CONTROL_FLOW_TARGET_DO) {
+                        cf->referenced_scope = current_scope;
+
+                        // oc_assert(current_scope->base.queued); // this should be for_scope in parser
+                        // if (current_scope->base.queued->max_completed_stage < STAGE_TYPECHECK) {
+                        //     oc_assert(current_queued() != current_scope->base.queued);
+                        //     depend(current_queued(), current_scope->base.queued, STAGE_TYPECHECK);
+                        //     actually_unqueue(cc, STAGE_TYPECHECK, current_queued());
+                        //     return false;
+                        // }
+
+                        break_type = current_scope->base.type;
+                        goto CODE_BREAK_EXIT_SCOPE;
+                    }
+                }
+            }
+
 
             // switch (current_scope->kind) {
             // case LL_SCOPE_KIND_LOOP:
@@ -2701,34 +2761,35 @@ CODE_RETURN_EXIT_SCOPE:
             // }
             current_scope = current_scope->parent_scope;
         }
+        break;
 
 CODE_BREAK_EXIT_SCOPE:
-            oc_todo("implement scope brek");
-            #if 0
         if (cf->expr) {
-            if (cf->referenced_scope->kind == LL_SCOPE_KIND_BLOCK) {
-                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value, but scope to break from didn't expect a value");
-                Code_Scope* blk = CODE_AS(cf->referenced_scope->decl, Code_Scope);
-                ll_typer_report_error_note(((LL_Error){ .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Breaking from this block");
-                ll_typer_report_error_done(cc, typer);
-            }
+            // if (cf->referenced_scope->kind == LL_SCOPE_KIND_BLOCK) {
+            //     ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value, but scope to break from didn't expect a value");
+            //     Code_Scope* blk = CODE_AS(cf->referenced_scope->decl, Code_Scope);
+            //     ll_typer_report_error_note(((LL_Error){ .highlight_start = blk->c_open, .highlight_end = blk->c_close }), "Breaking from this block");
+            //     ll_typer_report_error_done(cc, typer);
+            // }
             if (break_type == NULL) {
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value, but scope to break from didn't expect a value");
-                switch (cf->referenced_scope->kind) {
-                case LL_SCOPE_KIND_BLOCK_VALUE:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this block");
-                    break;
-                case LL_SCOPE_KIND_LOOP:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this loop");
-                    break;
-                default:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this sceop");
-                    break;
+                if (cf->referenced_scope->decl) {
+                    switch (cf->referenced_scope->decl->base.kind) {
+                    case CODE_KIND_FOR:
+                        ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->base.token_info }), "Breaking from this loop");
+                        break;
+                    default:
+                        ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->base.token_info }), "Breaking from this sceop");
+                        break;
+                    }
+                } else {
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->base.token_info }), "Breaking from this block");
                 }
                 ll_typer_report_error_done(cc, typer);
             }
 
-            LL_Type* value_type = ll_typer_type_expression(cc, typer, &cf->expr, break_type, NULL);
+            ll_typer_type_expression(cc, typer, &cf->expr, break_type, NULL);
+            LL_Type* value_type = cf->expr->type;
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, cf->expr, break_type)) {
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value that is incompatible with the expected type");
@@ -2739,16 +2800,17 @@ CODE_BREAK_EXIT_SCOPE:
                 ll_typer_report_error_type(cc, typer, value_type);
                 ll_typer_report_error_no_src("\n");
 
-                switch (cf->referenced_scope->kind) {
-                case LL_SCOPE_KIND_BLOCK_VALUE:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this block");
-                    break;
-                case LL_SCOPE_KIND_LOOP:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this loop");
-                    break;
-                default:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this sceop");
-                    break;
+                if (cf->referenced_scope->decl) {
+                    switch (cf->referenced_scope->decl->base.kind) {
+                    case CODE_KIND_FOR:
+                        ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->base.token_info }), "Breaking from this loop");
+                        break;
+                    default:
+                        ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->base.token_info }), "Breaking from this sceop");
+                        break;
+                    }
+                } else {
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->base.token_info }), "Breaking from this block");
                 }
 
                 ll_typer_report_error_done(cc, typer);
@@ -2758,16 +2820,17 @@ CODE_BREAK_EXIT_SCOPE:
         } else {
             if (break_type != NULL) {
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking without a value, but scope to break from expects a value");
-                switch (cf->referenced_scope->kind) {
-                case LL_SCOPE_KIND_BLOCK_VALUE:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this block");
-                    break;
-                case LL_SCOPE_KIND_LOOP:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this loop");
-                    break;
-                default:
-                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->token_info }), "Breaking from this sceop");
-                    break;
+                if (cf->referenced_scope->decl) {
+                    switch (cf->referenced_scope->decl->base.kind) {
+                    case CODE_KIND_FOR:
+                        ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->base.token_info }), "Breaking from this loop");
+                        break;
+                    default:
+                        ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->decl->base.token_info }), "Breaking from this sceop");
+                        break;
+                    }
+                } else {
+                    ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->base.token_info }), "Breaking from this block");
                 }
                 ll_typer_report_error_no_src("    expecting type ");
                 ll_typer_report_error_type(cc, typer, break_type);
@@ -2775,7 +2838,6 @@ CODE_BREAK_EXIT_SCOPE:
                 ll_typer_report_error_done(cc, typer);
             }
         }
-            #endif
 
         result = NULL;
     } break;
@@ -2801,6 +2863,9 @@ CODE_BREAK_EXIT_SCOPE:
             break;
         }
 
+        ll_typer_type_statement(cc, typer, &iff->body);
+        if (iff->else_clause) ll_typer_type_statement(cc, typer, &iff->else_clause);
+
         result = NULL;
     } break;
     case CODE_KIND_WHILE:
@@ -2808,11 +2873,15 @@ CODE_BREAK_EXIT_SCOPE:
         Code_Loop* loop = CODE_AS((*expr), Code_Loop);
 
         loop->base.type = expected_type;
-        if (loop->init) ll_typer_type_statement(cc, typer, &loop->init, NULL);
+        typer->current_scope = loop->for_scope;
+        if (loop->init) ll_typer_type_statement(cc, typer, &loop->init);
 
         if (loop->cond) {
             can_continue = ll_typer_type_expression(cc, typer, &loop->cond, typer->ty_int32, NULL);
-            if (!can_continue) return false;
+            if (!can_continue) {
+                typer->current_scope = typer->current_scope->parent_scope;
+                return false;
+            }
             switch (loop->cond->type->kind) {
             case LL_TYPE_BOOL:
             case LL_TYPE_ANYBOOL:
@@ -2830,10 +2899,16 @@ CODE_BREAK_EXIT_SCOPE:
             }
         }
         if (loop->update) {
-            if (!can_continue) return false;
+            if (!can_continue) {
+                typer->current_scope = typer->current_scope->parent_scope;
+                return false;
+            }
             can_continue = ll_typer_type_expression(cc, typer, &loop->update, NULL, NULL);
         }
 
+        ll_typer_type_statement(cc, typer, &loop->body);
+
+        typer->current_scope = typer->current_scope->parent_scope;
         result = expected_type;
     } break;
     case CODE_KIND_TYPENAME: break;

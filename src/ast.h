@@ -124,6 +124,11 @@ Enum(Code_Scope_Flags, uint32,
     CODE_SCOPE_FLAG_PARAMETERS      = (1u << 4u),
 );
 
+Enum(Code_Scope_Kind, uint32, 
+    CODE_SCOPE_DEFAULT = 0,
+    CODE_SCOPE_FOR,
+);
+
 typedef struct Code_Declaration {
     Code base;
     Code* type;
@@ -135,6 +140,7 @@ typedef struct Code_Declaration {
 typedef struct Code_Scope {
     Code base;
     Code_Scope_Flags flags;
+    Code_Scope_Kind scope_kind;
     Code_Declaration* decl;
 
     struct Code_Scope* parent_scope;
@@ -216,7 +222,7 @@ typedef struct {
     Code* cond;
     Code* update;
     Code* body;
-    struct scope_map* scope;
+    Code_Scope* for_scope;
 } Code_Loop;
 
 typedef struct {

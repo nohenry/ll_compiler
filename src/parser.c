@@ -107,6 +107,10 @@ static inline void insert_into_block(Compiler_Context* cc, Code_Scope* block, Co
     }
 }
 
+static inline bool expression_required_semicolon(Code* expr) {
+    return !(expr && (expr->kind == CODE_KIND_IF || expr->kind == CODE_KIND_FOR || expr->kind == CODE_KIND_WHILE));
+}
+
 Code* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
 	Code* block_result = CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope){ .base.kind = CODE_KIND_BLOCK }));
     Code_Scope* block = (Code_Scope*)block_result;
@@ -186,7 +190,7 @@ HANDLE_IDENT:
             }
 
             result = parser_parse_expression(cc, parser, NULL, 0, true);
-            /* if (result && (result->code->kind == CODE_KIND_IF || result-->kind == CODE_KIND_FOR  || result->kind == CODE_KIND_WHILE)) break; */
+            if (!expression_required_semicolon(result)) break;
 HANDLE_TRY_DECL:
             PEEK(&token);
             if (token.kind == LL_TOKEN_KIND_IDENT) // this includes macro keyword
@@ -207,10 +211,10 @@ Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser, Code_Dec
     // we don't queue declarative blocks since each of their declarations
     // will be queued individually
     LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, block_result);
-    if (block_flags & CODE_SCOPE_FLAG_IMPERATIVE) {
-        queued->imperative_index = 0;
-        actually_queue(cc, STAGE_TYPECHECK, queued);
-    }
+    // if (block_flags & CODE_SCOPE_FLAG_IMPERATIVE && decl && decl->base.kind == CODE_KIND_FUNCTION_DECLARATION) {
+    //     queued->imperative_index = 0;
+    //     actually_queue(cc, STAGE_TYPECHECK, queued);
+    // }
 
     PEEK(&token);
     if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_DO.ptr) {
@@ -422,7 +426,7 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             CODE_AS(body_or_init, Code_Scope)->decl = (Code_Declaration*)result;
             // depend(queued, body_or_init->queued, STAGE_TYP)
             depend(body_or_init->queued, queued, STAGE_FLAG_TYPECHECK);
-            actually_unqueue(cc, STAGE_TYPECHECK, body_or_init->queued);
+            // actually_unqueue(cc, STAGE_TYPECHECK, body_or_init->queued);
         }
     } else {
 		result = CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
@@ -866,7 +870,11 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
                 PEEK(&token);
                 if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_ELSE.ptr) {
                 } else {
-                    if (from_statement) EXPECT(';', &token);
+                    if (from_statement) {
+                        if (expression_required_semicolon(body)) {
+                            EXPECT(';', &token);
+                        }
+                    }
                 }
             }
 
@@ -881,7 +889,11 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
                 } else {
                     right = parser_parse_expression(cc, parser, NULL, 0, false);
                     if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_IF.ptr) {}
-                    else if (from_statement) EXPECT(';', &token);
+                    else if (from_statement) {
+                        if (expression_required_semicolon(body)) {
+                            EXPECT(';', &token);
+                        }
+                    }
                 }
             } else {
                 right = NULL;
@@ -901,21 +913,39 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
                 body = (Code*)parser_parse_block(cc, parser, NULL, CODE_SCOPE_FLAG_IMPERATIVE);
             } else {
                 body = parser_parse_expression(cc, parser, NULL, 0, false);
-                if (from_statement) EXPECT(';', &token);
+                if (from_statement) {
+                    if (expression_required_semicolon(body)) {
+                        EXPECT(';', &token);
+                    }
+                }
             }
 
             result = CREATE_NODE(CODE_KIND_WHILE, ((Code_Loop){ .cond = right, .body = body }));
             result->token_info = for_kw;
             break;
         } else if (token.str.ptr == LL_KEYWORD_FOR.ptr) {
+            Code_Scope* for_scope = (Code_Scope*)CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope){ .base.kind = CODE_KIND_BLOCK, .flags = CODE_SCOPE_FLAG_IMPERATIVE }));
+            // we don't queue declarative blocks since each of their declarations
+            // will be queued individually
+            LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, (Code*)for_scope);
+            queued->imperative_index = 0;
+            // actually_queue(cc, STAGE_TYPECHECK, queued);
+
+
+            for_scope->parent_scope = parser->current_scope;
+            parser->current_scope = for_scope;
+            uint32 last_ordering = parser->block_ordering;
+            parser->block_ordering = 0;
+
+            Code* init;
             LL_Token_Info for_kw = TOKEN_INFO(token);
             CONSUME();
             PEEK(&token);
             if (token.kind == ';') {
-                result = NULL;
+                init = NULL;
                 CONSUME();
             } else {
-                result = parser_parse_declaration(cc, parser, false, 0);
+                init = parser_parse_declaration(cc, parser, false, 0);
             }
             PEEK(&token);
             if (token.kind == ';') {
@@ -936,12 +966,25 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
                     body = (Code*)parser_parse_block(cc, parser, NULL, CODE_SCOPE_FLAG_IMPERATIVE);
                 } else {
                     body = parser_parse_expression(cc, parser, NULL, 0, false);
-                    if (from_statement) EXPECT(';', &token);
+                    if (from_statement) {
+                        if (expression_required_semicolon(body)) {
+                            EXPECT(';', &token);
+                        }
+                    }
                 }
             }
 
-            result = CREATE_NODE(CODE_KIND_FOR, ((Code_Loop){ .init = result, .cond = right, .update = update, .body = body }));
+            parser->block_ordering = last_ordering;
+            parser->current_scope = for_scope->parent_scope;
+
+            result = CREATE_NODE(CODE_KIND_FOR, ((Code_Loop){ .init = init, .cond = right, .update = update, .body = body, .for_scope = for_scope }));
             result->token_info = for_kw;
+            // oc_array_append(&cc->arena, &for_scope->statements, init);
+            // oc_array_append(&cc->arena, &for_scope->statements, result);
+
+            // @Robustness this is decl but we are assigning non decl to it
+            for_scope->decl = CODE_AS(result, Code_Declaration);
+            // result = for_scope;
             break;
         } else if (token.str.ptr == LL_KEYWORD_CAST.ptr) {
             LL_Token_Info cast_kw = TOKEN_INFO(token);
@@ -1187,7 +1230,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
         case CODE_KIND_PARAMETER:
         case CODE_KIND_VARIABLE_DECLARATION:
             print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.type, indent + 1, w);
-            print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.ident, indent + 1, w);
+            if (CODE_AS(node, Code_Variable_Declaration)->base.ident) print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.ident, indent + 1, w);
             if (CODE_AS(node, Code_Variable_Declaration)->initializer) print_node(CODE_AS(node, Code_Variable_Declaration)->initializer, indent + 1, w);
             break;
 

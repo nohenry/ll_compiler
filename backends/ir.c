@@ -463,88 +463,53 @@ void ir_generate_statement_with_state(Compiler_Context* cc, LL_Backend_Ir* b, Co
     b->last_op_was_load = last_op_was_load;
 }
 
-void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool* can_continue) {
-    uint32_t i;
-    switch (stmt->kind) {
-    case CODE_KIND_BLOCK:
-        Code_Scope* blk = CODE_AS(stmt, Code_Scope);
-        LL_Queued* queued = current_queued();
-        if (queued->fn_ir_override) {
-            b->current_function = queued->fn_ir_override;
-            blk->block_ref = FUNCTION()->entry;
-        } else if (queued->function) {
-            LL_Queued* fn_queued = queued->function->base.base.queued;
-            if (fn_queued->max_completed_stage < STAGE_IR) {
-                depend(queued, fn_queued, STAGE_FLAG_IR);
-                actually_unqueue(cc, cc->current_stage, queued);
-                actually_queue(cc, STAGE_FLAG_IR, fn_queued);
-                *can_continue = false;
-                return;
-            }
+void ir_generate_block(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool* can_continue) {
+    uint32 i;
+    Code_Scope* blk = CODE_AS(stmt, Code_Scope);
+    LL_Queued* queued = blk->base.queued;
 
-            b->current_function = queued->function->ir_index;
-            if (blk->block_ref == LL_IR_BLOCK_REF_INVALID) {
-                if (blk->decl == &queued->function->base) {
-                    oc_assert(FUNCTION()->entry == FUNCTION()->exit); // this should be the first time, so these should both by the entry block
-                    blk->block_ref = FUNCTION()->entry;
-                } else {
-                    blk->block_ref = ir_create_block(cc, b, false);
-                }
-            }
-        } else {
-            if (blk->block_ref == LL_IR_BLOCK_REF_INVALID) {
-                blk->block_ref = ir_create_block(cc, b, false);
+    if (queued->fn_ir_override) {
+        b->current_function = queued->fn_ir_override;
+        blk->block_ref = FUNCTION()->entry;
+    } else if (queued->function) {
+        LL_Queued* fn_queued = queued->function->base.base.queued;
+        if (fn_queued->max_completed_stage < STAGE_IR) {
+            depend(queued, fn_queued, STAGE_FLAG_IR);
+            actually_unqueue(cc, cc->current_stage, queued);
+            actually_queue(cc, STAGE_FLAG_IR, fn_queued);
+            *can_continue = false;
+            return;
+        }
+
+        b->current_function = queued->function->ir_index;
+        if (blk->block_ref == LL_IR_BLOCK_REF_INVALID) {
+            if (blk->decl == &queued->function->base) {
+                oc_assert(FUNCTION()->entry == FUNCTION()->exit); // this should be the first time, so these should both by the entry block
+                blk->block_ref = FUNCTION()->entry;
+            } else {
+                blk->block_ref = ir_create_block(cc, b, true);
             }
         }
-        b->current_block = blk->block_ref;
+    } else {
+        if (blk->block_ref == LL_IR_BLOCK_REF_INVALID) {
+            blk->block_ref = ir_create_block(cc, b, false);
+        }
+    }
+    b->current_block = blk->block_ref;
 
-        bool result = true;
-        if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
-            if (queued->imperative_index != (uint32)-1) {
-                i = blk->base.queued->imperative_index;
-                queued->imperative_index = (uint32)-1;
-            } else i = 0;
+    bool result = true;
+    if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
+        if (queued->imperative_index != (uint32)-1) {
+            i = blk->base.queued->imperative_index;
+            queued->imperative_index = (uint32)-1;
+        } else i = 0;
 
-            for (; i < blk->declarations.capacity; ++i) {
-                if (blk->declarations.entries[i].filled) {
-                    if (queued->ir_state) {
-                        ir_generate_statement_with_state(cc, b, (Code*)blk->declarations.entries[i]._value, queued->ir_state, &result);
-                    } else {
-                        ir_generate_statement(cc, b, (Code*)blk->declarations.entries[i]._value, &result);
-                    }
-
-                    if (!result) {
-                        queued->imperative_index = i;
-
-                        if (!queued->ir_state) {
-                            queued->ir_state = oc_arena_alloc(&cc->arena, sizeof(*queued->ir_state));
-                        }
-
-                        queued->ir_state->current_function = b->current_function;
-                        queued->ir_state->current_block = b->current_block;
-                        queued->ir_state->return_block = b->return_block;
-                        queued->ir_state->copy_operand = b->copy_operand;
-                        queued->ir_state->initializer_ptr = b->initializer_ptr;
-                        queued->ir_state->last_op_was_load = b->last_op_was_load;
-
-                        b->waited_on_code = NULL;
-                        break;
-                    }
-                }
-            }
-        } else {
-            oc_assert(blk->flags & CODE_SCOPE_FLAG_IMPERATIVE);
-
-            if (queued->imperative_index != (uint32)-1) {
-                i = blk->base.queued->imperative_index;
-                queued->imperative_index = (uint32)-1;
-            } else i = 0;
-
-            for (; i < blk->statements.count; ++i) {
+        for (; i < blk->declarations.capacity; ++i) {
+            if (blk->declarations.entries[i].filled) {
                 if (queued->ir_state) {
-                    ir_generate_statement_with_state(cc, b, blk->statements.items[i], queued->ir_state, &result);
+                    ir_generate_statement_with_state(cc, b, (Code*)blk->declarations.entries[i]._value, queued->ir_state, &result);
                 } else {
-                    ir_generate_statement(cc, b, blk->statements.items[i], &result);
+                    ir_generate_statement(cc, b, (Code*)blk->declarations.entries[i]._value, &result);
                 }
 
                 if (!result) {
@@ -561,14 +526,54 @@ void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, b
                     queued->ir_state->initializer_ptr = b->initializer_ptr;
                     queued->ir_state->last_op_was_load = b->last_op_was_load;
 
+                    *can_continue = false;
                     b->waited_on_code = NULL;
                     break;
                 }
             }
         }
+    } else {
+        oc_assert(blk->flags & CODE_SCOPE_FLAG_IMPERATIVE);
 
+        if (queued->imperative_index != (uint32)-1) {
+            i = blk->base.queued->imperative_index;
+            queued->imperative_index = (uint32)-1;
+        } else i = 0;
 
+        for (; i < blk->statements.count; ++i) {
+            if (queued->ir_state) {
+                ir_generate_statement_with_state(cc, b, blk->statements.items[i], queued->ir_state, &result);
+            } else {
+                ir_generate_statement(cc, b, blk->statements.items[i], &result);
+            }
 
+            if (!result) {
+                queued->imperative_index = i;
+
+                if (!queued->ir_state) {
+                    queued->ir_state = oc_arena_alloc(&cc->arena, sizeof(*queued->ir_state));
+                }
+
+                queued->ir_state->current_function = b->current_function;
+                queued->ir_state->current_block = b->current_block;
+                queued->ir_state->return_block = b->return_block;
+                queued->ir_state->copy_operand = b->copy_operand;
+                queued->ir_state->initializer_ptr = b->initializer_ptr;
+                queued->ir_state->last_op_was_load = b->last_op_was_load;
+
+                *can_continue = false;
+                b->waited_on_code = NULL;
+                break;
+            }
+        }
+    }
+}
+
+void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool* can_continue) {
+    uint32_t i;
+    switch (stmt->kind) {
+    case CODE_KIND_BLOCK:
+        ir_generate_block(cc, b, stmt, can_continue);
         break;
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS(stmt, Code_Variable_Declaration);
@@ -837,34 +842,27 @@ LL_Ir_Operand ir_generate_expression(Compiler_Context* cc, LL_Backend_Ir* b, Cod
     case CODE_KIND_BLOCK: {
         Code_Scope* blk = CODE_AS(expr, Code_Scope);
 
-        LL_Ir_Block_Ref break_block;
-        if (blk->flags & CODE_SCOPE_FLAG_EXPR) {
-            Code_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Code_Ident));
-            block_ident->base.type = expr->type;
-            block_ident->str = oc_sprintf(&cc->arena, "block_result\n");
-            LL_Ir_Local var = {
-                .ident = block_ident,
-            };
-            uint32_t index = FUNCTION()->locals.count;
-            oc_array_append(&cc->arena, &FUNCTION()->locals, var);
-            blk->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
-        }
-        break_block = ir_create_block(cc, b, true);
-        blk->break_block_ref = break_block;
-
-        for (i = 0; i < CODE_AS(expr, Code_Scope)->declarations.capacity; ++i) {
-            if (CODE_AS(expr, Code_Scope)->declarations.entries[i].filled) {
-                ir_generate_statement(cc, b, (Code*)CODE_AS(expr, Code_Scope)->declarations.entries[i]._value, can_continue);
-                if (!*can_continue) return 0;
+        if (!blk->break_block_ref) {
+            if (blk->flags & CODE_SCOPE_FLAG_EXPR) {
+                Code_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Code_Ident));
+                block_ident->base.type = expr->type;
+                block_ident->str = oc_sprintf(&cc->arena, "block_result\n");
+                LL_Ir_Local var = {
+                    .ident = block_ident,
+                };
+                uint32_t index = FUNCTION()->locals.count;
+                oc_array_append(&cc->arena, &FUNCTION()->locals, var);
+                blk->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
             }
-        }
-        for (i = 0; i < CODE_AS(expr, Code_Scope)->statements.count; ++i) {
-            ir_generate_statement(cc, b, CODE_AS(expr, Code_Scope)->statements.items[i], can_continue);
-            if (!*can_continue) return 0;
+            blk->break_block_ref = ir_create_block(cc, b, true);
         }
 
-        b->current_block = break_block;
+        ir_generate_block(cc, b, expr, can_continue);
+        if (!*can_continue) {
+            return 0;
+        }
 
+        b->current_block = blk->break_block_ref;
         if (blk->flags & CODE_SCOPE_FLAG_EXPR) {
             result = IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, expr->type, blk->break_value);
         }
@@ -1545,6 +1543,13 @@ HANDLE_SLICE_OP:
         b->current_block = else_block;
         LL_Ir_Block_Ref end_block = iff->else_clause ? ir_create_block(cc, b, true) : else_block;
 
+        if (iff->body->kind == CODE_KIND_BLOCK) {
+            CODE_AS(iff->body, Code_Scope)->block_ref = body_block;
+        }
+        if (iff->else_clause && iff->else_clause->kind == CODE_KIND_BLOCK) {
+            CODE_AS(iff->else_clause, Code_Scope)->block_ref = else_block;
+        }
+
         b->current_block = cond_block;
         result = ir_generate_expression(cc, b, iff->cond, false, can_continue);
         if (!*can_continue) return 0;
@@ -1579,7 +1584,9 @@ HANDLE_SLICE_OP:
     case CODE_KIND_WHILE:
     case CODE_KIND_FOR: {
         Code_Loop* loop = CODE_AS(expr, Code_Loop);
-
+        // if (loop->for_scope) {
+        //     loop->for_scope->block_ref = b->current_block;
+        // }
         if (loop->init) {
             ir_generate_statement(cc, b, loop->init, can_continue);
             if (!*can_continue) return 0;
@@ -1593,6 +1600,10 @@ HANDLE_SLICE_OP:
         b->current_block = break_block;
         LL_Ir_Block_Ref end_block = ir_create_block(cc, b, true);
 
+        if (loop->body && loop->body->kind == CODE_KIND_BLOCK) {
+            CODE_AS(loop->body, Code_Scope)->block_ref = body_block;
+        }
+
         if (loop->base.type) {
             Code_Ident* block_ident = oc_arena_alloc(&cc->arena, sizeof(Code_Ident));
             block_ident->base.type = expr->type;
@@ -1602,14 +1613,9 @@ HANDLE_SLICE_OP:
             };
             uint32_t index = FUNCTION()->locals.count;
             oc_array_append(&cc->arena, &FUNCTION()->locals, var);
-            loop->scope->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
+            loop->for_scope->break_value = LL_IR_OPERAND_LOCAL_BIT | index;
         }
-        loop->scope->break_block_ref = break_block;
-
-
-        /* cond_block->ref1 = body_block; */
-
-        /* LL_Ir_Block* end_block = ir_create_block(cc, b, true); */
+        if (loop->for_scope) loop->for_scope->break_block_ref = break_block;
 
         if (loop->cond) {
             b->current_block = cond_block;
@@ -1632,26 +1638,8 @@ HANDLE_SLICE_OP:
 
         b->current_block = end_block;
 
-        /* if (loop->cond) { */
-        /* 	result = ll_typer_type_expression(cc, typer, loop->cond, typer->ty_int32); */
-        /* 	switch (result->kind) { */
-        /* 	case LL_TYPE_POINTER: */
-        /* 	case LL_TYPE_ANYINT: */
-        /* 	case LL_TYPE_UINT: */
-        /* 	case LL_TYPE_INT: break; */
-        /* 	default: */
-        /* 		eprint("\x1b[31;1merror:\x1b[0m if statement condition should be boolean, integer or pointer\n"); */
-        /* 		break; */
-        /* 	} */
-        /* } */
-        /* if (loop->update) ll_typer_type_expression(cc, typer, loop->update, NULL); */
-
-        /* if (loop->body) { */
-        /* 	ll_typer_type_statement(cc, typer, loop->body); */
-        /* } */
-
         if (loop->base.type) {
-            return IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, loop->base.type, loop->scope->break_value);
+            return IR_APPEND_OP_DST(LL_IR_OPCODE_LOAD, loop->base.type, loop->for_scope->break_value);
         } else {
             return 0;
         }
