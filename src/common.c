@@ -468,7 +468,7 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
         }
         last_stage->output.count = 0;
     }
-    input_graph(cc, STAGE_IR);
+    // input_graph(cc, STAGE_IR);
 
     cc->number_of_queued = number_of_insertions;
 
@@ -540,7 +540,7 @@ void compiler_cycle_stage_eval(Compiler_Context* cc, uint32* number_of_deletions
             }
         }
     }
-    input_graph(cc, STAGE_EVAL);
+    // input_graph(cc, STAGE_EVAL);
 
     cc->number_of_queued = number_of_insertions;
 
@@ -590,13 +590,13 @@ void compiler_run_stages(Compiler_Context* cc) {
         number_of_deletions = 0;
         number_of_insertions = 0;
 
-        input_graph(cc, STAGE_TYPECHECK);
+        // input_graph(cc, STAGE_TYPECHECK);
         compiler_cycle_stage_typecheck(cc, &number_of_deletions, &number_of_insertions);
-        output_graph(cc, STAGE_TYPECHECK);
-        compiler_cycle_stage_ir(cc, &number_of_deletions, &number_of_insertions);
-        output_graph(cc, STAGE_IR);
-        compiler_cycle_stage_eval(cc, &number_of_deletions, &number_of_insertions);
-        output_graph(cc, STAGE_EVAL);
+        // output_graph(cc, STAGE_TYPECHECK);
+        // compiler_cycle_stage_ir(cc, &number_of_deletions, &number_of_insertions);
+        // output_graph(cc, STAGE_IR);
+        // compiler_cycle_stage_eval(cc, &number_of_deletions, &number_of_insertions);
+        // output_graph(cc, STAGE_EVAL);
 
         if (number_of_insertions == 0 && number_of_deletions == 0) break;
     }

@@ -9,6 +9,7 @@
 // #include "../backends/linux-x64_64-elf.c"
 #include "../backends/x86_64.c"
 #include "../backends/ir.c"
+#include "../backends/spirv.c"
 // #include "../backends/c.c"
 
 LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind) {
@@ -18,6 +19,7 @@ LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind) {
     /* case LL_BACKEND_LINUX_X86_64_GAS: backend_size = sizeof(Linux_x86_64_Gas_Backend); break; */
     // case LL_BACKEND_LINUX_X86_64_ELF: backend_size = sizeof(Linux_x86_64_Elf_Backend); break;
     case LL_BACKEND_LINUX_X86_64_ELF: backend_size = sizeof(X86_64_Backend); break;
+    case LL_BACKEND_SPIRV: backend_size = sizeof(LL_Backend_Spirv); break;
     // case LL_BACKEND_C: backend_size = sizeof(LL_Backend_C); break;
     }
 
@@ -37,6 +39,7 @@ LL_Backend ll_backend_init(Compiler_Context* cc, LL_Backend_Kind kind) {
         x86_64_backend_init(cc, backend.backend);
         backend.get_layout = x86_64_get_layout;
         break;
+    case LL_BACKEND_SPIRV: spirv_init(cc, backend.backend); break;
     // case LL_BACKEND_C:
     // 	backend_c_init(cc, backend.backend); break;
     }
@@ -49,6 +52,7 @@ void ll_backend_generate_statement(Compiler_Context* cc, LL_Backend* b, Code* st
     switch (b->kind) {
     case LL_BACKEND_IR: ir_generate_statement(cc, b->backend, stmt, &can_continue); break;
     // case LL_BACKEND_C: backend_c_generate_root(cc, b->backend, stmt); break;
+    case LL_BACKEND_SPIRV: spirv_generate_statement(cc, b->backend, stmt); break;
     }
     oc_assert(can_continue);
 }
@@ -68,6 +72,7 @@ bool ll_backend_write_to_file(Compiler_Context* cc, LL_Backend* b, char* filepat
     /* case LL_BACKEND_LINUX_X86_64_GAS: return linux_x86_64_gas_write_to_file(cc, b->backend, filepath); break; */
     // case LL_BACKEND_LINUX_X86_64_ELF: return linux_x86_64_elf_write_to_file(cc, b->backend, filepath); break;
     case LL_BACKEND_LINUX_X86_64_ELF: return x86_64_write_to_file(cc, b->backend, filepath); break;
+    case LL_BACKEND_SPIRV: return spirv_write_to_file(cc, b->backend, filepath); break;
     default: oc_unreachable(""); return false;
     }
 }

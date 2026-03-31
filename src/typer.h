@@ -89,6 +89,7 @@ typedef struct ll_type {
         size_t width;
         size_t struct_alignment;
     };
+    uint32_t spirv_type;
 } LL_Type;
 
 typedef struct {

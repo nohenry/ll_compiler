@@ -3,13 +3,12 @@
 // let b = a;
 // let c = b;
 
-void main() {
-    const {
-        const int a = const get_value();
-    }
-}
-
-
 int get_value() {
     return 8;
 }
+
+void main() {
+    int i = 123;
+    int j = get_value();
+}
+
