@@ -89,6 +89,7 @@ typedef struct ll_type {
         size_t width;
         size_t struct_alignment;
     };
+    struct ll_type* base_type;
     uint8_t rows, columns;
     uint32_t spirv_type;
 } LL_Type;
@@ -202,6 +203,7 @@ void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node);
 
 bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt);
 bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
+string ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string input, uint8_t* rows, uint8_t* cols);
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename, bool* can_continue);
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);

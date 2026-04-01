@@ -91,8 +91,8 @@ int main(int argc, char** argv) {
     // ll_typer_run(&cc, &typer, root);
     
     ll_typer_prerun(&cc, &typer, root);
-    if (!cc.quiet) print_node(typer.root_scope, 0, &stdout_writer);
     compiler_run_stages(&cc);
+    if (!cc.quiet) print_node((Code*)typer.root_scope, 0, &stdout_writer);
     // if (output_ir) ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
 
     // ll_backend_generate_statement_from_ir(&cc, &backend_spirv, backend_ir.backend);

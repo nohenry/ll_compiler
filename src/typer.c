@@ -275,14 +275,16 @@ void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     INSERT_BUILTIN_TYPE(ty_float16, LL_KEYWORD_FLOAT16, .kind = LL_TYPE_FLOAT, .width = 16);
     INSERT_BUILTIN_TYPE(ty_float32, LL_KEYWORD_FLOAT32, .kind = LL_TYPE_FLOAT, .width = 32);
     INSERT_BUILTIN_TYPE(ty_float64, LL_KEYWORD_FLOAT64, .kind = LL_TYPE_FLOAT, .width = 64);
-    INSERT_BUILTIN_TYPE(ty_float64, LL_KEYWORD_FLOAT, .kind = LL_TYPE_FLOAT, .width = 64);
+    // INSERT_BUILTIN_TYPE(ty_float32, LL_KEYWORD_FLOAT, .kind = LL_TYPE_FLOAT, .width = 32);
+    INSERT_TYPE_SCOPE(ty_float32, LL_KEYWORD_FLOAT);
     INSERT_ANY_TYPE(ty_anyfloat, .kind = LL_TYPE_ANYFLOAT);
 
     INSERT_BUILTIN_TYPE(ty_bool8, LL_KEYWORD_BOOL8, .kind = LL_TYPE_BOOL, .width = 8);
     INSERT_BUILTIN_TYPE(ty_bool16, LL_KEYWORD_BOOL16, .kind = LL_TYPE_BOOL, .width = 16);
     INSERT_BUILTIN_TYPE(ty_bool32, LL_KEYWORD_BOOL32, .kind = LL_TYPE_BOOL, .width = 32);
     INSERT_BUILTIN_TYPE(ty_bool64, LL_KEYWORD_BOOL64, .kind = LL_TYPE_BOOL, .width = 64);
-    INSERT_BUILTIN_TYPE(ty_bool, LL_KEYWORD_BOOL, .kind = LL_TYPE_BOOL, .width = 1);
+    // INSERT_BUILTIN_TYPE(ty_bool, LL_KEYWORD_BOOL, .kind = LL_TYPE_BOOL, .width = 1);
+    INSERT_TYPE_SCOPE(ty_bool32, LL_KEYWORD_BOOL);
     INSERT_ANY_TYPE(ty_anybool, .kind = LL_TYPE_ANYBOOL);
 
     INSERT_BUILTIN_TYPE(ty_string, LL_KEYWORD_STRING, .kind = LL_TYPE_STRING);
@@ -356,10 +358,12 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
         struct {
             LL_Type_Kind kind;
             size_t width;
+            LL_Type* base_type;
             uint8_t rows, columns;
         } type_hash = {
             .kind = type->kind,
             .width = type->width,
+            .base_type = type->base_type,
             .rows = type->rows,
             .columns = type->columns,
         };
@@ -372,10 +376,10 @@ bool ll_type_eql(LL_Type* a, LL_Type* b) {
     if (a->kind != b->kind) return false;
 
     switch (a->kind) {
-    case LL_TYPE_INT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns;
-    case LL_TYPE_UINT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns;
-    case LL_TYPE_FLOAT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns;
-    case LL_TYPE_BOOL: return a->width == b->width && a->rows == b->rows && a->columns == b->columns;
+    case LL_TYPE_INT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns && a->base_type == b->base_type;
+    case LL_TYPE_UINT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns && a->base_type == b->base_type;
+    case LL_TYPE_FLOAT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns && a->base_type == b->base_type;
+    case LL_TYPE_BOOL: return a->width == b->width && a->rows == b->rows && a->columns == b->columns && a->base_type == b->base_type;
     case LL_TYPE_POINTER: {
         LL_Type_Pointer *fa = (LL_Type_Pointer*)a, *fb = (LL_Type_Pointer*)b;
         return fa->element_type == fb->element_type;
@@ -1300,6 +1304,74 @@ void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Code** ex
     *expr = new_node;
 }
 
+bool ll_typer_type_vector_constructor(Compiler_Context* cc, LL_Typer* typer, Code_Invoke** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
+    bool can_continue = true;
+    Code_Invoke* inv = *expr;
+    oc_assert(inv->expr->has_const);
+    LL_Type* dest_type = inv->expr->const_value.as_type;
+    (*expr)->base.type = dest_type;
+
+    uword arg_count = inv->arguments.count;
+    print("here {} {}\n", dest_type->rows, dest_type->columns);
+    for (uword pi = 0, di = 0; pi < arg_count; ++pi) {
+        Code** current_arg = &inv->arguments.items[pi];
+
+        can_continue = ll_typer_type_expression(cc, typer, current_arg, dest_type->base_type, NULL);
+        if (!can_continue) return false;
+
+        if (di >= dest_type->rows * dest_type->columns) {
+            ll_typer_report_error(((LL_Error){ .main_token = (*current_arg)->token_info }), "Too many components provided to vector type!");
+
+            // @TODO: think about better wording
+            ll_typer_report_error_no_src(" result type ");
+            ll_typer_report_error_type(cc, typer, dest_type);
+            ll_typer_report_error_no_src(" requires {} components, but this argument tries to be component {}\n", dest_type->rows, di);
+
+            ll_typer_report_error_done(cc, typer);
+            continue;
+        }
+
+        if ((*current_arg)->type->rows > 1 || (*current_arg)->type->columns > 1) {
+            // is a vector type
+            if ((*current_arg)->type->base_type != dest_type->base_type) {
+                ll_typer_report_error(((LL_Error){ .main_token = (*current_arg)->token_info }), "Can't use value in vector constructor");
+
+                ll_typer_report_error_no_src("    the vector expects type ");
+                ll_typer_report_error_type(cc, typer, dest_type->base_type);
+                ll_typer_report_error_no_src(", but tried passing vector of type ");
+                ll_typer_report_error_type(cc, typer, (*current_arg)->type);
+                ll_typer_report_error_no_src(" to it.\n    when using a vector value in vector constructor, the base types must match\n");
+
+                ll_typer_report_error_done(cc, typer);
+            }
+        } else {
+            if (!ll_typer_can_implicitly_cast_expression(cc, typer, *current_arg, dest_type->base_type)) {
+                ll_typer_report_error(((LL_Error){ .main_token = (*current_arg)->token_info }), "Can't use value in vector constructor");
+
+                ll_typer_report_error_no_src("    the vector expects type ");
+                ll_typer_report_error_type(cc, typer, dest_type->base_type);
+                ll_typer_report_error_no_src(", but tried passing value with type ");
+                ll_typer_report_error_type(cc, typer, (*current_arg)->type);
+                ll_typer_report_error_no_src(" to it. ");
+                if (ll_typer_can_cast(cc, typer, (*current_arg)->type, dest_type->base_type)) {
+                    ll_typer_report_error_no_src("You can try explicitly casting the value with `cast(");
+                    ll_typer_report_error_type_no_fmt(cc, typer, dest_type->base_type);
+                    ll_typer_report_error_no_src(")`");
+                }
+                ll_typer_report_error_no_src("\n");
+
+                ll_typer_report_error_done(cc, typer);
+            }
+            ll_typer_add_implicit_cast(cc, typer, current_arg, dest_type->base_type);
+        }
+
+        print("di += {}\n", (*current_arg)->type->rows * (*current_arg)->type->columns);
+        di += (*current_arg)->type->rows * (*current_arg)->type->columns;
+    }
+
+    return true;
+}
+
 bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
     LL_Type* result = NULL;
     size_t i;
@@ -1325,11 +1397,27 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             result = ll_typer_get_ptr_type(cc, typer, typer->ty_void);
             break;
         }
-        Code_Declaration* decl = ll_typer_find_symbol_up_scope(cc, typer, typer->current_scope, CODE_AS((*expr), Code_Ident));
+        uint8_t rows = 1, cols = 1;
+        string to_lookup = ll_typer_parse_vector_type(cc, typer, CODE_AS((*expr), Code_Ident)->str, &rows, &cols);
+        Code_Declaration* decl = ll_typer_find_symbol_up_scope_string(cc, typer, typer->current_scope, to_lookup, CODE_AS((*expr), Code_Ident)->flags & CODE_IDENT_FLAG_EXPAND);
         if (!decl) {
             typer->waited_on_code = (*expr);
             return false;
         }
+
+
+        if (decl->base.kind != CODE_KIND_TYPENAME) {
+            // if we tried to lookup a vector base type, but the declaration is not a type, then we lookup just the full name
+            //    e.g. if we have a variable called 'f' and a variable called 'f2', if we reference 'f2' it looks like a vector type, so tries to lookup 'f'
+            //    but 'f' itself is a variable not a type, so we should use 'f2'.
+            // @Robustness: there's probably a better way to do this. maybe we just do vector if it starts with known vector base types (float, int, etc)
+            decl = ll_typer_find_symbol_up_scope(cc, typer, typer->current_scope, CODE_AS((*expr), Code_Ident));
+            if (!decl) {
+                typer->waited_on_code = (*expr);
+                return false;
+            }
+        }
+
         // if (string_eql(CODE_AS((*expr), Code_Ident)->str, lit("write_int"))) {
         //     oc_breakpoint();
         // }
@@ -1362,6 +1450,21 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             (*expr)->has_const = 1;
             (*expr)->const_value.as_type = decl->declared_type;
             result = typer->ty_type;
+
+
+            LL_Type* ty = decl->declared_type;
+            if (ty) {
+                if (rows != 1 || cols != 1) {
+                    oc_assert(ty->kind == LL_TYPE_INT || ty->kind == LL_TYPE_UINT || ty->kind == LL_TYPE_FLOAT || ty->kind == LL_TYPE_BOOL);
+                    LL_Type type = *ty;
+                    type.base_type = ty;
+                    type.rows = rows;
+                    type.columns = cols;
+                    ty = ll_intern_type(cc, typer, &type);
+                    (*expr)->const_value.as_type = ty;
+                }
+            }
+
         } break;
         default: {
             CODE_AS((*expr), Code_Ident)->resolved_decl = decl;
@@ -2111,8 +2214,13 @@ TRY_MEMBER_FUNCTION_CALL:
 
         can_continue = ll_typer_type_expression(cc, typer, &inv->expr, NULL, &resolve);
         if (!can_continue) return false;
-        LL_Type_Function* fn_type = (LL_Type_Function*)inv->expr->type;
 
+        if (inv->expr->type->kind == LL_TYPE_TYPE && inv->expr->has_const) {
+            bool result = ll_typer_type_vector_constructor(cc, typer, (Code_Invoke**)expr, expected_type, resolve_result);
+            return result;
+        }
+
+        LL_Type_Function* fn_type = (LL_Type_Function*)inv->expr->type;
         if (fn_type->base.kind != LL_TYPE_FUNCTION) {
             ll_typer_report_error(((LL_Error){ .main_token = inv->expr->token_info }), "Unable to call this like a function");
             ll_typer_report_error_no_src("    type ");
@@ -2936,6 +3044,49 @@ CODE_BREAK_EXIT_SCOPE:
     return true;
 }
 
+string ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string input, uint8_t* rows, uint8_t* cols) {
+    char* ptr = input.ptr;
+    int64_t idx = input.len - 1;
+
+    int64_t current_number = 0;
+    int64_t current_number_multiple = 1;
+    int64_t end_index = idx;
+    for (;idx; idx--) {
+        if (ptr[idx] >= '0' && ptr[idx] <= '9') {
+            current_number += current_number_multiple * (ptr[idx] - '0');
+            current_number_multiple *= 10;
+        } else if (current_number_multiple > 1 && ptr[idx] == 'x') {
+            *cols = *rows;
+            *rows = current_number;
+            current_number = 0;
+            current_number_multiple = 1;
+            end_index = idx;
+        } else {
+            if (current_number_multiple > 1)  {
+                if (current_number < 16 && idx > 0 && ptr[idx - 1] == 'a') { // probably ends in float
+                    *cols = *rows;
+                    *rows = current_number;
+                    current_number = 0;
+                    current_number_multiple = 1;
+                    end_index = idx + 1;
+                }
+                if (current_number < 8 && idx > 0 && ptr[idx - 1] == 'n') { // probably ends in float
+                    *cols = *rows;
+                    *rows = current_number;
+                    current_number = 0;
+                    current_number_multiple = 1;
+                    end_index = idx + 1;
+                }
+            }
+            break;
+        }
+    }
+
+    string to_lookup = string_slice(input, 0, end_index);
+    to_lookup = ll_intern_string(cc, to_lookup);
+    return to_lookup;
+}
+
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename, bool* can_continue) {
     LL_Type* result = NULL;
 
@@ -2948,44 +3099,8 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
             return NULL;
         }
 
-        char* ptr = CODE_AS(typename, Code_Ident)->str.ptr;
-        int64_t idx = CODE_AS(typename, Code_Ident)->str.len - 1;
         uint8_t rows = 1, cols = 1;
-
-        int64_t current_number = 0;
-        int64_t current_number_multiple = 1;
-        int64_t end_index = idx;
-        for (;idx; idx--) {
-            if (ptr[idx] >= '0' && ptr[idx] <= '9') {
-                current_number += current_number_multiple * (ptr[idx] - '0');
-                current_number_multiple *= 10;
-            } else if (current_number_multiple > 1 && ptr[idx] == 'x') {
-                cols = rows;
-                rows = current_number;
-                current_number = 0;
-                current_number_multiple = 1;
-                end_index = idx;
-            } else {
-                if (current_number < 16 && idx > 0 && ptr[idx - 1] == 'a') { // probably ends in float
-                    cols = rows;
-                    rows = current_number;
-                    current_number = 0;
-                    current_number_multiple = 1;
-                    end_index = idx + 1;
-                }
-                if (current_number < 8 && idx > 0 && ptr[idx - 1] == 'n') { // probably ends in float
-                    cols = rows;
-                    rows = current_number;
-                    current_number = 0;
-                    current_number_multiple = 1;
-                    end_index = idx + 1;
-                }
-                break;
-            }
-        }
-
-        string to_lookup = string_slice(CODE_AS(typename, Code_Ident)->str, 0, end_index);
-        to_lookup = ll_intern_string(cc, to_lookup);
+        string to_lookup = ll_typer_parse_vector_type(cc, typer, CODE_AS(typename, Code_Ident)->str, &rows, &cols);
 
         Code_Declaration* decl = ll_typer_find_symbol_up_scope_string(cc, typer, typer->current_scope, to_lookup, CODE_AS(typename, Code_Ident)->flags & CODE_IDENT_FLAG_EXPAND);
         if (!decl) {
@@ -3006,6 +3121,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
                 if (rows != 1 || cols != 1) {
                     oc_assert(result->kind == LL_TYPE_INT || result->kind == LL_TYPE_UINT || result->kind == LL_TYPE_FLOAT || result->kind == LL_TYPE_BOOL);
                     LL_Type type = *result;
+                    type.base_type = result;
                     type.rows = rows;
                     type.columns = cols;
                     result = ll_intern_type(cc, typer, &type);

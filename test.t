@@ -9,7 +9,8 @@ int get_value() {
 
 void main() {
     float4 f;
-    float4 f1;
+    float2 f2 = float2(8, 9);
+    float4 f1 = float4(1, f2, 4);
     float4 aaa = f + f1;
 }
 

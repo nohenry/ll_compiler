@@ -306,6 +306,44 @@ SpvId spirv_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Spirv* b, L
 }
 
 
+SpvId spirv_generate_vector_constructor(Compiler_Context* cc, LL_Backend_Spirv* b, Code_Invoke* inv) {
+    oc_assert(inv->expr->has_const);
+    LL_Type* dest_type = inv->expr->const_value.as_type;
+
+    uword arg_count = inv->arguments.count;
+    uword components = dest_type->rows * dest_type->columns;
+    SpvId args[components];
+
+    oc_assert(inv->arguments.count > 0);
+    Code* current_arg = inv->arguments.items[0];
+    SpvId current_arg_id;
+
+    for (uword si = 0, src_i = 0, di = 0; di < components; ++di) {
+        if (src_i == 0) {
+            current_arg = inv->arguments.items[si];
+            current_arg_id = spirv_generate_expression(cc, b, current_arg, false);
+        }
+
+        uword arg_components = current_arg->type->rows * current_arg->type->columns;
+        if (arg_components > 1) {
+            SpvId arg_typeid = spirv_generate_type(cc, b, current_arg->type);
+            SpvId extract_id = emit_op_dst(SpvOpCompositeExtract, arg_typeid, current_arg_id, src_i);
+            args[di] = extract_id;
+        } else {
+            args[di] = current_arg_id;
+        }
+
+        src_i += 1;
+        if (src_i >= arg_components) {
+            src_i = 0;
+            si += 1;
+        }
+    }
+
+    SpvId dest_typeid = spirv_generate_type(cc, b, dest_type);
+    SpvId result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpCompositeConstruct, dest_typeid, args, components);
+    return result;
+}
 
 SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code* expr, bool lvalue) {
     SpvId result = 0;
@@ -313,6 +351,7 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
     SpvId r1, r2;
 
     switch (expr->kind) {
+    // @Note: dxc generates constants in types section... why?
     case CODE_KIND_LITERAL_INT: {
         Code_Literal* lit = CODE_AS(expr, Code_Literal);
         if (expr->type->kind == LL_TYPE_FLOAT) {
@@ -321,19 +360,19 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                     float f;
                     uint32_t i;
                 } a = { .f = (float)lit->u64 };
-                result = emit_op_dst(SpvOpConstant, typeid, a.i);
+                result = emit_type_op_dst_rev(SpvOpConstant, typeid, a.i);
             } else if (expr->type->width <= 64) {
                 union {
                     double f;
                     uint32_t i[2];
                 } a = { .f = (double)lit->u64 };
-                result = emit_op_dst(SpvOpConstant, typeid, a.i[0], a.i[1]);
+                result = emit_type_op_dst_rev(SpvOpConstant, typeid, a.i[0], a.i[1]);
             } else oc_todo("bigger types");
         } else {
             if (expr->type->width <= 32) {
-                result = emit_op_dst(SpvOpConstant, typeid, (uint32_t)lit->u64);
+                result = emit_type_op_dst_rev(SpvOpConstant, typeid, (uint32_t)lit->u64);
             } else {
-                result = emit_op_dst(SpvOpConstant, typeid, (uint32_t)(lit->u64 & 0xFFFFFFFF), (uint32_t)(lit->u64 >> 32));
+                result = emit_type_op_dst_rev(SpvOpConstant, typeid, (uint32_t)(lit->u64 & 0xFFFFFFFF), (uint32_t)(lit->u64 >> 32));
             }
         }
     } break;
@@ -344,13 +383,13 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                 float f;
                 uint32_t i;
             } a = { .f = (float)lit->f64 };
-            result = emit_op_dst(SpvOpConstant, typeid, a.i);
+            result = emit_type_op_dst_rev(SpvOpConstant, typeid, a.i);
         } else if (expr->type->width <= 64) {
             union {
                 double f;
                 uint32_t i[2];
             } a = { .f = lit->f64 };
-            result = emit_op_dst(SpvOpConstant, typeid, a.i[0], a.i[1]);
+            result = emit_type_op_dst_rev(SpvOpConstant, typeid, a.i[0], a.i[1]);
         } else {
             oc_assert(false);
         }
@@ -361,15 +400,15 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
         if (ident->str.ptr == LL_KEYWORD_TRUE.ptr) {
             oc_assert(!lvalue);
-            result = emit_op_dst(SpvOpConstantTrue, typeid);
+            result = emit_type_op_dst_rev(SpvOpConstantTrue, typeid);
             break;
         } else if (ident->str.ptr == LL_KEYWORD_FALSE.ptr) {
             oc_assert(!lvalue);
-            result = emit_op_dst(SpvOpConstantTrue, typeid);
+            result = emit_type_op_dst_rev(SpvOpConstantTrue, typeid);
             break;
         } else if (ident->str.ptr == LL_KEYWORD_NULL.ptr) {
             oc_assert(!lvalue);
-            result = emit_op_dst(SpvOpConstantNull, typeid);
+            result = emit_type_op_dst_rev(SpvOpConstantNull, typeid);
             break;
         }
 
@@ -498,10 +537,10 @@ DO_BIN_OP_BOOLEAN:
 
 
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
-            spv_opcode = spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMod : (expr->type->kind == LL_TYPE_INT) ? SpvOpSMod : SpvOpUMod;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMod : (expr->type->kind == LL_TYPE_INT) ? SpvOpSMod : SpvOpUMod;
             goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_DIVIDE:
-            spv_opcode = spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFDiv : (expr->type->kind == LL_TYPE_INT) ? SpvOpSDiv : SpvOpUDiv;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFDiv : (expr->type->kind == LL_TYPE_INT) ? SpvOpSDiv : SpvOpUDiv;
             goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_TIMES:
             spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMul : SpvOpIMul;
@@ -553,6 +592,11 @@ DO_BIN_OP_ASSIGN_OP:
 
         if (inv->expr->kind == CODE_KIND_IDENT && CODE_AS(inv->expr, Code_Ident)->str.ptr == LL_KEYWORD_SIZEOF.ptr) {
             result = spirv_const_to_operand(cc, b, expr->type, expr->const_value);
+            break;
+        }
+
+        if (inv->expr->type->kind == LL_TYPE_TYPE && inv->expr->has_const) {
+            result = spirv_generate_vector_constructor(cc, b, inv);
             break;
         }
 
@@ -664,7 +708,12 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
     if (!type) return 0;
     if (type->spirv_type) return type->spirv_type;
     SpvId result = 0;
-    switch (type->kind) {
+    LL_Type* switch_type = type;
+    if (type->rows > 1 || type->columns > 1) {
+        switch_type = type->base_type;
+    }
+
+    switch (switch_type->kind) {
     case LL_TYPE_VOID:
         result = emit_type_op_dst(SpvOpTypeVoid);
         break;
