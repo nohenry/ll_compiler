@@ -277,32 +277,98 @@ SpvId spirv_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Spirv* b, L
     (void)cc;
     (void)b;
     if (to_type == from_type) return from;
+    SpvId result = 0;
+    SpvId to_type_id = spirv_generate_type(cc, b, to_type);
+    SpvId from_type_id = spirv_generate_type(cc, b, from_type);
+    if (to_type_id == from_type_id) return from; // will this every happen...
 
     switch (from_type->kind) {
-    case LL_TYPE_INT:
+    case LL_TYPE_POINTER:
         switch (to_type->kind) {
             case LL_TYPE_INT:
             case LL_TYPE_UINT:
-                if (from_type->width == to_type->width) return from;
+            case LL_TYPE_BOOL:
+                if (from_type->width == to_type->width) {
+                    oc_assert(from_type->rows == to_type->rows);
+                    oc_assert(from_type->columns == to_type->columns);
+                    result = emit_op_dst(SpvOpBitcast, to_type_id, from);
+                }
+                break;
+            default: oc_todo("handle cast types to {}\n", (int)to_type->kind); break;
+        }
+        break;
+    case LL_TYPE_INT:
+        switch (to_type->kind) {
+            case LL_TYPE_FLOAT:
+                result = emit_op_dst(SpvOpConvertSToF, to_type_id, from);
+                break;
+            case LL_TYPE_INT:
+            case LL_TYPE_UINT:
+            case LL_TYPE_BOOL:
+            case LL_TYPE_POINTER:
+                if (from_type->width == to_type->width) {
+                    oc_assert(from_type->rows == to_type->rows);
+                    oc_assert(from_type->columns == to_type->columns);
+                    result = emit_op_dst(SpvOpBitcast, to_type_id, from);
+                } else {
+                    if (to_type->kind == LL_TYPE_INT) {
+                        result = emit_op_dst(SpvOpSConvert, to_type_id, from);
+                    } else {
+                        result = emit_op_dst(SpvOpUConvert, to_type_id, from);
+                    }
+                }
                 break;
             default: oc_todo("handle cast types to {}\n", (int)to_type->kind); break;
         }
         break;
     case LL_TYPE_UINT:
         switch (to_type->kind) {
+            case LL_TYPE_FLOAT:
+                result = emit_op_dst(SpvOpConvertUToF, to_type_id, from);
+                break;
             case LL_TYPE_UINT:
             case LL_TYPE_INT:
-                if (from_type->width == to_type->width) return from;
+            case LL_TYPE_BOOL:
+            case LL_TYPE_POINTER:
+                if (from_type->width == to_type->width) {
+                    oc_assert(from_type->rows == to_type->rows);
+                    oc_assert(from_type->columns == to_type->columns);
+                    result = emit_op_dst(SpvOpBitcast, to_type_id, from);
+                } else {
+                    if (to_type->kind == LL_TYPE_INT) {
+                        result = emit_op_dst(SpvOpSConvert, to_type_id, from);
+                    } else {
+                        result = emit_op_dst(SpvOpUConvert, to_type_id, from);
+                    }
+                }
                 break;
             default: oc_todo("handle cast types to {}\n", (int)to_type->kind); break;
         }
         break;
+    case LL_TYPE_FLOAT:
+        switch (to_type->kind) {
+            case LL_TYPE_FLOAT:
+                result = emit_op_dst(SpvOpFConvert, to_type_id, from);
+                break;
+            case LL_TYPE_UINT:
+                result = emit_op_dst(SpvOpConvertFToU, to_type_id, from);
+                break;
+            case LL_TYPE_INT:
+                result = emit_op_dst(SpvOpConvertFToS, to_type_id, from);
+                break;
+            case LL_TYPE_BOOL:
+                result = emit_op_dst(SpvOpConvertFToU, to_type_id, from);
+                break;
+            default: oc_todo("handle cast types to {}\n", (int)to_type->kind); break;
+        }
+        break;
+
     default: oc_todo("handle cast types from\n"); return from;
     }
 
     // return IR_APPEND_OP_DST(LL_IR_OPCODE_CAST, to_type, from);
     // return emit_op_dst(O)
-    oc_assert(false);
+    return result;
 }
 
 
@@ -644,6 +710,11 @@ DO_BIN_OP_ASSIGN_OP:
         result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpVectorShuffle, typeid, &operands.v1, 2 + swizzle->count);
     } break;
 
+    case CODE_KIND_CAST: {
+        Code_Cast* cast = CODE_AS(expr, Code_Cast);
+        SpvId value = spirv_generate_expression(cc, b, cast->expr, false);
+        result = spirv_generate_cast_if_needed(cc, b, cast->base.type, value, cast->expr->type);
+    } break;
 
     case CODE_KIND_INVOKE: {
         oc_assert(!lvalue);
@@ -784,6 +855,9 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
         break;
     case LL_TYPE_FLOAT:
         result = emit_type_op_dst(SpvOpTypeFloat, type->width);
+        break;
+    case LL_TYPE_BOOL:
+        result = emit_type_op_dst(SpvOpTypeInt, type->width, 0);
         break;
     case LL_TYPE_FUNCTION: {
         LL_Type_Function* fn_type = (LL_Type_Function*)type;

@@ -232,7 +232,7 @@ void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL
 void _ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer, const char* file, size_t line) {
     (void)cc;
     (void)typer;
-    print("{}:{}\n", file, line);
+    // print("{}:{}\n", file, line);
     if (cc->exit_0) oc_exit(0);
     oc_exit(-1);
 }
@@ -264,12 +264,12 @@ void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     INSERT_BUILTIN_TYPE(ty_int16, LL_KEYWORD_INT16, .kind = LL_TYPE_INT, .width = 16);
     INSERT_BUILTIN_TYPE(ty_int32, LL_KEYWORD_INT32, .kind = LL_TYPE_INT, .width = 32);
     INSERT_BUILTIN_TYPE(ty_int64, LL_KEYWORD_INT64, .kind = LL_TYPE_INT, .width = 64);
-    INSERT_TYPE_SCOPE(ty_int64, LL_KEYWORD_INT);
+    INSERT_TYPE_SCOPE(ty_int32, LL_KEYWORD_INT);
     INSERT_BUILTIN_TYPE(ty_uint8, LL_KEYWORD_UINT8, .kind = LL_TYPE_UINT, .width = 8);
     INSERT_BUILTIN_TYPE(ty_uint16, LL_KEYWORD_UINT16, .kind = LL_TYPE_UINT, .width = 16);
     INSERT_BUILTIN_TYPE(ty_uint32, LL_KEYWORD_UINT32, .kind = LL_TYPE_UINT, .width = 32);
     INSERT_BUILTIN_TYPE(ty_uint64, LL_KEYWORD_UINT64, .kind = LL_TYPE_UINT, .width = 64);
-    INSERT_TYPE_SCOPE(ty_uint64, LL_KEYWORD_UINT);
+    INSERT_TYPE_SCOPE(ty_uint32, LL_KEYWORD_UINT);
     INSERT_ANY_TYPE(ty_anyint,.kind = LL_TYPE_ANYINT);
 
     INSERT_BUILTIN_TYPE(ty_float16, LL_KEYWORD_FLOAT16, .kind = LL_TYPE_FLOAT, .width = 16);
@@ -796,11 +796,16 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
                     oc_assert(declared_type != NULL);
                     ll_typer_report_error(((LL_Error){ .main_token = var_decl->base.base.token_info }), "Can't assign value to variable");
 
-                    ll_typer_report_error_no_src("    variable is declared with type ");
+                    ll_typer_report_error_no_src("    Variable is declared with type ");
                     ll_typer_report_error_type(cc, typer, declared_type);
                     ll_typer_report_error_no_src(", but tried to initialize it with type ");
                     ll_typer_report_error_type(cc, typer, init_type);
-                    ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error_no_src(".\n");
+                    if (ll_typer_can_cast(cc, typer, init_type, declared_type)) {
+                        ll_typer_report_error_no_src("    You can try explicitly casting the value with `cast(");
+                        ll_typer_report_error_type(cc, typer, declared_type);
+                        ll_typer_report_error_no_src(")`\n");
+                    }
 
                     ll_typer_report_error_done(cc, typer);
                 }
@@ -1312,7 +1317,6 @@ bool ll_typer_type_vector_constructor(Compiler_Context* cc, LL_Typer* typer, Cod
     (*expr)->base.type = dest_type;
 
     uword arg_count = inv->arguments.count;
-    print("here {} {}\n", dest_type->rows, dest_type->columns);
     for (uword pi = 0, di = 0; pi < arg_count; ++pi) {
         Code** current_arg = &inv->arguments.items[pi];
 
@@ -1365,7 +1369,6 @@ bool ll_typer_type_vector_constructor(Compiler_Context* cc, LL_Typer* typer, Cod
             ll_typer_add_implicit_cast(cc, typer, current_arg, dest_type->base_type);
         }
 
-        print("di += {}\n", (*current_arg)->type->rows * (*current_arg)->type->columns);
         di += (*current_arg)->type->rows * (*current_arg)->type->columns;
     }
 
@@ -1475,6 +1478,8 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 
             if (expected_type) {
                 if (ll_typer_can_implicitly_cast(cc, typer, decl->ident->base.type, expected_type)) {
+                    (*expr)->type = decl->ident->base.type;
+                    ll_typer_add_implicit_cast(cc, typer, expr, expected_type);
                     result = expected_type;
                 } else {
                     result = decl->ident->base.type;

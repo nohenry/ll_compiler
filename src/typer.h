@@ -231,6 +231,7 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* typ
 LL_Queued* create_stmt_queued(Compiler_Context* cc, LL_Typer* typer, LL_Stage_Kind stage, Code_Scope* scope, uint32 index, Code* code);
 
 
+bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Type* dst_type);
 static inline LL_Type* ll_get_base_type(LL_Type* type) {
     while (type && type->kind == LL_TYPE_NAMED) {
         type = ((LL_Type_Named*)type)->actual_type;
