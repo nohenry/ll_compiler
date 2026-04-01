@@ -13,6 +13,8 @@
 
 #define create_type(type) ({\
             __typeof__(type) t = type; \
+            if (t.rows == 0) t.rows = 1; \
+            if (t.columns == 0) t.columns = 1; \
             ll_intern_type(cc, typer, &t); \
         })
 
@@ -244,7 +246,7 @@ void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     // hash_map_put(&cc->arena, &typer->current_scope->declarations, keyword, (Code_Declaration*)scope);
 
     #define INSERT_BUILTIN_TYPE(ty, keyword, ...) do {                \
-        if (!typer->ty) typer->ty = create_type(((LL_Type) { __VA_ARGS__ }));                      \
+        if (!typer->ty) typer->ty = create_type(((LL_Type) { .rows = 1, .columns = 1, __VA_ARGS__ }));                      \
         Code* scope = CREATE_NODE(CODE_KIND_TYPENAME, ((Code_Declaration) { .ident = create_ident(cc, keyword), .declared_type = typer->ty })); \
         hash_map_put(&cc->arena, &typer->current_scope->declarations, keyword, (Code_Declaration*)scope); \
     } while (0)
@@ -253,7 +255,7 @@ void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node) {
         hash_map_put(&cc->arena, &typer->current_scope->declarations, keyword, (Code_Declaration*)scope); \
     } while (0)
     #define INSERT_ANY_TYPE(ty, ...) do {                \
-        if (!typer->ty) typer->ty = create_type(((LL_Type) { __VA_ARGS__ }));                      \
+        if (!typer->ty) typer->ty = create_type(((LL_Type) { .rows = 1, .columns = 1,  __VA_ARGS__ }));                      \
     } while (0)
 
     INSERT_BUILTIN_TYPE(ty_void, LL_KEYWORD_VOID, .kind = LL_TYPE_VOID);
@@ -350,7 +352,18 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
 
         return stbds_siphash_bytes(tts, sizeof(*tts) * struct_type->field_count, seed);
     }
-    default: return stbds_siphash_bytes(type, sizeof(*type), seed);
+    default:
+        struct {
+            LL_Type_Kind kind;
+            size_t width;
+            uint8_t rows, columns;
+        } type_hash = {
+            .kind = type->kind,
+            .width = type->width,
+            .rows = type->rows,
+            .columns = type->columns,
+        };
+        return stbds_siphash_bytes(&type_hash, sizeof(type_hash), seed);
     }
 }
 
@@ -359,10 +372,10 @@ bool ll_type_eql(LL_Type* a, LL_Type* b) {
     if (a->kind != b->kind) return false;
 
     switch (a->kind) {
-    case LL_TYPE_INT: return a->width == b->width;
-    case LL_TYPE_UINT: return a->width == b->width;
-    case LL_TYPE_FLOAT: return a->width == b->width;
-    case LL_TYPE_BOOL: return a->width == b->width;
+    case LL_TYPE_INT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns;
+    case LL_TYPE_UINT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns;
+    case LL_TYPE_FLOAT: return a->width == b->width && a->rows == b->rows && a->columns == b->columns;
+    case LL_TYPE_BOOL: return a->width == b->width && a->rows == b->rows && a->columns == b->columns;
     case LL_TYPE_POINTER: {
         LL_Type_Pointer *fa = (LL_Type_Pointer*)a, *fb = (LL_Type_Pointer*)b;
         return fa->element_type == fb->element_type;
@@ -2935,7 +2948,46 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
             return NULL;
         }
 
-        Code_Declaration* decl = ll_typer_find_symbol_up_scope(cc, typer, typer->current_scope, CODE_AS(typename, Code_Ident));
+        char* ptr = CODE_AS(typename, Code_Ident)->str.ptr;
+        int64_t idx = CODE_AS(typename, Code_Ident)->str.len - 1;
+        uint8_t rows = 1, cols = 1;
+
+        int64_t current_number = 0;
+        int64_t current_number_multiple = 1;
+        int64_t end_index = idx;
+        for (;idx; idx--) {
+            if (ptr[idx] >= '0' && ptr[idx] <= '9') {
+                current_number += current_number_multiple * (ptr[idx] - '0');
+                current_number_multiple *= 10;
+            } else if (current_number_multiple > 1 && ptr[idx] == 'x') {
+                cols = rows;
+                rows = current_number;
+                current_number = 0;
+                current_number_multiple = 1;
+                end_index = idx;
+            } else {
+                if (current_number < 16 && idx > 0 && ptr[idx - 1] == 'a') { // probably ends in float
+                    cols = rows;
+                    rows = current_number;
+                    current_number = 0;
+                    current_number_multiple = 1;
+                    end_index = idx + 1;
+                }
+                if (current_number < 8 && idx > 0 && ptr[idx - 1] == 'n') { // probably ends in float
+                    cols = rows;
+                    rows = current_number;
+                    current_number = 0;
+                    current_number_multiple = 1;
+                    end_index = idx + 1;
+                }
+                break;
+            }
+        }
+
+        string to_lookup = string_slice(CODE_AS(typename, Code_Ident)->str, 0, end_index);
+        to_lookup = ll_intern_string(cc, to_lookup);
+
+        Code_Declaration* decl = ll_typer_find_symbol_up_scope_string(cc, typer, typer->current_scope, to_lookup, CODE_AS(typename, Code_Ident)->flags & CODE_IDENT_FLAG_EXPAND);
         if (!decl) {
             typer->waited_on_code = typename;
             *can_continue = false;
@@ -2950,6 +3002,15 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         case CODE_KIND_STRUCT:
         case CODE_KIND_TYPENAME:
             result = decl->declared_type;
+            if (result) {
+                if (rows != 1 || cols != 1) {
+                    oc_assert(result->kind == LL_TYPE_INT || result->kind == LL_TYPE_UINT || result->kind == LL_TYPE_FLOAT || result->kind == LL_TYPE_BOOL);
+                    LL_Type type = *result;
+                    type.rows = rows;
+                    type.columns = cols;
+                    result = ll_intern_type(cc, typer, &type);
+                }
+            }
             break;
         case CODE_KIND_VARIABLE_DECLARATION:
             if (decl->ident->base.has_const) {
@@ -3175,13 +3236,13 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     uint32_t i;
     switch (type->kind) {
     case LL_TYPE_VOID:     wprint(w, "void"); break;
-    case LL_TYPE_INT:      wprint(w, "int{}", type->width); break;
-    case LL_TYPE_UINT:     wprint(w, "uint{}", type->width); break;
+    case LL_TYPE_INT:      wprint(w, "int{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
+    case LL_TYPE_UINT:     wprint(w, "uint{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
     case LL_TYPE_ANYINT:   wprint(w, "anyint"); break;
-    case LL_TYPE_FLOAT:    wprint(w, "float{}", type->width); break;
+    case LL_TYPE_FLOAT:    wprint(w, "float{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
     case LL_TYPE_ANYFLOAT: wprint(w, "float"); break;
     case LL_TYPE_STRING:   wprint(w, "string"); break;
-    case LL_TYPE_BOOL:     wprint(w, "bool{}", type->width); break;
+    case LL_TYPE_BOOL:     wprint(w, "bool{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
     case LL_TYPE_ANYBOOL:  wprint(w, "bool"); break;
     case LL_TYPE_CHAR:     wprint(w, "char"); break;
     case LL_TYPE_POINTER: {

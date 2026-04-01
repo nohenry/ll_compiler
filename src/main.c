@@ -88,10 +88,10 @@ int main(int argc, char** argv) {
     cc.target = &backend_elf;
     cc.native_target = &backend_elf;
 
-    if (!cc.quiet) print_node(root, 0, &stdout_writer);
     // ll_typer_run(&cc, &typer, root);
-
+    
     ll_typer_prerun(&cc, &typer, root);
+    if (!cc.quiet) print_node(typer.root_scope, 0, &stdout_writer);
     compiler_run_stages(&cc);
     // if (output_ir) ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
 

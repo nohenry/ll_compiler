@@ -570,7 +570,6 @@ void ir_generate_block(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool*
 }
 
 void ir_generate_statement(Compiler_Context* cc, LL_Backend_Ir* b, Code* stmt, bool* can_continue) {
-    uint32_t i;
     switch (stmt->kind) {
     case CODE_KIND_BLOCK:
         ir_generate_block(cc, b, stmt, can_continue);

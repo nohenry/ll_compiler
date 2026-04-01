@@ -99,6 +99,7 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
 }
 
 bool spirv_write_to_file(Compiler_Context* cc, LL_Backend_Spirv* b, char* filepath) {
+    (void)cc;
     b->code_header.items[3] = b->next_result_id;
     FILE* fptr;
     if (fopen_s(&fptr, filepath, "wb")) {
@@ -190,7 +191,7 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
 
         LL_Type_Function* fn_type = (LL_Type_Function*)fn_decl->base.ident->base.type;
         SpvId return_type = spirv_generate_type(cc, b, fn_type->return_type);
-        SpvId spirv_function_type = spirv_generate_type(cc, b, fn_type);
+        SpvId spirv_function_type = spirv_generate_type(cc, b, (LL_Type*)fn_type);
 
         SpvId function_id = emit_op_dst(SpvOpFunction, return_type, 0, spirv_function_type);
         fn->spv_id = function_id;
@@ -273,6 +274,8 @@ SpvId spirv_const_to_operand(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type*
 }
 
 SpvId spirv_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* to_type, SpvId from, LL_Type* from_type) {
+    (void)cc;
+    (void)b;
     if (to_type == from_type) return from;
 
     switch (from_type->kind) {
@@ -445,29 +448,29 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 		case '.': {
             oc_assert(false);
         } break;
-        case '+': spv_opcode = LL_IR_OPCODE_ADD; break;
-        case '-': spv_opcode = LL_IR_OPCODE_SUB; break;
-        case '*': spv_opcode = LL_IR_OPCODE_MUL; break;
-        case '/': spv_opcode = LL_IR_OPCODE_DIV; break;
-        case '%': spv_opcode = LL_IR_OPCODE_MOD; break;
+        case '+': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFAdd : SpvOpIAdd; break;
+        case '-': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFSub : SpvOpISub; break;
+        case '*': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMul : SpvOpIMul; break;
+        case '/': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFDiv : (expr->type->kind == LL_TYPE_INT) ? SpvOpSDiv : SpvOpUDiv; break;
+        case '%': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMod : (expr->type->kind == LL_TYPE_INT) ? SpvOpSMod : SpvOpUMod; break;
 
         case '<':
-            spv_opcode = LL_IR_OPCODE_LT;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdLessThan : (expr->type->kind == LL_TYPE_INT) ? SpvOpSLessThan : SpvOpULessThan;
             goto DO_BIN_OP_BOOLEAN;
         case LL_TOKEN_KIND_LTE:
-            spv_opcode = LL_IR_OPCODE_LTE;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdLessThanEqual : (expr->type->kind == LL_TYPE_INT) ? SpvOpSLessThanEqual : SpvOpULessThanEqual;
             goto DO_BIN_OP_BOOLEAN;
         case '>':
-            spv_opcode = LL_IR_OPCODE_GT;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdGreaterThan : (expr->type->kind == LL_TYPE_INT) ? SpvOpSGreaterThan : SpvOpUGreaterThan;
             goto DO_BIN_OP_BOOLEAN;
         case LL_TOKEN_KIND_GTE:
-            spv_opcode = LL_IR_OPCODE_GTE;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdGreaterThanEqual : (expr->type->kind == LL_TYPE_INT) ? SpvOpSGreaterThanEqual : SpvOpUGreaterThanEqual;
             goto DO_BIN_OP_BOOLEAN;
         case LL_TOKEN_KIND_EQUALS:
-               spv_opcode = LL_IR_OPCODE_EQ;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdEqual : SpvOpIEqual;
             goto DO_BIN_OP_BOOLEAN;
         case LL_TOKEN_KIND_NEQUALS:
-            spv_opcode = LL_IR_OPCODE_NEQ;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdNotEqual : SpvOpINotEqual;
             goto DO_BIN_OP_BOOLEAN;
 DO_BIN_OP_BOOLEAN:
             r2 = spirv_generate_expression(cc, b, op->right, false);
@@ -495,19 +498,19 @@ DO_BIN_OP_BOOLEAN:
 
 
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
-            spv_opcode = LL_IR_OPCODE_MOD;
+            spv_opcode = spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMod : (expr->type->kind == LL_TYPE_INT) ? SpvOpSMod : SpvOpUMod;
             goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_DIVIDE:
-            spv_opcode = LL_IR_OPCODE_DIV;
+            spv_opcode = spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFDiv : (expr->type->kind == LL_TYPE_INT) ? SpvOpSDiv : SpvOpUDiv;
             goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_TIMES:
-            spv_opcode = LL_IR_OPCODE_MUL;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMul : SpvOpIMul;
             goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_MINUS:
-            spv_opcode = LL_IR_OPCODE_SUB;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFSub : SpvOpISub;
             goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_PLUS:
-            spv_opcode = LL_IR_OPCODE_ADD;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFAdd : SpvOpIAdd;
 DO_BIN_OP_ASSIGN_OP:
             r2 = spirv_generate_expression(cc, b, op->right, false);
             r2 = spirv_generate_cast_if_needed(cc, b, expr->type, r2, op->right->type);
@@ -524,7 +527,7 @@ DO_BIN_OP_ASSIGN_OP:
             result = spirv_generate_expression(cc, b, op->left, true);
             r2 = spirv_generate_expression(cc, b, op->right, false);
             r2 = spirv_generate_cast_if_needed(cc, b, expr->type, r2, op->right->type);
-            emit_op(SpvOpStore, result, r1);
+            emit_op(SpvOpStore, result, r2);
             return r2;
 
 #pragma GCC diagnostic pop
@@ -593,7 +596,6 @@ DO_BIN_OP_ASSIGN_OP:
 
         SpvId opcodes[1 + inv->ordered_arguments.count];
         opcodes[0] = invokee;
-        uword offset = 0;
 
         
         SpvId* arguments = opcodes + 1;
@@ -685,6 +687,17 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
         printf("Unhandled type: %d\n", type->kind);
         break;
     }
+    if (type->rows > 1) {
+        result = emit_type_op_dst(SpvOpTypeVector, result, type->rows);
+    }
+    if (type->columns > 1) {
+        if (type->rows == 1) {
+            result = emit_type_op_dst(SpvOpTypeVector, result, 1);
+        }
+        result = emit_type_op_dst(SpvOpTypeMatrix, result, type->columns);
+    }
+
+
     type->spirv_type = result;
     return result;
 }

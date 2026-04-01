@@ -89,6 +89,7 @@ typedef struct ll_type {
         size_t width;
         size_t struct_alignment;
     };
+    uint8_t rows, columns;
     uint32_t spirv_type;
 } LL_Type;
 
@@ -212,6 +213,7 @@ bool ll_typer_can_implicitly_cast_expression(Compiler_Context* cc, LL_Typer* typ
 // void ll_typer_scope_put(Compiler_Context* cc, LL_Typer* typer, LL_Scope* scope, bool hoist);
 // LL_Scope* ll_scope_get(LL_Scope* scope, string symbol_name);
 Code_Declaration* ll_typer_find_symbol_up_scope(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, Code_Ident* ident);
+Code_Declaration* ll_typer_find_symbol_up_scope_string(Compiler_Context* cc, LL_Typer* typer, Code_Scope* scope, string symbol_name, bool expansion);
 
 void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
 

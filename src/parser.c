@@ -1190,7 +1190,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             }
         }
         wprint(w, "\t\t\t");
-        /* ll_print_type_raw(node->type, w); */
+        ll_print_type_raw(node->type, w); 
     }
     wprint(w, "\n");
     switch (node->kind) {

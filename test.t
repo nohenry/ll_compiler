@@ -8,7 +8,8 @@ int get_value() {
 }
 
 void main() {
-    int i = 123;
-    int j = get_value();
+    float4 f;
+    float4 f1;
+    float4 aaa = f + f1;
 }
 
