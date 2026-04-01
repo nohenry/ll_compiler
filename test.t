@@ -12,5 +12,6 @@ void main() {
     float2 f2 = float2(8, 9);
     float4 f1 = float4(1, f2, 4);
     float4 aaa = f + f1;
+    float4 b = f1.rgba;
 }
 

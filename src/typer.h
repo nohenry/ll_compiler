@@ -238,6 +238,7 @@ static inline LL_Type* ll_get_base_type(LL_Type* type) {
     return type;
 }
 
+#define ll_type_is_vector(type) ((type)->rows > 1 || ((type)->columns > 1))
 
 typedef struct {
     LL_Type *expected, *actual;

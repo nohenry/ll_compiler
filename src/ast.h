@@ -43,6 +43,7 @@ typedef enum {
 
     // Generated
     CODE_KIND_TYPENAME,
+    CODE_KIND_SWIZZLE,
 
 
     COUNT_OF_CODE_KIND,
@@ -287,6 +288,32 @@ typedef struct {
     Code base;
     Code* element;
 } Code_Type_Pointer;
+
+// This is the rhs of the siwizzle in vector.0xyz
+// We need a specific node for this, since we need an identifier
+//  that can start with a number.
+// So if the swizzle doesn't start with a number, it uses the Code_Ident node.
+typedef struct {
+    Code* base;
+    string str;
+} Code_Swizzle_Value;
+
+// This node is generated from a dot operator.
+typedef struct {
+    Code base;
+    Code* vector;
+    // if a value is positive, it's a component selector in vector.
+    // if a value is negative, it is that value negated WITH 1's COMPLEMENT.
+    // see macros below
+    int8_t components[16];
+    uint8_t count;
+} Code_Swizzle;
+
+#define CODE_SWIZZLE_MAKE_COMPONENT(component_index) (oc_assert((component_index) >= 0 && (component_index) <= 127), ((int8_t)component_index))
+#define CODE_SWIZZLE_MAKE_VALUE(value)           (oc_assert((value) >= 0 && (value) <= 127), ~((int8_t)(value)))
+#define CODE_SWIZZLE_IS_COMPONENT(component_index) (component_index >= 0)
+#define CODE_SWIZZLE_GET_COMPONENT(component_index) (component_index)
+#define CODE_SWIZZLE_GET_VALUE(value)           (~(value))
 
 #define CODE_AS(value, Type) ((Type*)(value))
 

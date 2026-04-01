@@ -585,6 +585,65 @@ DO_BIN_OP_ASSIGN_OP:
         result = emit_op_dst(spv_opcode, typeid, r1, r2);
     } break;
 
+    case CODE_KIND_SWIZZLE: {
+        Code_Swizzle* swizzle = CODE_AS(expr, Code_Swizzle);
+        r1 = spirv_generate_expression(cc, b, swizzle->vector, false);
+        r2 = r1;
+
+        struct {
+            SpvId v1;
+            SpvId v2;
+            SpvId selectors[16];
+        } operands;
+        SpvId numbers[16];
+        uint32_t numbers_count = 0;
+
+        SpvId base_type_id = spirv_generate_type(cc, b, swizzle->vector->type->base_type);
+        for (uint32_t i = 0; i < swizzle->count; ++i) {
+            if (CODE_SWIZZLE_IS_COMPONENT(swizzle->components[i])) {
+                operands.selectors[i] = CODE_SWIZZLE_GET_COMPONENT(swizzle->components[i]);
+            } else {
+                operands.selectors[i] = swizzle->vector->type->rows + numbers_count;
+                // numbers[numbers_count++] = CODE_SWIZZLE_GET_VALUE(swizzle->components[i]);
+                union {
+                    float f;
+                    double d;
+                    uint32_t encoded_value[0];
+                } value;
+                if (swizzle->vector->type->kind == LL_TYPE_FLOAT) {
+                    if (swizzle->vector->type->width <= 32) {
+                        value.f = (float) CODE_SWIZZLE_GET_VALUE(swizzle->components[i]);
+                    } else {
+                        value.d = (double)CODE_SWIZZLE_GET_VALUE(swizzle->components[i]);
+                    }
+                } else {
+                    value.encoded_value[0] = CODE_SWIZZLE_GET_VALUE(swizzle->components[i]);
+                    value.encoded_value[1] = 0;
+                }
+                if (swizzle->vector->type->width <= 32) {
+                    numbers[numbers_count++] = emit_type_op_dst_rev(SpvOpConstant, base_type_id, value.encoded_value[0]);
+                } else {
+                    numbers[numbers_count++] = emit_type_op_dst_rev(SpvOpConstant, base_type_id, value.encoded_value[0], value.encoded_value[1]);
+                }
+            }
+        }
+
+        if (numbers_count) {
+            LL_Type new_type = *swizzle->vector->type;
+            new_type.spirv_type = 0;
+            new_type.rows = numbers_count;
+            // even though this could be a scalar, let's keep it a distinct type by keeping base_type with a value
+            LL_Type* number_vec = ll_intern_type(cc, cc->typer, &new_type);
+            SpvId number_vec_id = spirv_generate_type(cc, b, number_vec);
+
+            r2 = emit_rev(cc, b, (typeof(b->code_header)*)&b->code_types, SpvOpConstantComposite, number_vec_id, numbers, numbers_count);
+        }
+        operands.v1 = r1;
+        operands.v2 = r2;
+
+        result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpVectorShuffle, typeid, &operands.v1, 2 + swizzle->count);
+    } break;
+
 
     case CODE_KIND_INVOKE: {
         oc_assert(!lvalue);

@@ -1623,6 +1623,86 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &result);
             if (!can_continue) return false;
 
+            if (ll_type_is_vector(opr->left->type)) {
+                // vector swizzle
+
+                Code_Swizzle* swizzle_result = (Code_Swizzle*)CREATE_NODE(CODE_KIND_SWIZZLE, (Code_Swizzle){ .vector = opr->left });
+
+                if (opr->right->kind != CODE_KIND_IDENT) {
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "vector swizzle/access should have identifier");
+                    ll_typer_report_error_done(cc, typer);
+                }
+                Code_Ident* right_ident = CODE_AS(opr->right, Code_Ident);
+
+                if (right_ident->str.len > oc_len(swizzle_result->components)) {
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "we only support a swizzle size of 16 destinations components");
+                    ll_typer_report_error_done(cc, typer);
+                }
+
+                for (size_t i = 0; i < right_ident->str.len; ++i) {
+                    int8_t swizzle;
+                    switch (right_ident->str.ptr[i]) {
+                    case '0' ... '9': {
+                        char c = right_ident->str.ptr[i] - '0';
+                        swizzle = CODE_SWIZZLE_MAKE_VALUE(c);
+                    } break;
+                    case 'U':
+                    case 'u':
+                    case 'R':
+                    case 'r':
+                    case 'X':
+                    case 'x':
+                        swizzle = CODE_SWIZZLE_MAKE_COMPONENT(0);
+                        break;
+                    case 'V':
+                    case 'v':
+                    case 'G':
+                    case 'g':
+                    case 'Y':
+                    case 'y':
+                        swizzle = CODE_SWIZZLE_MAKE_COMPONENT(1);
+                        break;
+                    case 'T':
+                    case 't':
+                    case 'B':
+                    case 'b':
+                    case 'Z':
+                    case 'z':
+                        swizzle = CODE_SWIZZLE_MAKE_COMPONENT(2);
+                        break;
+                    case 'A':
+                    case 'a':
+                    case 'W':
+                    case 'w':
+                        swizzle = CODE_SWIZZLE_MAKE_COMPONENT(3);
+                        break;
+                    default:
+                        swizzle = 0;
+                        ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "invalid character '{}' (ascii code 0x{2x}) in vector swizzle", right_ident->str.ptr[i], right_ident->str.ptr[i]);
+                        ll_typer_report_error_done(cc, typer);
+                        break;
+                    }
+                    swizzle_result->components[i] = swizzle;
+                }
+                swizzle_result->count = (uint8_t)right_ident->str.len;
+
+                LL_Type* vtype = opr->left->type;
+                oc_assert(vtype->kind == LL_TYPE_INT || vtype->kind == LL_TYPE_UINT || vtype->kind == LL_TYPE_FLOAT || vtype->kind == LL_TYPE_BOOL);
+                oc_assert(vtype->columns == 1);
+                LL_Type new_type = *vtype;
+                new_type.rows = right_ident->str.len;
+                // new_type.columns = cols;
+                if (!ll_type_is_vector(&new_type)) {
+                    // @Robustness: base type is part of hash..., so can't have it set for scalars when type matching
+                    new_type.base_type = NULL;
+                }
+                vtype = ll_intern_type(cc, typer, &new_type);
+                swizzle_result->base.type = vtype;
+
+                *expr = (Code*)swizzle_result;
+                return true;
+            }
+
             if (opr->right->kind != CODE_KIND_IDENT) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Member should be identifier");
                 ll_typer_report_error_done(cc, typer);

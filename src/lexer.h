@@ -53,6 +53,7 @@ typedef struct ll_lexer {
     LL_Token peeked_token;
     LL_Token_Info peeked_token_info;
     bool has_peeked_token;
+    bool last_was_dot;
 } LL_Lexer;
 
 typedef struct {

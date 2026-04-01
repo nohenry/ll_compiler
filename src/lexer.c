@@ -42,6 +42,8 @@ bool lexer_next_token(Compiler_Context *cc, LL_Lexer* lexer, LL_Token* out) {
         lexer->has_peeked_token = false;
         return true;
     } 
+    bool last_was_dot = lexer->last_was_dot;
+    lexer->last_was_dot = false;
 
     while (lexer->pos < lexer->source.len) switch (lexer->source.ptr[lexer->pos]) {
         case '\t':
@@ -100,6 +102,11 @@ DO_IDENTIFIER:
             oc_assert(false);
         }
         case '0' ... '9': {
+            if (last_was_dot) {
+                // this is for swizzling
+                out->kind = LL_TOKEN_KIND_IDENT;
+                goto DO_IDENTIFIER;
+            }
             uint64_t integral = 0;
             double decimal = 0.0;
             uint64_t decimal_divider = 10;
@@ -317,7 +324,7 @@ DONE_NUMBER:
         case '/': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_DIVIDE); return true;
         case '%': lexer_prefixed(cc, lexer, out, '=', LL_TOKEN_KIND_ASSIGN_PERCENT); return true;
 
-        case '.': lexer_prefixed(cc, lexer, out, '.', LL_TOKEN_KIND_RANGE); return true;
+        case '.': lexer_prefixed(cc, lexer, out, '.', LL_TOKEN_KIND_RANGE); lexer->last_was_dot = (out->kind == '.'); return true;
         
         case 0:
             lexer->source.len = lexer->pos;

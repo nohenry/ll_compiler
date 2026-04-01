@@ -1124,6 +1124,7 @@ const char* ast_get_node_kind(Code* node) {
         case CODE_KIND_GENERIC: return "Generic";
         case CODE_KIND_TYPE_POINTER: return "Pointer";
         case CODE_KIND_TYPENAME: return "Typename";
+        case CODE_KIND_SWIZZLE: return "Swizzle";
         default: oc_unreachable("");
     }
 }
@@ -1163,8 +1164,14 @@ void print_node_value(Code* node, Oc_Writer* w) {
             break;
         case CODE_KIND_TYPE_POINTER: break;
         case CODE_KIND_TYPENAME:
-            print("{} ", CODE_AS(node, Code_Declaration)->ident->str);
+            wprint(w, "{} ", CODE_AS(node, Code_Declaration)->ident->str);
             ll_print_type_raw(CODE_AS(node, Code_Declaration)->declared_type, w);
+            break;
+        case CODE_KIND_SWIZZLE:
+            for (uint32_t i = 0; i < CODE_AS(node, Code_Swizzle)->count; ++i) {
+                if (i) wprint(w, ", ");
+                wprint(w, "{}", (sint32)CODE_AS(node, Code_Swizzle)->components[i]);
+            }
             break;
         default: oc_unreachable("");
     }
@@ -1313,6 +1320,11 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             for (i = 0; i < CODE_AS(node, Code_Scope)->statements.count; ++i) {
                 print_node(CODE_AS(node, Code_Scope)->statements.items[i], indent + 1, w);
             }
+            break;
+
+        case CODE_KIND_SWIZZLE:
+            print_node(CODE_AS(node, Code_Swizzle)->vector, indent + 1, w);
+            break;
 
         default: break;
     }
@@ -1324,6 +1336,14 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
     if (!node) return NULL;
 
     switch (node->kind) {
+    case CODE_KIND_SWIZZLE:
+        result = CREATE_NODE(node->kind, ((Code_Swizzle) {
+            .base.token_info = node->token_info,
+            .vector = ast_clone_node_deep(cc, CODE_AS(node, Code_Swizzle)->vector, params),
+        }));
+        memcpy(CODE_AS(result, Code_Swizzle)->components, CODE_AS(node, Code_Swizzle)->components, sizeof(CODE_AS(result, Code_Swizzle)->components));
+        break;
+
     case CODE_KIND_BINARY_OP:
         result = CREATE_NODE(node->kind, ((Code_Operation) {
             .base.token_info = node->token_info,
