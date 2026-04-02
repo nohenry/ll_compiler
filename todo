@@ -1,8 +1,8 @@
 
 - implement casting
 - implement control flow
-- implement pointers
 - implement arrays/structs
+- implement pointers
 - implement inputs
 - add back macros
 - implement dynamic vector indexing

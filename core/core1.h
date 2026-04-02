@@ -406,7 +406,7 @@ typedef struct {
         memcpy((array)->items + (array)->count, ptr, (len) * sizeof(*(array)->items));  \
         (array)->count += (len);                              \
     } while (0)
-#define oc_array_reserve(arena, array, _count)                                                     \
+#define oc_array_resize(arena, array, _count)                                                     \
     do {                                                                                           \
         if ((_count) > (array)->capacity) {                                                        \
             uword new_cap = (_count) * 2;                                                           \
@@ -415,6 +415,15 @@ typedef struct {
             (array)->capacity = new_cap;                                                           \
         }                                                                                          \
         (array)->count = (_count);                                                                 \
+    } while (0)
+#define oc_array_reserve(arena, array, _count)                                                     \
+    do {                                                                                           \
+        if ((_count) > (array)->capacity) {                                                        \
+            uword new_cap = (_count) * 2;                                                           \
+            void* new_ptr = oc_arena_realloc(arena, (array)->items, (array)->capacity * sizeof(*(array)->items), new_cap * sizeof(*(array)->items));   \
+            (array)->items = new_ptr;                                                              \
+            (array)->capacity = new_cap;                                                           \
+        }                                                                                          \
     } while (0)
 #define oc_array_extend_count_unint(arena, array, plus_count)                                                     \
 	do {                                                                                           \

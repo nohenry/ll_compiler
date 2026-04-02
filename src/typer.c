@@ -354,6 +354,21 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
 
         return stbds_siphash_bytes(tts, sizeof(*tts) * struct_type->field_count, seed);
     }
+    case LL_TYPE_ARRAY: {
+        LL_Type_Array* arr_type = (LL_Type_Array*)type;
+        struct {
+            LL_Type_Kind kind;
+            LL_Type* element_type;
+            size_t width;
+        } type_hash = {
+            .kind = type->kind,
+            .element_type = arr_type->element_type,
+            .width = arr_type->base.width,
+        };
+
+        size_t hash = stbds_siphash_bytes(&type_hash, sizeof(type_hash), seed);
+        return hash;
+    }
     default:
         struct {
             LL_Type_Kind kind;
@@ -833,6 +848,9 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
             if (typer->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
                 Code_Struct* strct = CODE_AS(typer->current_scope->decl, Code_Struct);
                 oc_array_reserve(&cc->arena, &strct->member_types, var_decl->ir_index+1);
+                if (var_decl->ir_index + 1 > strct->member_types.count) {
+                    strct->member_types.count = var_decl->ir_index + 1;
+                }
                 strct->member_types.items[var_decl->ir_index] = declared_type;
                 // var_decl->ir_index = typer->current_record->count;
                 // oc_array_append(&cc->arena, typer->current_record, declared_type);
@@ -1565,6 +1583,8 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         uint8_t* provided_elements = alloca(init->count * sizeof(*provided_elements));
         memset(provided_elements, 0, init->count * sizeof(*provided_elements));
 
+        bool is_constant = true;
+
         if (expected_type) {
             oc_assert(expected_type->kind == LL_TYPE_ARRAY);
             LL_Type_Array* arr_type = (LL_Type_Array*)expected_type;
@@ -1583,10 +1603,12 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     element_index = (uint32_t)kv->key->const_value.as_u64;
                     can_continue = ll_typer_type_expression(cc, typer, &kv->value, arr_type->element_type, NULL);
                     if (!can_continue) return false;
+                    is_constant = is_constant && kv->key->has_const && kv->value->has_const;
                     provided_type = kv->value->type;
                 } else {
                     can_continue = ll_typer_type_expression(cc, typer, &init->items[i], arr_type->element_type, NULL);
                     if (!can_continue) return false;
+                    is_constant = is_constant && init->items[i]->has_const;
                     provided_type = init->items[i]->type;
                 }
 
@@ -1606,6 +1628,8 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     eprint("\n");
                 }
             }
+            init->base.has_const = is_constant;
+            init->base.const_value = (LL_Eval_Value) { 0 }; // hmm
             result = expected_type;
         } else {
             oc_assert(false);
@@ -1745,7 +1769,16 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                         (*expr)->has_const = true;
                         (*expr)->const_value.as_u64 = base_type->width;
 
-                        right_ident->base.type = typer->ty_uint64;
+                        switch (expected_type->kind) {
+                        case LL_TYPE_INT:
+                        case LL_TYPE_UINT:
+                        case LL_TYPE_BOOL:
+                            right_ident->base.type = expected_type;
+                            break;
+                        default:
+                            right_ident->base.type = typer->ty_uint64;
+                            break;
+                        }
                     }
 
                     (*expr)->type = right_ident->base.type;

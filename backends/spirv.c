@@ -28,6 +28,9 @@ typedef struct {
 
     SpvId entry_id;
     string entry_name;
+
+    bool has_current_access_chain;
+    Array(uint32_t, SpvId) current_access_chain_tmp;
 } LL_Backend_Spirv;
 
 #define SPIRV_INVALID_FUNCTION 0u
@@ -112,6 +115,8 @@ SpvId emit_rev(Compiler_Context* cc, LL_Backend_Spirv* b, typeof(b->code_header)
 
 #define reserve_id() (b->next_result_id++)
 
+LL_Backend_Layout spirv_get_layout(LL_Type* ty);
+void spirv_calculate_struct_offsets(LL_Type* type);
 SpvId spirv_get_pointer_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, SpvStorageClass storage_class);
 
 void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
@@ -685,7 +690,69 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
 		case '.': {
-            oc_assert(false);
+            Code_Operation* opr = CODE_AS(expr, Code_Operation);
+            Code_Ident* right_ident = CODE_AS(opr->right, Code_Ident);
+            static uint32_t offset_value = 0;
+
+            Code_Declaration* field_scope = right_ident->resolved_decl ? right_ident->resolved_decl : NULL;
+            if (field_scope) {
+
+                Oc_Arena_Save save;
+                bool had_access_chain = b->has_current_access_chain;
+                if (!had_access_chain) {
+                    save = oc_arena_save(&cc->tmp_arena);
+                    b->has_current_access_chain = true;
+                }
+
+
+                // @TODO: probably should assert that this struct scope is the same as the lhs of the dot
+                Code_Declaration* struct_scope = field_scope->within_scope->decl;
+                oc_assert(struct_scope->base.kind == CODE_KIND_STRUCT);
+
+                LL_Type_Struct* struct_type = (LL_Type_Struct*)ll_get_base_type(struct_scope->declared_type);
+                oc_assert(struct_type->base.kind == LL_TYPE_STRUCT);
+
+                spirv_calculate_struct_offsets(&struct_type->base);
+                Code_Variable_Declaration* field_decl = CODE_AS(field_scope, Code_Variable_Declaration);
+                oc_assert(field_decl->base.base.kind == CODE_KIND_VARIABLE_DECLARATION);
+
+                if (opr->left->type->kind == LL_TYPE_POINTER && opr->left->kind == CODE_KIND_BINARY_OP) {
+                    oc_assert(false && "handle pointers");
+                } else {
+
+
+                }
+
+                result = spirv_generate_expression(cc, b, opr->left, true);
+                if (opr->left->kind != CODE_KIND_INDEX && !(opr->left->kind == CODE_KIND_BINARY_OP && CODE_AS(opr->left, Code_Operation)->op.kind == '.')) {
+                    oc_array_append(&cc->tmp_arena, &b->current_access_chain_tmp, result);
+                }
+
+                SpvId member_id = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &field_decl->ir_index);
+                oc_array_append(&cc->tmp_arena, &b->current_access_chain_tmp, member_id);
+
+                if (!had_access_chain) {
+                    SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassFunction);
+                    result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp.items, b->current_access_chain_tmp.count);
+                    oc_arena_restore(&cc->tmp_arena, save);
+                    b->has_current_access_chain = false;
+                    b->current_access_chain_tmp.count = 0;
+                }
+
+                if (!lvalue) {
+                    result = emit_op_dst(SpvOpLoad, typeid, result);
+                }
+
+                return result;
+            } else {
+                LL_Type* base_type = ll_get_base_type(opr->left->type);
+                if (base_type->kind == LL_TYPE_ARRAY && opr->base.has_const) {
+                    if (lvalue) oc_todo("handle invalid lvalue");
+
+                    result = spirv_generate_constant(cc, b, opr->base.type, &opr->base.const_value.as_u64);
+                    return result;
+                }
+            }
         } break;
         case '+': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFAdd : SpvOpIAdd; break;
         case '-': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFSub : SpvOpISub; break;
@@ -950,6 +1017,83 @@ DO_BIN_OP_ASSIGN_OP:
         break;
     }
 
+    case CODE_KIND_ARRAY_INITIALIZER: {
+        Code_Initializer* lit = CODE_AS(expr, Code_Initializer);
+
+        SpvId value_ids[lit->count];
+        memset(value_ids, 0, sizeof(SpvId) * lit->count);
+
+        uint64_t i, k;
+        for (i = 0, k = 0; i < lit->count; ++i, ++k) {
+            if (lit->items[i]->kind == CODE_KIND_KEY_VALUE) {
+                Code_Key_Value* kv = CODE_AS(lit->items[i], Code_Key_Value);
+                SpvId value_id = spirv_generate_expression(cc, b, kv->value, false);
+
+                if (kv->key->has_const && kv->value->has_const) {
+                    k = kv->key->const_value.as_u64;
+                    value_ids[k] = value_id;
+                } else {
+                    oc_assert(false);
+                }
+            } else {
+                SpvId value_id = spirv_generate_expression(cc, b, lit->items[i], false);
+                value_ids[k] = value_id;
+            }
+        }
+
+        if (lit->base.has_const) {
+            result = emit_rev(cc, b, (typeof(b->code_header)*)&b->code_types, SpvOpConstantComposite, typeid, value_ids, lit->count);
+        } else {
+            result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpCompositeConstruct, typeid, value_ids, lit->count);
+        }
+    } break;
+
+    case CODE_KIND_INDEX: {
+        Code_Slice* op = CODE_AS(expr, Code_Slice);
+
+        Oc_Arena_Save save;
+        bool had_access_chain = b->has_current_access_chain;
+        if (!had_access_chain) {
+            save = oc_arena_save(&cc->tmp_arena);
+            b->has_current_access_chain = true;
+        }
+
+        SpvId lvalue_id;
+        switch (op->ptr->type->kind) {
+        case LL_TYPE_POINTER:
+            oc_assert(false);
+            break;
+        case LL_TYPE_STRING: {
+            oc_assert(false);
+        } break;
+        case LL_TYPE_SLICE: {
+            oc_assert(false);
+        } break;
+        default:
+            lvalue_id = spirv_generate_expression(cc, b, op->ptr, true);
+            break;
+        }
+
+        if (op->ptr->kind != CODE_KIND_INDEX && !(op->ptr->kind == CODE_KIND_BINARY_OP && CODE_AS(op->ptr, Code_Operation)->op.kind == '.')) {
+            oc_array_append(&cc->tmp_arena, &b->current_access_chain_tmp, lvalue_id);
+        }
+
+        SpvId rvalue_id = spirv_generate_expression(cc, b, op->start, false);
+        oc_array_append(&cc->tmp_arena, &b->current_access_chain_tmp, rvalue_id);
+
+        if (!had_access_chain) {
+            SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassFunction);
+            result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp.items, b->current_access_chain_tmp.count);
+            oc_arena_restore(&cc->tmp_arena, save);
+            b->current_access_chain_tmp.count = 0;
+            b->has_current_access_chain = false;
+        }
+
+        if (!lvalue) {
+            result = emit_op_dst(SpvOpLoad, typeid, result);
+        }
+    } break;
+
     case CODE_KIND_BREAK: {
         Code_Control_Flow* cf = CODE_AS(expr, Code_Control_Flow);
         if (cf->expr) {
@@ -1131,15 +1275,23 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
         case LL_TYPE_INT:
             result = emit_type_op_dst(SpvOpTypeInt, type->width, 1);
             break;
+        case LL_TYPE_ANYINT:
+            result = spirv_generate_type(cc, b, cc->typer->ty_int32);
+            break;
         case LL_TYPE_UINT:
             result = emit_type_op_dst(SpvOpTypeInt, type->width, 0);
             break;
         case LL_TYPE_FLOAT:
             result = emit_type_op_dst(SpvOpTypeFloat, type->width);
             break;
-        case LL_TYPE_BOOL:
-            result = emit_type_op_dst(SpvOpTypeInt, type->width, 0);
+        case LL_TYPE_BOOL: {
+            LL_Type new_type = *type;
+            new_type.kind = LL_TYPE_UINT;
+            LL_Type* gen_type = ll_intern_type(cc, cc->typer, &new_type);
+            result = spirv_generate_type(cc, b, gen_type);
             break;
+
+        }
         case LL_TYPE_ANYBOOL:
             result = b->bool_id;
             break;
@@ -1157,6 +1309,38 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
 
             result = emit(cc, b, (typeof(b->code_header)*)&b->code_types, SpvOpTypeFunction, operands, 1 + fn_type->parameter_count);
         } break;
+        case LL_TYPE_ARRAY: {
+            LL_Type_Array* array = (LL_Type_Array*)type;
+            SpvId element_typeid = spirv_generate_type(cc, b, array->element_type);
+            SpvId size_id;
+            if (array->base.width > 0xFFFFFFFF) {
+                size_id = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &array->base.width);
+            } else {
+                size_id = spirv_generate_constant(cc, b, cc->typer->ty_uint64, &array->base.width);
+            }
+            result = emit_type_op_dst(SpvOpTypeArray, element_typeid, size_id);
+        } break;
+        case LL_TYPE_STRUCT: {
+            LL_Type_Struct* struc = (LL_Type_Struct*)type;
+            spirv_calculate_struct_offsets(type);
+            SpvId member_types[struc->field_count];
+
+            result = reserve_id();
+
+            for (uint32_t i = 0; i < struc->field_count; ++i) {
+                member_types[i] = spirv_generate_type(cc, b, struc->fields[i]);
+                emit_annotation_op(SpvOpMemberDecorate, result, i, SpvDecorationOffset, struc->offsets[i]);
+            }
+
+            oc_array_append(&cc->arena, &b->code_types, (SpvOpTypeStruct) | ((2 + struc->field_count) << 16));
+            oc_array_append(&cc->arena, &b->code_types, result);
+            oc_array_append_many(&cc->arena, &b->code_types, member_types, struc->field_count);
+        } break;
+        case LL_TYPE_NAMED: {
+            LL_Type_Named* named = (LL_Type_Named*)type;
+            result = spirv_generate_type(cc, b, named->actual_type);
+            emit_debug_name(result, named->scope->decl->ident->str);
+        } break;
         default:
             printf("Unhandled type: %d\n", type->kind);
             break;
@@ -1166,4 +1350,65 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
     type->spirv_type = result;
     return result;
 }
+
+
+// For now, this assumes std430
+LL_Backend_Layout spirv_get_layout(LL_Type* ty) {
+    LL_Backend_Layout sub_layout;
+    switch (ty->kind) {
+    case LL_TYPE_INT: return (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
+    case LL_TYPE_UINT: return (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
+    case LL_TYPE_CHAR: return (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
+    case LL_TYPE_FLOAT: return (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
+    case LL_TYPE_POINTER: return (LL_Backend_Layout) { .size = 8, .alignment = 8 };
+    case LL_TYPE_ARRAY: {
+        sub_layout = spirv_get_layout(((LL_Type_Array*)ty)->element_type);
+        return (LL_Backend_Layout) { .size = max(sub_layout.size, sub_layout.alignment) * ty->width, .alignment = sub_layout.alignment };
+    } break;
+    case LL_TYPE_STRING:
+    case LL_TYPE_SLICE: {
+        return (LL_Backend_Layout) { .size = 16, .alignment = 8 };
+    } break;
+    case LL_TYPE_STRUCT: {
+        LL_Type_Struct* struct_type = (LL_Type_Struct*)ty;
+        spirv_calculate_struct_offsets(ty);
+        if (struct_type->field_count == 0) return (LL_Backend_Layout) { .size = 0, .alignment = 1 };
+
+        sub_layout = spirv_get_layout(struct_type->fields[struct_type->field_count - 1]);
+        size_t size = struct_type->offsets[struct_type->field_count - 1] + max(sub_layout.size, sub_layout.alignment);
+        size = oc_align_forward(size, struct_type->base.struct_alignment);
+
+        return (LL_Backend_Layout) { .size = size, .alignment = struct_type->base.struct_alignment };
+    } break;
+    case LL_TYPE_NAMED: {
+        return spirv_get_layout(((LL_Type_Named*)ty)->actual_type);
+    } break;
+    default: return (LL_Backend_Layout) { .size = 0, .alignment = 1 };
+    }
+}
+
+
+void spirv_calculate_struct_offsets(LL_Type* type) {
+    if (type->kind != LL_TYPE_STRUCT) return;
+
+    LL_Type_Struct* struct_type = (LL_Type_Struct*)type;
+    if (struct_type->has_offsets) return;
+    
+    uint32_t offset = 0;
+    struct_type->base.struct_alignment = 1;
+    for (uint32_t i = 0; i < struct_type->field_count; ++i) {
+        spirv_calculate_struct_offsets(struct_type->fields[i]);
+
+        LL_Backend_Layout l = spirv_get_layout(struct_type->fields[i]);
+        if (l.alignment > struct_type->base.struct_alignment) {
+            struct_type->base.struct_alignment = l.alignment;
+        }
+        offset = oc_align_forward(offset, l.alignment);
+        struct_type->offsets[i] = offset;
+        offset = oc_align_forward(offset + max(l.size, l.alignment), l.alignment);
+    }
+
+    struct_type->has_offsets = true;
+}
+
 #undef FUNCTION

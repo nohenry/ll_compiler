@@ -454,7 +454,8 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
 
                 // struct depends on its fields
                 LL_Queued* struct_queued = parser->current_scope->decl->base.queued;
-                depend(struct_queued, queued, STAGE_FLAG_TYPECHECK | STAGE_FLAG_IR);
+                depend(struct_queued, queued, STAGE_FLAG_TYPECHECK);
+                depend(struct_queued, queued, STAGE_FLAG_IR);
             }
         }
     }

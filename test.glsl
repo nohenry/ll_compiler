@@ -21,22 +21,20 @@ layout(set = 4, binding = 0) buffer rootBlock {
     blockType root;
 } r;
 
+int function_array(int f[5]) {
+    return f[4];
+}
+
 void main()
 {
-    int i;
-    if (true) {
-        i = 123;
-    } else {
-        i = 10;
-    }
-    for (int i = 0; i < 123; i++) {
-        i += 34;
-    }
     blockType b = r.root;
-    // "pointer chasing" through a linked list
     b = b.next.next.next.next.next;
-    b += 12;
-    bool bbbb = r.b;
+
+    int j = int(r.b);
+    int a[] = {1, 2, 3, 4, 5};
+    int c[3][5] = {{1, 2, 3, 4, 5}, {6, 7, 8, 9, 10}, {11, 12, 13, 14, 15}};
+    function_array(a) + c[2][3];
+
     // b += bbb;
     // ...
     // use b.x;

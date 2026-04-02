@@ -231,7 +231,10 @@ void resolve_dependencies(Compiler_Context* cc, LL_Queued* queued, LL_Stage_Kind
             //     actually_queue(cc, dep->target->max_completed_stage + 1, dep->target);
             // }
             if (dep->flags == 0) {
-                actually_queue(cc, dep->target->max_completed_stage + 1, dep->target);
+                if (dep->target->dependency_counter[stage] == 0) {
+                    oc_assert(dep->target->max_completed_stage < stage);
+                    actually_queue(cc, dep->target->max_completed_stage + 1, dep->target);
+                }
                 oc_array_unordered_remove(&cc->arena, &queued->dependants, i);
                 --i;
             }
