@@ -1401,7 +1401,9 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             break;
         }
         uint8_t rows = 1, cols = 1;
-        string to_lookup = ll_typer_parse_vector_type(cc, typer, CODE_AS((*expr), Code_Ident)->str, &rows, &cols);
+        string to_lookup = CODE_AS((*expr), Code_Ident)->str;
+        bool should_do_vector_lookup = ll_typer_parse_vector_type(cc, typer, CODE_AS((*expr), Code_Ident)->str, &rows, &cols, &to_lookup);
+
         Code_Declaration* decl = ll_typer_find_symbol_up_scope_string(cc, typer, typer->current_scope, to_lookup, CODE_AS((*expr), Code_Ident)->flags & CODE_IDENT_FLAG_EXPAND);
         if (!decl) {
             typer->waited_on_code = (*expr);
@@ -1409,7 +1411,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         }
 
 
-        if (decl->base.kind != CODE_KIND_TYPENAME) {
+        if (should_do_vector_lookup && decl->base.kind != CODE_KIND_TYPENAME) {
             // if we tried to lookup a vector base type, but the declaration is not a type, then we lookup just the full name
             //    e.g. if we have a variable called 'f' and a variable called 'f2', if we reference 'f2' it looks like a vector type, so tries to lookup 'f'
             //    but 'f' itself is a variable not a type, so we should use 'f2'.
@@ -1421,12 +1423,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             }
         }
 
-        // if (string_eql(CODE_AS((*expr), Code_Ident)->str, lit("write_int"))) {
-        //     oc_breakpoint();
-        // }
-        // if (string_eql(CODE_AS((*expr), Code_Ident)->str, lit("int"))) {
-        //     oc_breakpoint();
-        // }
+        // old code from old typechecking system
         // if (!decl) {
         //     ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS((*expr), Code_Ident)->str);
         //     ll_typer_report_error_done(cc, typer);
@@ -2073,12 +2070,12 @@ TRY_MEMBER_FUNCTION_CALL:
 
             ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
-            result = typer->ty_bool;
+            result = typer->ty_anybool;
             break;
 #pragma GCC diagnostic pop
         case LL_TOKEN_KIND_AND:
         case LL_TOKEN_KIND_OR:
-            result = typer->ty_bool;
+            result = typer->ty_anybool;
             break;
         default: 
             eprint("Error: Invalid binary operation '");
@@ -2336,7 +2333,10 @@ TRY_MEMBER_FUNCTION_CALL:
         // }
 
         Code** ordered_args = oc_arena_alloc(&cc->arena, sizeof(ordered_args[0]) * (fn_type->parameter_count + inv->arguments.count));
+        memset(ordered_args, 0, sizeof(ordered_args[0]) * (fn_type->parameter_count + inv->arguments.count));
         uint32_t*  arg_indices = oc_arena_alloc(&cc->arena, sizeof(arg_indices[0]) * (fn_type->parameter_count + inv->arguments.count));
+        memset(arg_indices, 0, sizeof(arg_indices[0]) * (fn_type->parameter_count + inv->arguments.count));
+
         int ordered_arg_count = 0;
         int variadic_arg_count = 0;
 
@@ -2510,7 +2510,7 @@ TRY_MEMBER_FUNCTION_CALL:
         }
         if (missing_count) {
             if (expected_arg_count == missing_count) {
-                ll_typer_report_error(((LL_Error){ .highlight_start = inv->base.token_info, .highlight_end = inv->p_close }), "Expected {} arguments but only got none", expected_arg_count);
+                ll_typer_report_error(((LL_Error){ .highlight_start = inv->base.token_info, .highlight_end = inv->p_close }), "Expected {} arguments but got none", expected_arg_count);
             } else {
                 ll_typer_report_error(((LL_Error){ .highlight_start = inv->base.token_info, .highlight_end = inv->p_close }), "Expected {} arguments but only got {}", expected_arg_count, inv->arguments.count);
             }
@@ -3049,7 +3049,7 @@ CODE_BREAK_EXIT_SCOPE:
     } break;
     case CODE_KIND_IF: {
         Code_If* iff = CODE_AS((*expr), Code_If);
-        can_continue = ll_typer_type_expression(cc, typer, &iff->cond, typer->ty_bool, NULL);
+        can_continue = ll_typer_type_expression(cc, typer, &iff->cond, typer->ty_anybool, NULL);
         if (!can_continue) return false;
 
         switch (iff->cond->type->kind) {
@@ -3129,13 +3129,13 @@ CODE_BREAK_EXIT_SCOPE:
     return true;
 }
 
-string ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string input, uint8_t* rows, uint8_t* cols) {
+bool ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string input, uint8_t* rows, uint8_t* cols, string* to_lookup) {
     char* ptr = input.ptr;
     int64_t idx = input.len - 1;
 
     int64_t current_number = 0;
     int64_t current_number_multiple = 1;
-    int64_t end_index = idx;
+    int64_t end_index = input.len;
     for (;idx; idx--) {
         if (ptr[idx] >= '0' && ptr[idx] <= '9') {
             current_number += current_number_multiple * (ptr[idx] - '0');
@@ -3167,9 +3167,13 @@ string ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string 
         }
     }
 
-    string to_lookup = string_slice(input, 0, end_index);
-    to_lookup = ll_intern_string(cc, to_lookup);
-    return to_lookup;
+    if (end_index == (int64_t)input.len) {
+        return false;
+    } else {
+        *to_lookup = string_slice(input, 0, end_index);
+        *to_lookup = ll_intern_string(cc, *to_lookup);
+        return true;
+    }
 }
 
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename, bool* can_continue) {
@@ -3185,7 +3189,9 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         }
 
         uint8_t rows = 1, cols = 1;
-        string to_lookup = ll_typer_parse_vector_type(cc, typer, CODE_AS(typename, Code_Ident)->str, &rows, &cols);
+        string to_lookup = CODE_AS(typename, Code_Ident)->str;
+        // meh ignore result for now
+        (void)ll_typer_parse_vector_type(cc, typer, CODE_AS(typename, Code_Ident)->str, &rows, &cols, &to_lookup);
 
         Code_Declaration* decl = ll_typer_find_symbol_up_scope_string(cc, typer, typer->current_scope, to_lookup, CODE_AS(typename, Code_Ident)->flags & CODE_IDENT_FLAG_EXPAND);
         if (!decl) {

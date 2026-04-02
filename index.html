@@ -1,0 +1,9 @@
+<script>
+function connect() {
+    console.log('connect')
+    let ws = new WebSocket('wss://echo.websocket.org');
+    ws.addEventListener("open", () => {
+        console.log('opened');
+    });
+}
+</script>

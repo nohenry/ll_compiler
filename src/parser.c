@@ -409,16 +409,17 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
     }
 
     if (fn) {
-        *CODE_AS(result, Code_Function_Declaration) = (Code_Function_Declaration){
-            .base.base.kind = CODE_KIND_FUNCTION_DECLARATION,
-            .base.type = type,
-            .base.ident = ident,
-            .base.within_scope = parser->current_scope,
-            .parameters = parameters,
-            .body = (Code_Scope*)body_or_init,
-            .storage_class = storage_class,
-            .p_open = p_open, .p_close = p_close,
-        };
+        Code_Function_Declaration* fn = CODE_AS(result, Code_Function_Declaration);
+        fn->base.base.kind = CODE_KIND_FUNCTION_DECLARATION;
+        fn->base.type = type;
+        fn->base.ident = ident;
+        fn->base.within_scope = parser->current_scope;
+        fn->parameters = parameters;
+        fn->body = (Code_Scope*)body_or_init;
+        fn->storage_class = storage_class;
+        fn->p_open = p_open;
+        fn->p_close = p_close;
+
         LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
         actually_queue(cc, STAGE_TYPECHECK, queued);
 
@@ -440,6 +441,10 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
 
 		if (parser->current_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE) {
             oc_array_append(&cc->arena, &parser->current_scope->statements, result);
+
+            if (parser->current_function) {
+                oc_array_append(&cc->arena, &parser->current_function->all_local_variables, (Code_Variable_Declaration*)result);
+            }
 		} else {
             LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
             actually_queue(cc, STAGE_TYPECHECK, queued);

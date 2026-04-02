@@ -4,3 +4,5 @@
 - implement pointers
 - implement arrays/structs
 - implement inputs
+- add back macros
+- implement dynamic vector indexing

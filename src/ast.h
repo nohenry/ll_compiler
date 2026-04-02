@@ -152,7 +152,7 @@ typedef struct Code_Scope {
     LL_Token_Info c_open, c_close;
     LL_Ir_Block_Ref block_ref;
     uint32 break_value;
-    uint32 break_block_ref;
+    uint32 break_block_ref, continue_block_ref;
 } Code_Scope;
 
 typedef struct {
@@ -251,6 +251,8 @@ typedef struct Code_Function_Declaration {
     LL_Storage_Class storage_class;
     uint32_t ir_index;
     LL_Token_Info p_open, p_close;
+
+    Array(uint32, Code_Variable_Declaration*) all_local_variables;
 
     LL_Function_Instantiation* (*instantiations)[LL_DEFAULT_MAP_ENTRY_COUNT];
 } Code_Function_Declaration;
