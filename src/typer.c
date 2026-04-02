@@ -1834,23 +1834,34 @@ TRY_MEMBER_FUNCTION_CALL:
         case LL_TOKEN_KIND_ASSIGN_TIMES:
         case LL_TOKEN_KIND_ASSIGN_MINUS:
         case LL_TOKEN_KIND_ASSIGN_PLUS: {
-            can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
+            LL_Typer_Resolve_Result lhs_resolve = { 0 };
+            can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
             if (!can_continue) return false;
             can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
             if (!can_continue) return false;
 
             if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
-                can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
+                can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, &lhs_resolve);
                 if (!can_continue) return false;
                 can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
                 if (!can_continue) return false;
             } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
-                can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, NULL);
+                can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, &lhs_resolve);
                 if (!can_continue) return false;
             } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
                 can_continue = ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
                 if (!can_continue) return false;
             }
+
+            if (!lhs_resolve.decl) {
+                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
+                ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
+                ll_typer_report_error_done(cc, typer);
+                break;
+            }
+
+            lhs_resolve.decl->usage.direct_stores++;
+
             
             LL_Type* lhs_type = opr->left->type;
             LL_Type* rhs_type = opr->right->type;
@@ -1878,7 +1889,8 @@ TRY_MEMBER_FUNCTION_CALL:
             return true;
         } break;
         case '=': {
-            can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
+            LL_Typer_Resolve_Result lhs_resolve = { 0 };
+            can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
             if (!can_continue) return false;
             // if (opr->is_var_decl) {
             //     Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)CODE_AS(opr->left, Code_Ident)->resolved_decl;
@@ -1906,6 +1918,15 @@ TRY_MEMBER_FUNCTION_CALL:
             //     }
 
             // } else oc_assert(can_continue);
+
+            if (!lhs_resolve.decl) {
+                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
+                ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
+                ll_typer_report_error_done(cc, typer);
+                break;
+            }
+
+            lhs_resolve.decl->usage.direct_stores++;
 
             LL_Type* lhs_type = opr->left->type;
             can_continue = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
@@ -3640,7 +3661,10 @@ Code_Declaration* ll_typer_find_symbol_up_scope_string(Compiler_Context* cc, LL_
         //     break;
         default: found_decl = NULL; break;
         }
-        if (found_decl) return *found_decl;
+        if (found_decl) {
+            (*found_decl)->usage.direct_loads++;
+            return *found_decl;
+        }
         current = current->parent_scope;
     }
 

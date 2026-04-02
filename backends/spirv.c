@@ -253,11 +253,15 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
             for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
                 Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
 
-                SpvId typeid = spirv_get_pointer_type(cc, b, decl->base.type->type, SpvStorageClassFunction);
-                SpvId variable_id = emit_op_dst(SpvOpVariable, typeid, SpvStorageClassFunction);
+                if (decl->base.usage.direct_stores + decl->base.usage.pointers_created) {
+                    SpvId typeid = spirv_get_pointer_type(cc, b, decl->base.type->type, SpvStorageClassFunction);
+                    SpvId variable_id = emit_op_dst(SpvOpVariable, typeid, SpvStorageClassFunction);
 
-                decl->ir_index = variable_id;
-                emit_debug_name(variable_id, decl->base.ident->str);
+                    decl->ir_index = variable_id;
+                    emit_debug_name(variable_id, decl->base.ident->str);
+                } else {
+                    decl->ir_index = 0;
+                }
             }
 
             for (uint32 i = 0; i < fn_decl->all_local_variables.count; ++i) {
@@ -271,7 +275,12 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
 
             for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
                 Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
-                emit_op(SpvOpStore, decl->ir_index, parameter_ids[i]);
+                if (decl->ir_index) {
+                    decl->base.base.kind = CODE_KIND_VARIABLE_DECLARATION; // @Robustness: how bad is this
+                    emit_op(SpvOpStore, decl->ir_index, parameter_ids[i]);
+                } else {
+                    decl->ir_index = parameter_ids[i];
+                }
             }
 
             spirv_generate_statement(cc, b, (Code*)fn_decl->body);
@@ -621,6 +630,8 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
             break;
         case CODE_KIND_PARAMETER:
             result = CODE_AS(decl, Code_Variable_Declaration)->ir_index;
+            oc_assert(!lvalue);
+            return result;
             break;
         default: oc_assert(false);
         }

@@ -130,12 +130,19 @@ Enum(Code_Scope_Kind, uint32,
     CODE_SCOPE_FOR,
 );
 
+typedef struct {
+    uint32_t direct_loads;
+    uint32_t direct_stores;
+    uint32_t pointers_created;
+} LL_Symbol_Usage;
+
 typedef struct Code_Declaration {
     Code base;
     Code* type;
     Code_Ident* ident;
     struct Code_Scope* within_scope;
     struct ll_type* declared_type;
+    LL_Symbol_Usage usage;
 } Code_Declaration;
 
 typedef struct Code_Scope {

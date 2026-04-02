@@ -15,8 +15,6 @@ void main() {
     float4 aba = get_value(100, 200);
     float4 b = f1.rgba;
 
-
-
 }
 
 
