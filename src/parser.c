@@ -1076,6 +1076,12 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
         result->token_info = TOKEN_INFO(token);
         break;
 
+    case LL_TOKEN_KIND_BUILTIN:
+        CONSUME();
+        result = (Code*)create_builtin(cc, token.str);
+        result->token_info = TOKEN_INFO(token);
+        break;
+
     default:
         UNEXPECTED();
         result = NULL;
@@ -1106,6 +1112,7 @@ const char* ast_get_node_kind(Code* node) {
         case CODE_KIND_LITERAL_FLOAT: return "Float_Literal";
         case CODE_KIND_LITERAL_STRING: return "String_Literal";
         case CODE_KIND_IDENT: return "Identifier";
+        case CODE_KIND_BUILTIN: return "Builtin";
         case CODE_KIND_BINARY_OP: return "Binary_Operator";
         case CODE_KIND_PRE_OP: return "Prefix_Operator";
         case CODE_KIND_INVOKE: return "Invoke";
@@ -1141,6 +1148,7 @@ void print_node_value(Code* node, Oc_Writer* w) {
         case CODE_KIND_LITERAL_FLOAT:  wprint(w, "{}", CODE_AS(node, Code_Literal)->f64); break;
         case CODE_KIND_LITERAL_STRING: wprint(w, "{}", CODE_AS(node, Code_Literal)->str); break;
         case CODE_KIND_IDENT:          wprint(w, "{}", CODE_AS(node, Code_Ident)->str); break;
+        case CODE_KIND_BUILTIN:        wprint(w, "#{}", CODE_AS(node, Code_Ident)->str); break;
         case CODE_KIND_BINARY_OP: lexer_print_token_info_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
         case CODE_KIND_PRE_OP:    lexer_print_token_info_raw_to_writer(&CODE_AS(node, Code_Operation)->op, w); break;
         case CODE_KIND_INVOKE: break;

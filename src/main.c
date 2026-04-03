@@ -56,7 +56,6 @@ int main(int argc, char** argv) {
 
     LL_Backend backend_elf = ll_backend_init(&cc, LL_BACKEND_LINUX_X86_64_ELF);
     LL_Backend backend_ir = ll_backend_init(&cc, LL_BACKEND_IR);
-    LL_Backend backend_spirv = ll_backend_init(&cc, LL_BACKEND_SPIRV);
 
     cc.typer = &typer;
     cc.eval_context = &eval_context;
@@ -96,6 +95,8 @@ int main(int argc, char** argv) {
     // if (output_ir) ll_backend_write_to_file(&cc, &backend_ir, "out.ir");
 
     // ll_backend_generate_statement_from_ir(&cc, &backend_spirv, backend_ir.backend);
+
+    LL_Backend backend_spirv = ll_backend_init(&cc, LL_BACKEND_SPIRV);
     ll_backend_generate_statement(&cc, &backend_spirv, root);
     ll_backend_write_to_file(&cc, &backend_spirv, "out.spirv");
     // if (run) ll_backend_execute(&cc, &backend_elf, backend_ir.backend);

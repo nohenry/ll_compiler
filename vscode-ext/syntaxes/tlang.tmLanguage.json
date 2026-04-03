@@ -40,6 +40,10 @@
                 {
                     "name": "keyword.tlang",
                     "match": "\\b(struct|union|enum|using|true|false|operator|null|inline|cast|macro|let|sizeof)\\b"
+                },
+                {
+                    "name": "keyword.tlang",
+                    "match": "#([_a-zA-Z0-9]+)\\b"
                 }
             ]
         },

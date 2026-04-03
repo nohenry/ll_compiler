@@ -4,6 +4,123 @@
 - implement arrays/structs
 - implement pointers
 - implement inputs
+- semantic variables
 - add back macros
 - implement dynamic vector indexing
 - cast vectors to arrays
+- flags
+    + debug symbols
+    + optimization
+    + disable dead code elim
+    + entry point name
+    + input config
+
+
+
+
+Types:
+
+    Scalar:
+        int uint float bool char -> all 32 bits by default, except char which is 8 bits by default
+        int8    int16   int32   int64   -> bit width
+        uint8   uint16  uint32  uint64  -> bit width
+                float16 float32 float64 -> bit width
+        bool8   bool16  bool32  bool64  -> bit width
+        char8   char16  char32  char64  -> bit width
+
+    Vectors:
+        float2    float3    float4    -> vectors
+        float32x2 float32x3 float32x4 -> equivalent to above
+        int2      int3      int4      -> vectors
+        uint2     uint3     uint4     -> vectors
+        bool2     bool3     bool4     -> vectors
+
+        Add 'x[0-9]+' suffix to turn into vector:
+         float32x4 -> vector of 4 floats that are 32 bits each
+
+        Add another 'x[0-9]+' suffix to turn into matrix:
+         float32x4x3 -> matrix with 3 columns of vector4s of float32s
+
+        Special Cases:
+        For ints, uints, and bools, having a suffix of just a number (no x), which is less than 8 is valid:
+         intx4 -> vector of 4 ints
+         int4 -> vector of 4 ints (not 4 bit int, since this isn't a physical thing)
+         int8 -> this is an 8 bit integer
+
+        For floats, same thing but less than 16 is valid (maybe 8 bit float IS valid? so might change):
+         float4 -> vector of 4 float32s
+         float8 -> vector of 8 float32s
+        
+        Special cases can be turned into matrices as well:
+         float4x3 -> matrix of 3 vector4s of float32s
+        
+        Constructing Vectors:
+            float4 f4 = float4(1, 2, 3, 4);
+
+            // All arguments are esentially flattened to fill up the new vector's components:
+            float4 f4_1 = float4(1, float2(2, 3), 4);
+            float4 f4_2 = float4(float3(1, 2, 3), 4);
+            float4 f4_3 = float4(float4(1, 2, 3, 4));
+            float4 f4_4 = float4(float3(float2(1, 2), 3), 4);
+        
+        Swizzling:
+            float4 f4 = float4(1, 2, 3, 4);
+            float4 new_vec = f4.xyzw;
+            float4 new_vec_3 = f4.rgba;
+            float4 new_vec_4 = f4.uvts;
+            float4 new_vec_1 = f4.xxxx;
+            // Upper case letters work for all of these too, they don't change anything.
+
+            // The new vector can be any size up to 16, as long as the swizzled components exist in the old vector
+            float2 new_vec_2 = f4.xy;
+            float8 new_vec_2 = f4.xyxyxyxy;
+
+            // Constants from 0 to 9 (inclusive) can also be used.
+            float4 position = f4.xyz1;
+            float4 zeroed = f4.0000; // not using any components from old vector, each component is now 0
+            float4 ninesss = f4.9x9y; // wow you can use nine if you want to, because why not?
+
+    Arrays:
+        Pretty boring:
+        int[8] -> array of 8 ints
+
+        Difference from C: Brackets go beside the type, not the variable.
+                           Types are read right to left.
+        int[3][4] b; // b is an array of 4, of an array of 3 ints.
+                     // 4 rows, 3 columns
+    Pointers:
+        Pretty boring:
+        int* -> pointer to int.
+
+        Difference from C: Pointer is syntax part of the type, not the variable
+                           So also read right to left
+        int** b;
+           ||
+           ||first pointer to dereference
+           |
+           |second pointer to dereference
+        
+        With arrays:
+        int[3]* c; // c is a pointer to an array of 3 ints
+        int*[3] d; // d is an array of 3 pointers to ints
+
+        Pointers support pointer arithmetic.
+    
+    Slices:
+        A slice of an array; an array view; just a pointer and a length.
+        int[] -> a slice of int;
+
+        Since this is a pointer and a length, by default it takes up 8 bytes for pointer, and another 8 bytes for length.
+        int[3] array;
+        int[] slice = array; // arrays can be implicitly casted to a slice
+        int64 length = slice.length; // access length of the slice with .length
+        int* ptr = slice.ptr; // access pointer with .ptr
+        int[] new_slice = slice[1..2]; // sub slice that starts at index 1 (inclusive), and ends at index 2 (exclusive)
+
+Builtin Variables:
+    #vertex_index -> index of current vertex invocation
+    #index_index -> index of current index invocation
+    #instance_index -> index of current instance invocation
+    #position -> used to set vertex position
+
+Builtin Functions:

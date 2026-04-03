@@ -12,6 +12,7 @@ typedef enum {
     CODE_KIND_LITERAL_FLOAT,
     CODE_KIND_LITERAL_STRING,
     CODE_KIND_IDENT,
+    CODE_KIND_BUILTIN,
 
     CODE_KIND_BINARY_OP,
     CODE_KIND_PRE_OP,
@@ -361,6 +362,13 @@ static inline Code_Ident* create_ident(Compiler_Context* cc, string sym) {
         ident.flags |= CODE_IDENT_FLAG_EXPAND;
     }
 
+    Code_Ident* node = (Code_Ident*)create_node(cc, (Code*)&ident, sizeof(ident));
+    return node;
+}
+
+static inline Code_Ident* create_builtin(Compiler_Context* cc, string sym) {
+    Code_Ident ident = { .str = sym, .symbol_index = CODE_IDENT_SYMBOL_INVALID };
+    ident.base.kind = CODE_KIND_BUILTIN;
     Code_Ident* node = (Code_Ident*)create_node(cc, (Code*)&ident, sizeof(ident));
     return node;
 }

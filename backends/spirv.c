@@ -28,6 +28,12 @@ typedef struct {
 
     SpvId entry_id;
     string entry_name;
+    SpvId push_const_id;
+
+    SpvId vertex_index;
+    SpvId index_index;
+    SpvId instance_index;
+    SpvId per_vertex;
 
     Array(uint32_t, SpvId)* current_access_chain_tmp;
 } LL_Backend_Spirv;
@@ -117,6 +123,17 @@ SpvId emit_rev(Compiler_Context* cc, LL_Backend_Spirv* b, typeof(b->code_header)
 LL_Backend_Layout spirv_get_layout(LL_Type* ty);
 void spirv_calculate_struct_offsets(LL_Type* type);
 SpvId spirv_get_pointer_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, SpvStorageClass storage_class);
+SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, void* value);
+
+typedef struct {
+    SpvStorageClass storage_class;
+} Spirv_Type_Parameters;
+
+#define Spirv_Type_Parameters_Default ((Spirv_Type_Parameters) { .storage_class = SpvStorageClassFunction })
+
+SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type);
+// SpvId spirv_generate_type_with_parameters(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, Spirv_Type_Parameters parameters);
+SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code* expr, bool lvalue);
 
 void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
     memset(b, 0, sizeof(*b));
@@ -133,6 +150,7 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
     emit_header_op(SpvOpCapability, SpvCapabilityInt64);
     emit_header_op(SpvOpCapability, SpvCapabilityPhysicalStorageBufferAddresses);
     emit_header_op(SpvOpCapability, SpvCapabilityVulkanMemoryModel);
+    emit_header_op(SpvOpCapability, SpvCapabilityDrawParameters);
 
     emit_header_op(SpvOpMemoryModel, SpvAddressingModelPhysicalStorageBuffer64, SpvMemoryModelVulkan);
 
@@ -140,12 +158,29 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
     b->do_debug = true;
 
     b->bool_id = emit_type_op_dst(SpvOpTypeBool);
+
+    SpvId sint = spirv_get_pointer_type(cc, b, cc->typer->ty_int32, SpvStorageClassInput);
+    b->vertex_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
+    emit_annotation_op(SpvOpDecorate, b->vertex_index, SpvDecorationBuiltIn, SpvBuiltInVertexIndex);
+    b->index_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
+    emit_annotation_op(SpvOpDecorate, b->index_index, SpvDecorationBuiltIn, SpvBuiltInDrawIndex);
+    b->instance_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
+    emit_annotation_op(SpvOpDecorate, b->instance_index, SpvDecorationBuiltIn, SpvBuiltInInstanceIndex);
+
+    SpvId per_vertex_id = emit_type_op_dst(SpvOpTypeStruct,
+        spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 4, 1)),
+        spirv_generate_type(cc, b, cc->typer->ty_float32),
+        spirv_generate_type(cc, b, cc->typer->ty_uint32),
+        spirv_generate_type(cc, b, cc->typer->ty_uint32)
+    );
+    SpvId per_vertex_id_ptr = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassOutput, per_vertex_id);
+    b->per_vertex = emit_type_op_dst_rev(SpvOpVariable, per_vertex_id_ptr, SpvStorageClassOutput);
 }
 
 bool spirv_write_to_file(Compiler_Context* cc, LL_Backend_Spirv* b, char* filepath) {
     (void)cc;
     b->code_header.items[3] = b->next_result_id; // write id bound
-    emit_entry_point(SpvExecutionModelVertex, b->entry_id, b->entry_name);
+    emit_entry_point(SpvExecutionModelVertex, b->entry_id, b->entry_name, b->push_const_id, b->vertex_index, b->index_index, b->instance_index, b->per_vertex);
 
     FILE* fptr;
     if (fopen_s(&fptr, filepath, "wb")) {
@@ -169,9 +204,6 @@ bool spirv_write_to_file(Compiler_Context* cc, LL_Backend_Spirv* b, char* filepa
 
     return s;
 }
-
-SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type);
-SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code* expr, bool lvalue);
 
 void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* stmt) {
     switch (stmt->kind) {
@@ -214,7 +246,9 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
     } break;
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS(stmt, Code_Function_Declaration);
-        if (!string_eql(fn_decl->base.ident->str, lit("main"))) {
+        bool is_main = string_eql(fn_decl->base.ident->str, lit("main"));
+        if (!is_main) {
+            // don't dead code elim entry
             if (ll_symbol_not_used(fn_decl->base.usage)) return;
         }
 
@@ -231,44 +265,103 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
         Spirv_Function* fn = FUNCTION();
         memset(fn, 0, sizeof(*fn));
 
-        LL_Type_Function* fn_type = (LL_Type_Function*)fn_decl->base.ident->base.type;
-        SpvId return_type = spirv_generate_type(cc, b, fn_type->return_type);
+        LL_Type_Function* fn_type;
+        SpvId return_type;
+        if (is_main) {
+            fn_type = ll_typer_get_fn_type(cc, cc->typer, cc->typer->ty_void, NULL, 0, false);
+            return_type = spirv_generate_type(cc, b, cc->typer->ty_void);
+        } else {
+            fn_type = (LL_Type_Function*)fn_decl->base.ident->base.type;
+            return_type = spirv_generate_type(cc, b, fn_type->return_type);
+        }
+
         SpvId spirv_function_type = spirv_generate_type(cc, b, (LL_Type*)fn_type);
 
         SpvId function_id = emit_op_dst(SpvOpFunction, return_type, 0, spirv_function_type);
         fn->spv_id = function_id;
         emit_debug_name(function_id, fn_decl->base.ident->str);
 
-        if (string_eql(fn_decl->base.ident->str, lit("main"))) {
+        if (is_main) {
             b->entry_id = function_id;
             b->entry_name = fn_decl->base.ident->str;
         }
 
         if (fn_decl->body) {
             SpvId parameter_ids[fn_decl->parameters.count];
-            for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
-                Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
+            b->push_const_id = 0;
 
-                SpvId typeid = spirv_generate_type(cc, b, decl->base.type->type);
-                SpvId parameter_id = emit_op_dst(SpvOpFunctionParameter, typeid);
+            if (is_main) {
+                SpvId push_const_typeid = reserve_id();
 
-                parameter_ids[i] = parameter_id;
-                emit_debug_name(parameter_id, decl->base.ident->str);
+                uint32_t offset = 0;
+
+                // main parameters are handled as inputs
+                for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
+                    Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
+
+                    SpvId typeid;
+                    if (decl->base.ident->base.type->kind == LL_TYPE_POINTER) {
+                        LL_Type_Pointer* ptr = (LL_Type_Pointer*)decl->base.ident->base.type;
+                        typeid = spirv_generate_type(cc, b, ptr->element_type);
+                        typeid = spirv_get_pointer_type(cc, b, ptr->element_type, SpvStorageClassPhysicalStorageBuffer);
+                    } else {
+                        typeid = spirv_generate_type(cc, b, decl->base.type->type);
+                    }
+                    LL_Backend_Layout l = spirv_get_layout(decl->base.ident->base.type);
+
+                    offset = oc_align_forward(offset, l.alignment);
+                    emit_annotation_op(SpvOpMemberDecorate, push_const_typeid, i, SpvDecorationOffset, offset);
+                    offset = oc_align_forward(offset + max(l.size, l.alignment), l.alignment);
+
+                    parameter_ids[i] = typeid;
+                }
+
+                oc_array_append(&cc->arena, &b->code_types, (SpvOpTypeStruct) | ((2 + fn_decl->parameters.count) << 16));
+                oc_array_append(&cc->arena, &b->code_types, push_const_typeid);
+                oc_array_append_many(&cc->arena, &b->code_types, parameter_ids, fn_decl->parameters.count);
+
+                emit_annotation_op(SpvOpDecorate, push_const_typeid, SpvDecorationBlock);
+
+                SpvId ptr_push_const_typeid = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassPushConstant, push_const_typeid);
+                b->push_const_id = emit_type_op_dst_rev(SpvOpVariable, ptr_push_const_typeid, SpvStorageClassPushConstant);
+            } else {
+                // normal function parameters
+                for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
+                    Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
+
+                    SpvId typeid = spirv_generate_type(cc, b, decl->base.type->type);
+                    SpvId parameter_id = emit_op_dst(SpvOpFunctionParameter, typeid);
+
+                    parameter_ids[i] = parameter_id;
+                    emit_debug_name(parameter_id, decl->base.ident->str);
+                }
             }
 
             (void)emit_op_dst_noarg(SpvOpLabel);
 
-            for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
-                Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
+            if (is_main) {
+                for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
+                    Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
 
-                if (decl->base.usage.direct_stores + decl->base.usage.pointers_created) {
-                    SpvId typeid = spirv_get_pointer_type(cc, b, decl->base.type->type, SpvStorageClassFunction);
+                    SpvId typeid = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassFunction, parameter_ids[i]);
                     SpvId variable_id = emit_op_dst(SpvOpVariable, typeid, SpvStorageClassFunction);
+                    emit_debug_name(variable_id, decl->base.ident->str);
 
                     decl->ir_index = variable_id;
-                    emit_debug_name(variable_id, decl->base.ident->str);
-                } else {
-                    decl->ir_index = 0;
+                }
+            } else {
+                for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
+                    Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
+
+                    if (decl->base.usage.direct_stores + decl->base.usage.pointers_created) {
+                        SpvId typeid = spirv_get_pointer_type(cc, b, decl->base.type->type, SpvStorageClassFunction);
+                        SpvId variable_id = emit_op_dst(SpvOpVariable, typeid, SpvStorageClassFunction);
+
+                        decl->ir_index = variable_id;
+                        emit_debug_name(variable_id, decl->base.ident->str);
+                    } else {
+                        decl->ir_index = 0;
+                    }
                 }
             }
 
@@ -281,13 +374,26 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
                 emit_debug_name(variable_id, decl->base.ident->str);
             }
 
-            for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
-                Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
-                if (decl->ir_index) {
-                    decl->base.base.kind = CODE_KIND_VARIABLE_DECLARATION; // @Robustness: how bad is this
-                    emit_op(SpvOpStore, decl->ir_index, parameter_ids[i]);
-                } else {
-                    decl->ir_index = parameter_ids[i];
+            if (is_main) {
+                for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
+                    Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
+
+                    SpvId index = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &i);
+                    SpvId typeid = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassPushConstant, parameter_ids[i]);
+                    SpvId ptr = emit_op_dst(SpvOpAccessChain, typeid, b->push_const_id, index);
+                    SpvId loaded = emit_op_dst(SpvOpLoad, parameter_ids[i], decl->ir_index);
+                    emit_op(SpvOpStore, decl->ir_index, loaded);
+                }
+
+            } else {
+                for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
+                    Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
+                    if (decl->ir_index) {
+                        decl->base.base.kind = CODE_KIND_VARIABLE_DECLARATION; // @Robustness: how bad is this
+                        emit_op(SpvOpStore, decl->ir_index, parameter_ids[i]);
+                    } else {
+                        decl->ir_index = parameter_ids[i];
+                    }
                 }
             }
 
@@ -524,6 +630,7 @@ SpvId spirv_generate_vector_constructor(Compiler_Context* cc, LL_Backend_Spirv* 
     Code* current_arg = inv->arguments.items[0];
     SpvId current_arg_id;
     bool is_constant = true;
+    (void)is_constant;
 
     for (uword si = 0, src_i = 0, di = 0; di < components; ++di) {
         if (src_i == 0) {
@@ -600,6 +707,29 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
         } else {
             oc_assert(false);
         }
+    } break;
+
+    case CODE_KIND_BUILTIN: {
+        Code_Ident* ident = CODE_AS(expr, Code_Ident);
+        if (string_eql(ident->str, lit("vertex_index"))) {
+            oc_assert(!lvalue);
+            return b->vertex_index;
+        } else if (string_eql(ident->str, lit("index_index"))) {
+            oc_assert(!lvalue);
+            return b->index_index;
+        } else if (string_eql(ident->str, lit("instance_index"))) {
+            oc_assert(!lvalue);
+            return b->instance_index;
+        } else if (string_eql(ident->str, lit("position"))) {
+            SpvId typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassOutput);
+            int32_t index = 0;
+            SpvId index_id = spirv_generate_constant(cc, b, cc->typer->ty_int32, &index);
+            result = emit_op_dst(SpvOpAccessChain, typeid, b->per_vertex, index_id);
+
+            if (!lvalue) {
+                result = emit_op_dst(SpvOpLoad, typeid, result);
+            }
+        } else oc_assert(false);
     } break;
 
     case CODE_KIND_IDENT: {
@@ -883,7 +1013,6 @@ DO_BIN_OP_ASSIGN_OP:
         SpvId numbers[16];
         uint32_t numbers_count = 0;
 
-        SpvId base_type_id = spirv_generate_type(cc, b, swizzle->vector->type->base_type);
         for (uint32_t i = 0; i < swizzle->count; ++i) {
             if (CODE_SWIZZLE_IS_COMPONENT(swizzle->components[i])) {
                 operands.selectors[i] = CODE_SWIZZLE_GET_COMPONENT(swizzle->components[i]);
@@ -1286,11 +1415,17 @@ DO_BIN_OP_ASSIGN_OP:
 // This is a thing in case we want to intern pointer types in the future.
 // Right now we don't for performace (yay saving .00001 ms)
 SpvId spirv_get_pointer_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, SpvStorageClass storage_class) {
-    LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, type);
+    LL_Type* ptr_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, type, storage_class);
     SpvId result = spirv_generate_type(cc, b, ptr_type);
     // result = emit_type_op_dst(SpvOpTypePointer, storage_class, result);
     return result;
 }
+
+// SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type) {
+//     Spirv_Type_Parameters parameters = Spirv_Type_Parameters_Default;
+//     SpvId result = spirv_generate_type_with_parameters(cc, b, type, parameters);
+//     return result;
+// }
 
 SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type) {
     if (!type) return 0;
@@ -1341,7 +1476,7 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
         case LL_TYPE_POINTER: {
             LL_Type_Pointer* ptr = (LL_Type_Pointer*)type;
             SpvId element_type = spirv_generate_type(cc, b, ptr->element_type);
-            result = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassFunction, element_type);
+            result = emit_type_op_dst(SpvOpTypePointer, ptr->spirv_storage_class, element_type);
         } break;
         case LL_TYPE_FUNCTION: {
             LL_Type_Function* fn_type = (LL_Type_Function*)type;
@@ -1374,6 +1509,7 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
             SpvId member_types[struc->field_count];
 
             result = reserve_id();
+            type->spirv_type = result;
 
             for (uint32_t i = 0; i < struc->field_count; ++i) {
                 member_types[i] = spirv_generate_type(cc, b, struc->fields[i]);
@@ -1404,10 +1540,19 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
 LL_Backend_Layout spirv_get_layout(LL_Type* ty) {
     LL_Backend_Layout sub_layout;
     switch (ty->kind) {
-    case LL_TYPE_INT: return (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
-    case LL_TYPE_UINT: return (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
-    case LL_TYPE_CHAR: return (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
-    case LL_TYPE_FLOAT: return (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
+    case LL_TYPE_INT:
+    case LL_TYPE_UINT:
+    case LL_TYPE_CHAR:
+    case LL_TYPE_FLOAT:
+        sub_layout = (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
+        switch (ty->rows) {
+        case 2: sub_layout.alignment *= 2; break;
+        case 3:
+        case 4: sub_layout.alignment *= 4; break;
+        default: break;
+        }
+        // column-major matrices are treated as an array of columns, so no need to do anything else here
+        return sub_layout;
     case LL_TYPE_POINTER: return (LL_Backend_Layout) { .size = 8, .alignment = 8 };
     case LL_TYPE_ARRAY: {
         sub_layout = spirv_get_layout(((LL_Type_Array*)ty)->element_type);

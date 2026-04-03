@@ -338,11 +338,11 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
         LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
         struct {
             LL_Type_Kind kind;
-            uint32_t padding;
+            uint32_t spirv_storage_class;
             LL_Type* element;
         } type_hash = {
             .kind = type->kind,
-            .padding = 0,
+            .spirv_storage_class = ptr_type->spirv_storage_class,
             .element = ptr_type->element_type,
         };
         size_t hash = stbds_siphash_bytes(&type_hash, sizeof(type_hash), seed);
@@ -406,7 +406,7 @@ bool ll_type_eql(LL_Type* a, LL_Type* b) {
     case LL_TYPE_BOOL: return a->width == b->width && a->rows == b->rows && a->columns == b->columns && a->base_type == b->base_type;
     case LL_TYPE_POINTER: {
         LL_Type_Pointer *fa = (LL_Type_Pointer*)a, *fb = (LL_Type_Pointer*)b;
-        return fa->element_type == fb->element_type;
+        return fa->element_type == fb->element_type && fa->spirv_storage_class == fb->spirv_storage_class;
     }
     case LL_TYPE_FUNCTION: {
         LL_Type_Function *fa = (LL_Type_Function*)a, *fb = (LL_Type_Function*)b;
@@ -440,6 +440,7 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
     LL_Type_Pointer ptr_type = { 0 };
     ptr_type.base.kind = LL_TYPE_POINTER;
     ptr_type.element_type = element_type;
+    ptr_type.spirv_storage_class = 7 /* SpvStorageClassFunction */;
 
 
     LL_Type* res;
@@ -454,6 +455,27 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
 
     return res;
 }
+
+LL_Type* ll_typer_get_ptr_type_with_storage_class(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type, uint32_t spirv_storage_class) {
+    LL_Type_Pointer ptr_type = { 0 };
+    ptr_type.base.kind = LL_TYPE_POINTER;
+    ptr_type.element_type = element_type;
+    ptr_type.spirv_storage_class = spirv_storage_class;
+
+
+    LL_Type* res;
+    LL_Type** t = MAP_GET(typer->interned_types, (LL_Type*)&ptr_type, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
+
+    if (t) {
+        res = *t;
+    } else {
+        res = oc_arena_dup(&cc->arena, &ptr_type, sizeof(ptr_type));
+        MAP_PUT(typer->interned_types, res, res, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
+    }
+
+    return res;
+}
+
 
 LL_Type* ll_typer_get_array_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type, size_t size) {
     LL_Type_Array array_type = { 0 };
@@ -536,6 +558,19 @@ LL_Type* ll_typer_get_struct_type(Compiler_Context* cc, LL_Typer* typer, LL_Type
     }
 
     return res;
+}
+
+LL_Type* ll_typer_get_vector_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* base_type, uint8_t rows, uint8_t columns) {
+    LL_Type new_type = *base_type;
+    new_type.rows = rows;
+    new_type.columns = columns;
+    if (ll_type_is_vector(&new_type)) {
+        new_type.base_type = base_type;
+    } else {
+        new_type.base_type = NULL;
+    }
+    LL_Type* result = ll_intern_type(cc, typer, &new_type);
+    return result;
 }
 
 LL_Type* ll_typer_implicit_cast_tofrom(Compiler_Context* cc, LL_Typer* typer, LL_Type* from, LL_Type* to) {
@@ -1415,7 +1450,23 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
     case CODE_KIND_BLOCK: {
         return ll_typer_handle_block(cc, typer, expected_type, (Code_Scope**)expr, true);
     }
+    case CODE_KIND_BUILTIN: {
+        Code_Ident* ident = CODE_AS((*expr), Code_Ident);
+        if (string_eql(ident->str, lit("vertex_index"))) {
+            result = typer->ty_int32;
+        } else if (string_eql(ident->str, lit("index_index"))) {
+            result = typer->ty_int32;
+        } else if (string_eql(ident->str, lit("instance_index"))) {
+            result = typer->ty_int32;
+        } else if (string_eql(ident->str, lit("position"))) {
+            result = ll_typer_get_vector_type(cc, typer, typer->ty_float32, 4, 1);
+        } else {
+            ll_typer_report_error(((LL_Error){ .main_token = ident->base.token_info }), "Invalid builtin '#{}'", ident->str);
+            ll_typer_report_error_done(cc, typer);
+        }
+    } break;
     case CODE_KIND_IDENT: {
+        Code_Ident* ident = CODE_AS((*expr), Code_Ident);
         if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
             if (expected_type->kind == LL_TYPE_BOOL) {
                 result = expected_type;
@@ -1431,6 +1482,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             result = ll_typer_get_ptr_type(cc, typer, typer->ty_void);
             break;
         }
+
         uint8_t rows = 1, cols = 1;
         string to_lookup = CODE_AS((*expr), Code_Ident)->str;
         bool should_do_vector_lookup = ll_typer_parse_vector_type(cc, typer, CODE_AS((*expr), Code_Ident)->str, &rows, &cols, &to_lookup);
