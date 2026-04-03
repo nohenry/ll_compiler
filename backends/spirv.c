@@ -29,8 +29,7 @@ typedef struct {
     SpvId entry_id;
     string entry_name;
 
-    bool has_current_access_chain;
-    Array(uint32_t, SpvId) current_access_chain_tmp;
+    Array(uint32_t, SpvId)* current_access_chain_tmp;
 } LL_Backend_Spirv;
 
 #define SPIRV_INVALID_FUNCTION 0u
@@ -520,6 +519,7 @@ SpvId spirv_generate_vector_constructor(Compiler_Context* cc, LL_Backend_Spirv* 
     oc_assert(inv->arguments.count > 0);
     Code* current_arg = inv->arguments.items[0];
     SpvId current_arg_id;
+    bool is_constant = true;
 
     for (uword si = 0, src_i = 0, di = 0; di < components; ++di) {
         if (src_i == 0) {
@@ -670,8 +670,7 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
             }
         } break;
         case '&': {
-            oc_assert(false);
-            // result = spirv_generate_expression(cc, b, op->right, true);
+            result = spirv_generate_expression(cc, b, op->right, true);
             // if (op->right->kind != CODE_KIND_INDEX && op->right->kind != CODE_KIND_BINARY_OP) {
             //     result = IR_APPEND_OP_DST(LL_IR_OPCODE_LEA, expr->type, result);
             // }
@@ -696,12 +695,13 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
             Code_Declaration* field_scope = right_ident->resolved_decl ? right_ident->resolved_decl : NULL;
             if (field_scope) {
+                typeof(*b->current_access_chain_tmp) chain_access = { 0 };
 
                 Oc_Arena_Save save;
-                bool had_access_chain = b->has_current_access_chain;
+                bool had_access_chain = b->current_access_chain_tmp != NULL;
                 if (!had_access_chain) {
                     save = oc_arena_save(&cc->tmp_arena);
-                    b->has_current_access_chain = true;
+                    b->current_access_chain_tmp = &chain_access;
                 }
 
 
@@ -716,27 +716,35 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                 Code_Variable_Declaration* field_decl = CODE_AS(field_scope, Code_Variable_Declaration);
                 oc_assert(field_decl->base.base.kind == CODE_KIND_VARIABLE_DECLARATION);
 
-                if (opr->left->type->kind == LL_TYPE_POINTER && opr->left->kind == CODE_KIND_BINARY_OP) {
-                    oc_assert(false && "handle pointers");
+                typeof(b->current_access_chain_tmp) old_chain_access = b->current_access_chain_tmp;
+
+                if (opr->left->type->kind == LL_TYPE_POINTER) {
+                    b->current_access_chain_tmp = NULL;
+                    result = spirv_generate_expression(cc, b, opr->left, true);
+                    result = emit_op_dst(SpvOpLoad, opr->left->type->spirv_type, result);
+
+                    // if (!lvalue) {
+                    //     result = emit_op_dst(SpvOpLoad, typeid, result);
+                    // }
+
+                    // return result;
                 } else {
-
-
+                    result = spirv_generate_expression(cc, b, opr->left, true);
                 }
+                b->current_access_chain_tmp = old_chain_access;
 
-                result = spirv_generate_expression(cc, b, opr->left, true);
                 if (opr->left->kind != CODE_KIND_INDEX && !(opr->left->kind == CODE_KIND_BINARY_OP && CODE_AS(opr->left, Code_Operation)->op.kind == '.')) {
-                    oc_array_append(&cc->tmp_arena, &b->current_access_chain_tmp, result);
+                    oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
                 }
 
                 SpvId member_id = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &field_decl->ir_index);
-                oc_array_append(&cc->tmp_arena, &b->current_access_chain_tmp, member_id);
+                oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, member_id);
 
                 if (!had_access_chain) {
                     SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassFunction);
-                    result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp.items, b->current_access_chain_tmp.count);
+                    result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp->items, b->current_access_chain_tmp->count);
                     oc_arena_restore(&cc->tmp_arena, save);
-                    b->has_current_access_chain = false;
-                    b->current_access_chain_tmp.count = 0;
+                    b->current_access_chain_tmp = NULL;
                 }
 
                 if (!lvalue) {
@@ -1050,43 +1058,65 @@ DO_BIN_OP_ASSIGN_OP:
 
     case CODE_KIND_INDEX: {
         Code_Slice* op = CODE_AS(expr, Code_Slice);
+        typeof(*b->current_access_chain_tmp) chain_access = { 0 };
 
         Oc_Arena_Save save;
-        bool had_access_chain = b->has_current_access_chain;
-        if (!had_access_chain) {
-            save = oc_arena_save(&cc->tmp_arena);
-            b->has_current_access_chain = true;
-        }
+        bool had_access_chain = b->current_access_chain_tmp != NULL;
 
         SpvId lvalue_id;
         switch (op->ptr->type->kind) {
-        case LL_TYPE_POINTER:
-            oc_assert(false);
-            break;
+        case LL_TYPE_POINTER: {
+            typeof(b->current_access_chain_tmp) old_chain_access = b->current_access_chain_tmp;
+            b->current_access_chain_tmp = NULL;
+            lvalue_id = spirv_generate_expression(cc, b, op->ptr, false);
+            SpvId rvalue_id = spirv_generate_expression(cc, b, op->start, false);
+            b->current_access_chain_tmp = old_chain_access;
+
+            result = emit_op_dst(SpvOpPtrAccessChain, op->ptr->type->spirv_type, lvalue_id, rvalue_id);
+            if (b->current_access_chain_tmp) {
+                oc_assert(lvalue);
+                oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
+            } else {
+                if (!lvalue) {
+                    result = emit_op_dst(SpvOpLoad, typeid, result);
+                }
+            } 
+
+            return result;
+        }
         case LL_TYPE_STRING: {
             oc_assert(false);
         } break;
         case LL_TYPE_SLICE: {
             oc_assert(false);
         } break;
-        default:
+        default: {
+            if (!had_access_chain) {
+                save = oc_arena_save(&cc->tmp_arena);
+                b->current_access_chain_tmp = &chain_access;
+            }
+
+            typeof(b->current_access_chain_tmp) old_chain_access = b->current_access_chain_tmp;
             lvalue_id = spirv_generate_expression(cc, b, op->ptr, true);
-            break;
+            b->current_access_chain_tmp = old_chain_access;
+        } break;
         }
 
         if (op->ptr->kind != CODE_KIND_INDEX && !(op->ptr->kind == CODE_KIND_BINARY_OP && CODE_AS(op->ptr, Code_Operation)->op.kind == '.')) {
-            oc_array_append(&cc->tmp_arena, &b->current_access_chain_tmp, lvalue_id);
+            oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, lvalue_id);
         }
 
+        // save the chain access, in the case the index is also a chain access
+        typeof(b->current_access_chain_tmp) old_chain_access = b->current_access_chain_tmp;
         SpvId rvalue_id = spirv_generate_expression(cc, b, op->start, false);
-        oc_array_append(&cc->tmp_arena, &b->current_access_chain_tmp, rvalue_id);
+        oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, rvalue_id);
+        b->current_access_chain_tmp = old_chain_access;
 
         if (!had_access_chain) {
             SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassFunction);
-            result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp.items, b->current_access_chain_tmp.count);
+            result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp->items, b->current_access_chain_tmp->count);
             oc_arena_restore(&cc->tmp_arena, save);
-            b->current_access_chain_tmp.count = 0;
-            b->has_current_access_chain = false;
+            b->current_access_chain_tmp = NULL;
         }
 
         if (!lvalue) {
@@ -1244,8 +1274,9 @@ DO_BIN_OP_ASSIGN_OP:
 // This is a thing in case we want to intern pointer types in the future.
 // Right now we don't for performace (yay saving .00001 ms)
 SpvId spirv_get_pointer_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, SpvStorageClass storage_class) {
-    SpvId result = spirv_generate_type(cc, b, type);
-    result = emit_type_op_dst(SpvOpTypePointer, storage_class, result);
+    LL_Type* ptr_type = ll_typer_get_ptr_type(cc, cc->typer, type);
+    SpvId result = spirv_generate_type(cc, b, ptr_type);
+    // result = emit_type_op_dst(SpvOpTypePointer, storage_class, result);
     return result;
 }
 
@@ -1295,6 +1326,11 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
         case LL_TYPE_ANYBOOL:
             result = b->bool_id;
             break;
+        case LL_TYPE_POINTER: {
+            LL_Type_Pointer* ptr = (LL_Type_Pointer*)type;
+            SpvId element_type = spirv_generate_type(cc, b, ptr->element_type);
+            result = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassFunction, element_type);
+        } break;
         case LL_TYPE_FUNCTION: {
             LL_Type_Function* fn_type = (LL_Type_Function*)type;
             b->temp.count = 0;

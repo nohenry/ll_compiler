@@ -6,3 +6,4 @@
 - implement inputs
 - add back macros
 - implement dynamic vector indexing
+- cast vectors to arrays

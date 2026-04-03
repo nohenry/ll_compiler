@@ -170,6 +170,14 @@ void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
 
     bool do_color = oc_fd_supports_color(OC_FD_ERROR);
 
+    if (error.highlight_start.kind || error.highlight_end.kind || error.main_token.kind) {
+        if (do_color) {
+            eprint("{}:{}:{}: ", cc->lexer->filename, line_info.line, line_info.column);
+        } else {
+            eprint("{}:{}:{}: ", cc->lexer->filename, line_info.line, line_info.column);
+        }
+    }
+
     // if (error.main_token.kind) {
     //     eprint("{}:{}:{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename, line_info.line, line_info.column);
     // } else {
@@ -192,7 +200,8 @@ void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
             ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, false);
         }
     } else if (error.main_token.kind) {
-        eprint(" {} | {}\n", line_info.line, line_info.line);
+        int64_t token_length = lexer_get_token_length(cc, cc->lexer, error.main_token);
+        ll_typer_print_error_line(cc, typer, line_info, error.main_token, (LL_Token_Info){ 1, error.main_token.position + token_length}, false, false);
     }
 }
 
@@ -1184,6 +1193,8 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
         return true;
     }
 
+    if (src_type->rows != dst_type->rows || src_type->columns != dst_type->columns) return false;
+
     switch (src_type->kind) {
     case LL_TYPE_ANYINT:
         switch (dst_type->kind) {
@@ -1252,6 +1263,8 @@ bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* ty
     if (src_type == dst_type) {
         return true;
     }
+
+    if (src_type->rows != dst_type->rows || src_type->columns != dst_type->columns) return false;
 
     switch (src_type->kind) {
     case LL_TYPE_ANYINT:
@@ -1441,6 +1454,18 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             }
         }
 
+
+        // Check if symbol was declared after we're trying to use it.
+        if (typer->current_scope->flags & CODE_SCOPE_FLAG_IMPERATIVE) {
+            if (decl->within_scope == typer->current_scope) {
+                if (decl->base.token_info.position > CODE_AS((*expr), Code_Ident)->base.token_info.position) {
+                    ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Ident)->base.token_info }), "Attempted to use value '{}' before it was defined.", CODE_AS((*expr), Code_Ident)->str);
+                    ll_typer_report_error_info(((LL_Error){ .main_token = decl->ident->base.token_info }), "Value defined here");
+                    ll_typer_report_error_done(cc, typer);
+                }
+            }
+        }
+
         // old code from old typechecking system
         // if (!decl) {
         //     ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS((*expr), Code_Ident)->str);
@@ -1547,7 +1572,11 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             case LL_TYPE_INT:
             case LL_TYPE_FLOAT:
             case LL_TYPE_CHAR:
-                result = expected_type;
+                if (!ll_type_is_vector(expected_type)) {
+                    result = expected_type;
+                } else {
+                    result = typer->ty_anyint;
+                }
                 break;
             default:
                 result = typer->ty_anyint;
@@ -1564,7 +1593,11 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         if (expected_type) {
             switch (expected_type->kind) {
             case LL_TYPE_FLOAT:
-                result = expected_type;
+                if (!ll_type_is_vector(expected_type)) {
+                    result = expected_type;
+                } else {
+                    result = typer->ty_anyfloat;
+                }
                 break;
             default:
                 result = typer->ty_anyfloat;
@@ -1735,60 +1768,59 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             }
             Code_Ident* right_ident = CODE_AS(opr->right, Code_Ident);
 
-            if (result.decl) {
-                LL_Type* base_type = result.decl->ident->base.type;
-                Code_Scope* base_scope = NULL;
-                if (base_type->kind == LL_TYPE_POINTER) base_type = ((LL_Type_Pointer*)base_type)->element_type;
-                while (base_type->kind == LL_TYPE_NAMED) {
-                    base_scope = ((LL_Type_Named*)base_type)->scope;
-                    base_type = ((LL_Type_Named*)base_type)->actual_type;
+            LL_Type* base_type = opr->left->type;
+            if (base_type->kind == LL_TYPE_POINTER) base_type = ((LL_Type_Pointer*)base_type)->element_type;
+
+            Code_Scope* base_scope = NULL;
+            while (base_type->kind == LL_TYPE_NAMED) {
+                base_scope = ((LL_Type_Named*)base_type)->scope;
+                base_type = ((LL_Type_Named*)base_type)->actual_type;
+            }
+
+            // if (!result.decl) {
+
+            // }
+
+            if (base_type->kind == LL_TYPE_SLICE || base_type->kind == LL_TYPE_STRING) {
+                if (string_eql(right_ident->str, lit("data"))) {
+                    switch (base_type->kind) {
+                    case LL_TYPE_SLICE:
+                        right_ident->base.type = ((LL_Type_Slice*)base_type)->element_type;
+                        break;
+                    case LL_TYPE_ARRAY:
+                        right_ident->base.type = ((LL_Type_Array*)base_type)->element_type;
+                        break;
+                    case LL_TYPE_STRING:
+                        right_ident->base.type = typer->ty_char;
+                        break;
+                    default: oc_unreachable("invalid type"); break;
+                    }
+                } else if (string_eql(right_ident->str, lit("length"))) {
+                    right_ident->base.type = typer->ty_uint64;
                 }
 
-                if (base_type->kind == LL_TYPE_SLICE || base_type->kind == LL_TYPE_STRING) {
-                    if (string_eql(right_ident->str, lit("data"))) {
-                        switch (base_type->kind) {
-                        case LL_TYPE_SLICE:
-                            right_ident->base.type = ((LL_Type_Slice*)base_type)->element_type;
-                            break;
-                        case LL_TYPE_ARRAY:
-                            right_ident->base.type = ((LL_Type_Array*)base_type)->element_type;
-                            break;
-                        case LL_TYPE_STRING:
-                            right_ident->base.type = typer->ty_char;
-                            break;
-                        default: oc_unreachable("invalid type"); break;
-                        }
-                    } else if (string_eql(right_ident->str, lit("length"))) {
+                (*expr)->type = right_ident->base.type;
+                return true;
+            } else if (base_type->kind == LL_TYPE_ARRAY) {
+                if (string_eql(right_ident->str, lit("length"))) {
+                    (*expr)->has_const = true;
+                    (*expr)->const_value.as_u64 = base_type->width;
+
+                    switch (expected_type->kind) {
+                    case LL_TYPE_INT:
+                    case LL_TYPE_UINT:
+                    case LL_TYPE_BOOL:
+                        right_ident->base.type = expected_type;
+                        break;
+                    default:
                         right_ident->base.type = typer->ty_uint64;
+                        break;
                     }
-
-                    (*expr)->type = right_ident->base.type;
-                    return true;
-                } else if (base_type->kind == LL_TYPE_ARRAY) {
-                    if (string_eql(right_ident->str, lit("length"))) {
-                        (*expr)->has_const = true;
-                        (*expr)->const_value.as_u64 = base_type->width;
-
-                        switch (expected_type->kind) {
-                        case LL_TYPE_INT:
-                        case LL_TYPE_UINT:
-                        case LL_TYPE_BOOL:
-                            right_ident->base.type = expected_type;
-                            break;
-                        default:
-                            right_ident->base.type = typer->ty_uint64;
-                            break;
-                        }
-                    }
-
-                    (*expr)->type = right_ident->base.type;
-                    return true;
                 }
 
-                if (!base_scope) {
-                    goto TRY_MEMBER_FUNCTION_CALL;
-                }
-
+                (*expr)->type = right_ident->base.type;
+                return true;
+            } else if (base_scope && base_type->kind == LL_TYPE_STRUCT) {
                 Code_Declaration** member_scope = hash_map_get(&cc->arena, &base_scope->declarations, right_ident->str);
                 if (!member_scope) {
                     goto TRY_MEMBER_FUNCTION_CALL;
@@ -1886,14 +1918,17 @@ TRY_MEMBER_FUNCTION_CALL:
                 if (!can_continue) return false;
             }
 
-            if (!lhs_resolve.decl) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
-                ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
-                ll_typer_report_error_done(cc, typer);
-                break;
-            }
+            // @Todo: add this back (but it's not crrect right now)
+            // if (!lhs_resolve.decl) {
+            //     ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
+            //     ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
+            //     ll_typer_report_error_done(cc, typer);
+            //     break;
+            // }
 
-            lhs_resolve.decl->usage.direct_stores++;
+            if (lhs_resolve.decl) {
+                lhs_resolve.decl->usage.direct_stores++;
+            }
 
             
             LL_Type* lhs_type = opr->left->type;
@@ -1952,14 +1987,17 @@ TRY_MEMBER_FUNCTION_CALL:
 
             // } else oc_assert(can_continue);
 
-            if (!lhs_resolve.decl) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
-                ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
-                ll_typer_report_error_done(cc, typer);
-                break;
-            }
+            // @Todo: add this back (but it's not crrect right now)
+            // if (!lhs_resolve.decl) {
+            //     ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
+            //     ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
+            //     ll_typer_report_error_done(cc, typer);
+            //     break;
+            // }
 
-            lhs_resolve.decl->usage.direct_stores++;
+            if (lhs_resolve.decl) {
+                lhs_resolve.decl->usage.direct_stores++;
+            }
 
             LL_Type* lhs_type = opr->left->type;
             can_continue = ll_typer_type_expression(cc, typer, &opr->right, lhs_type, NULL);
@@ -2804,10 +2842,6 @@ TRY_MEMBER_FUNCTION_CALL:
             ll_typer_report_error_type(cc, typer, result);
             ll_typer_report_error_no_src("\n");
 
-            ll_typer_report_error_no_src(" found type ");
-            ll_typer_report_error_type(cc, typer, result);
-            ll_typer_report_error_no_src("\n");
-
             ll_typer_report_error_done(cc, typer);
             break;
         }
@@ -3499,9 +3533,18 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     case LL_TYPE_VOID:     wprint(w, "void"); break;
     case LL_TYPE_INT:      wprint(w, "int{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
     case LL_TYPE_UINT:     wprint(w, "uint{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
+    #ifdef _DEBUG
     case LL_TYPE_ANYINT:   wprint(w, "anyint"); break;
+    #else
+    case LL_TYPE_ANYINT:   wprint(w, "int"); break;
+    #endif
     case LL_TYPE_FLOAT:    wprint(w, "float{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
+    #ifdef _DEBUG
+    case LL_TYPE_ANYFLOAT: wprint(w, "anyfloat"); break;
+    #else
     case LL_TYPE_ANYFLOAT: wprint(w, "float"); break;
+    #endif
+
     case LL_TYPE_STRING:   wprint(w, "string"); break;
     case LL_TYPE_BOOL:     wprint(w, "bool{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
     case LL_TYPE_ANYBOOL:  wprint(w, "bool"); break;

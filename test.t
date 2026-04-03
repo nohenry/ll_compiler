@@ -54,13 +54,28 @@ struct Foobar {
     BarBar bar;
 }
 
+
 void main() {
-    int i = 123;
-    int[5][3] a = [[1, 2, 3, 4, 5], [8, 9, i, 11, 12], [13, 14, 15, 16, 17]];
-    int ccc = a.length;
-    int value = a[2][3];
-    Foobar b;
-    int8 value1 = b.bar.a;
-    float4 f = b.bar.d[2];
-    float4[3] ddd = b.bar.d;
+    int[5][3] a = [[1, 2, 3, 4, 5], [8, 9, 10, 11, 12], [13, 14, 15, 16, 17]];
+    a[2][4] = 50;
+    // int ccc = a.length;
+    // int value = a[2][3];
+    // Foobar b;
+    // int8 value1 = b.bar.a;
+    // float4 f = b.bar.d[2];
+    // float4[3] ddd = b.bar.d;
+
+    int i = 34;
+    int* p = &i;
+    int j = *p;
+    *p = 100;
+
+    int[8]*[3] kk;
+    kk[2][3][4];
+    kk[2][3][4] = 8;
+
+    Foobar[8]*[3] f;
+    f[10][20][30].bar.d[3];
+    f[10][20][30].bar.d[3] = float4(1, 2, 3, 4);
+    f[10][20][30].bar.d[3] = float4(1, 2, 3, 4);
 }
