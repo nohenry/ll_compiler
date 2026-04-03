@@ -136,6 +136,8 @@ typedef struct {
     uint32_t pointers_created;
 } LL_Symbol_Usage;
 
+#define ll_symbol_not_used(usage) (!(usage).direct_loads && !(usage).direct_stores && !(usage).pointers_created)
+
 typedef struct Code_Declaration {
     Code base;
     Code* type;

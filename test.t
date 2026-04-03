@@ -54,8 +54,13 @@ struct Foobar {
     BarBar bar;
 }
 
+struct StructWithPtr {
+    int jj;
+    int kk;
+    Foobar* foobar;
+}
 
-void main() {
+void test1() {
     int[5][3] a = [[1, 2, 3, 4, 5], [8, 9, 10, 11, 12], [13, 14, 15, 16, 17]];
     a[2][4] = 50;
     // int ccc = a.length;
@@ -78,4 +83,21 @@ void main() {
     f[10][20][30].bar.d[3];
     f[10][20][30].bar.d[3] = float4(1, 2, 3, 4);
     f[10][20][30].bar.d[3] = float4(1, 2, 3, 4);
+}
+
+void main() {
+    Foobar[8] f1;
+    Foobar[8]*[3] f;
+    *f[2] = f1;
+
+    Foobar* f2;
+    Foobar** f3;
+    *f3 = f2;
+    f2.j = 100;
+
+    int i = 123;
+    (&i)[100] = 4;
+
+    StructWithPtr[3] struct_with_ptr;
+    struct_with_ptr[2].foobar.bar.b64;
 }

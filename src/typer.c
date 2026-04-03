@@ -2014,7 +2014,7 @@ TRY_MEMBER_FUNCTION_CALL:
                 ll_typer_report_error_type(cc, typer, rhs_type);
                 ll_typer_report_error_no_src(" to it. You can explicitly cast the value with `cast(");
                 ll_typer_report_error_type_no_fmt(cc, typer, lhs_type);
-                ll_typer_report_error_no_src(")\n");
+                ll_typer_report_error_no_src(")`\n");
 
                 ll_typer_report_error_done(cc, typer);
                 break;
@@ -3593,7 +3593,11 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
         wprint(w, "}");
     } break;
     case LL_TYPE_NAMED:
+        #ifdef _DEBUG
         wprint(w, "named {}", ((LL_Type_Named*)type)->scope->decl->ident->str);
+        #else
+        wprint(w, "{}", ((LL_Type_Named*)type)->scope->decl->ident->str);
+        #endif
         // wprint(w, "named {} (", ((LL_Type_Named*)type)->scope->ident->str);
         // ll_print_type_raw(((LL_Type_Named*)type)->actual_type, w);
         // wprint(w, ")");

@@ -193,6 +193,7 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
     } break;
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS(stmt, Code_Variable_Declaration);
+        // if (ll_symbol_not_used(var_decl->base.usage)) return;
         if (var_decl->base.within_scope->flags & CODE_SCOPE_FLAG_DECLARATIVE) return;
 
         if (var_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break;
@@ -213,6 +214,9 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
     } break;
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS(stmt, Code_Function_Declaration);
+        if (!string_eql(fn_decl->base.ident->str, lit("main"))) {
+            if (ll_symbol_not_used(fn_decl->base.usage)) return;
+        }
 
         if (fn_decl->storage_class & LL_STORAGE_CLASS_MACRO) return;
         if (fn_decl->storage_class & LL_STORAGE_CLASS_POLYMORPHIC) return;
@@ -728,13 +732,19 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                     // }
 
                     // return result;
+                    b->current_access_chain_tmp = old_chain_access;
+                    if (b->current_access_chain_tmp) {
+                        oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
+                    }
                 } else {
                     result = spirv_generate_expression(cc, b, opr->left, true);
-                }
-                b->current_access_chain_tmp = old_chain_access;
+                    b->current_access_chain_tmp = old_chain_access;
 
-                if (opr->left->kind != CODE_KIND_INDEX && !(opr->left->kind == CODE_KIND_BINARY_OP && CODE_AS(opr->left, Code_Operation)->op.kind == '.')) {
-                    oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
+                    // if (opr->left->kind != CODE_KIND_INDEX && !(opr->left->kind == CODE_KIND_BINARY_OP && CODE_AS(opr->left, Code_Operation)->op.kind == '.')) {
+                    if (b->current_access_chain_tmp && b->current_access_chain_tmp->count == 0) {
+                        // base case. the commented line above was the old base case, but i think the current condition makes more sense and is more robust
+                        oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
+                    }
                 }
 
                 SpvId member_id = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &field_decl->ir_index);
@@ -1102,7 +1112,9 @@ DO_BIN_OP_ASSIGN_OP:
         } break;
         }
 
-        if (op->ptr->kind != CODE_KIND_INDEX && !(op->ptr->kind == CODE_KIND_BINARY_OP && CODE_AS(op->ptr, Code_Operation)->op.kind == '.')) {
+        // if (op->ptr->kind != CODE_KIND_INDEX && !(op->ptr->kind == CODE_KIND_BINARY_OP && CODE_AS(op->ptr, Code_Operation)->op.kind == '.')) {
+        if (b->current_access_chain_tmp && b->current_access_chain_tmp->count == 0) {
+            // base case. the commented line above was the old base case, but i think the current condition makes more sense and is more robust
             oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, lvalue_id);
         }
 
