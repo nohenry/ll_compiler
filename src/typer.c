@@ -892,11 +892,12 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
         if (typer->current_scope && typer->current_scope->decl) {
             if (typer->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
                 Code_Struct* strct = CODE_AS(typer->current_scope->decl, Code_Struct);
-                oc_array_reserve(&cc->arena, &strct->member_types, var_decl->ir_index+1);
-                if (var_decl->ir_index + 1 > strct->member_types.count) {
-                    strct->member_types.count = var_decl->ir_index + 1;
+                oc_array_reserve(&cc->arena, &strct->member_types, var_decl->ordered_index + 1);
+                if (var_decl->ordered_index + 1 > strct->member_types.count) {
+                    strct->member_types.count = var_decl->ordered_index + 1;
                 }
-                strct->member_types.items[var_decl->ir_index] = declared_type;
+                strct->member_types.items[var_decl->ordered_index] = declared_type;
+
                 // var_decl->ir_index = typer->current_record->count;
                 // oc_array_append(&cc->arena, typer->current_record, declared_type);
                 // if (var_decl->initializer) {
@@ -917,7 +918,6 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
     }
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS((*stmt), Code_Function_Declaration);
-        bool is_main = string_eql(fn_decl->base.ident->str, lit("main"));
 
         // LL_Scope* fn_scope = create_scope(LL_SCOPE_KIND_FUNCTION, fn_decl);
         // fn_scope->ident = fn_decl->base.ident;

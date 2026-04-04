@@ -91,7 +91,7 @@ typedef struct ll_type {
     };
     struct ll_type* base_type;
     uint8_t rows, columns;
-    uint32_t spirv_type;
+    uint32_t spirv_type, explicit_spirv_type;
 } LL_Type;
 
 typedef struct {
@@ -130,6 +130,7 @@ typedef struct {
     LL_Type** fields;
     uint32_t* offsets;
     bool has_offsets;
+    uint32_t explicit_spirv_type;
 } LL_Type_Struct;
 
 typedef struct {
@@ -236,6 +237,14 @@ LL_Queued* create_stmt_queued(Compiler_Context* cc, LL_Typer* typer, LL_Stage_Ki
 bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Type* dst_type);
 static inline LL_Type* ll_get_base_type(LL_Type* type) {
     while (type && type->kind == LL_TYPE_NAMED) {
+        type = ((LL_Type_Named*)type)->actual_type;
+    }
+    return type;
+}
+static inline LL_Type* ll_get_base_type_and_scope(LL_Type* type, Code_Scope** out_scope) {
+    *out_scope = NULL;
+    while (type && type->kind == LL_TYPE_NAMED) {
+        *out_scope = ((LL_Type_Named*)type)->scope;
         type = ((LL_Type_Named*)type)->actual_type;
     }
     return type;

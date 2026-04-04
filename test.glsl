@@ -48,11 +48,15 @@ layout(push_constant, scalar) uniform rootBlock {
 //     return f[4];
 // }
 
+struct Struct { int i; };
+
 void main()
 {
     blockType b = r.root1;
     blockType1 b1 = r.root2;
     int i = gl_VertexIndex;
+    Struct s;
+    s.i = gl_VertexIndex;
     gl_Position = vec4(1, b1.x, 3, 4);
     // b = b.next.next.next.next.next;
 

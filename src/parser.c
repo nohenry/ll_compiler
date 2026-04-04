@@ -446,11 +446,12 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
                 oc_array_append(&cc->arena, &parser->current_function->all_local_variables, (Code_Variable_Declaration*)result);
             }
 		} else {
+            oc_array_append(&cc->arena, &parser->current_scope->statements, result);
             LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
             actually_queue(cc, STAGE_TYPECHECK, queued);
 
             if (parser->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
-                CODE_AS(result, Code_Variable_Declaration)->ir_index = parser->block_ordering++; // need to maintain ordering for later
+                CODE_AS(result, Code_Variable_Declaration)->ordered_index = parser->block_ordering++; // need to maintain ordering for later
 
                 // struct depends on its fields
                 LL_Queued* struct_queued = parser->current_scope->decl->base.queued;

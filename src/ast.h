@@ -249,6 +249,7 @@ typedef struct {
 
     Code* initializer optional;
     LL_Storage_Class storage_class;
+    uint32_t ordered_index; // in structs it's used to maintain field ordering
     uint32_t ir_index; // for locals, it's the locals index
                        // for structs, it's the type field index
 } Code_Variable_Declaration;
