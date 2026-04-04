@@ -169,10 +169,15 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
 
     SpvId per_vertex_id = emit_type_op_dst(SpvOpTypeStruct,
         spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 4, 1)),
-        spirv_generate_type(cc, b, cc->typer->ty_float32),
-        spirv_generate_type(cc, b, cc->typer->ty_uint32),
-        spirv_generate_type(cc, b, cc->typer->ty_uint32)
+        // spirv_generate_type(cc, b, cc->typer->ty_float32),
+        // spirv_generate_type(cc, b, cc->typer->ty_uint32),
+        // spirv_generate_type(cc, b, cc->typer->ty_uint32)
     );
+    emit_annotation_op(SpvOpDecorate, per_vertex_id, SpvDecorationBlock);
+    emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 0, SpvDecorationBuiltIn, SpvBuiltInPosition);
+    // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 1, SpvDecorationBuiltIn, SpvBuiltInPointSize);
+    // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 2, SpvDecorationBuiltIn, SpvBuiltInClipDistance);
+    // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 3, SpvDecorationBuiltIn, SpvBuiltInCullDistance);
     SpvId per_vertex_id_ptr = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassOutput, per_vertex_id);
     b->per_vertex = emit_type_op_dst_rev(SpvOpVariable, per_vertex_id_ptr, SpvStorageClassOutput);
 }
@@ -268,7 +273,7 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
         LL_Type_Function* fn_type;
         SpvId return_type;
         if (is_main) {
-            fn_type = ll_typer_get_fn_type(cc, cc->typer, cc->typer->ty_void, NULL, 0, false);
+            fn_type = (LL_Type_Function*)ll_typer_get_fn_type(cc, cc->typer, cc->typer->ty_void, NULL, 0, false);
             return_type = spirv_generate_type(cc, b, cc->typer->ty_void);
         } else {
             fn_type = (LL_Type_Function*)fn_decl->base.ident->base.type;
@@ -299,14 +304,16 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
                 for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
                     Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
 
-                    SpvId typeid;
-                    if (decl->base.ident->base.type->kind == LL_TYPE_POINTER) {
-                        LL_Type_Pointer* ptr = (LL_Type_Pointer*)decl->base.ident->base.type;
-                        typeid = spirv_generate_type(cc, b, ptr->element_type);
-                        typeid = spirv_get_pointer_type(cc, b, ptr->element_type, SpvStorageClassPhysicalStorageBuffer);
-                    } else {
-                        typeid = spirv_generate_type(cc, b, decl->base.type->type);
-                    }
+                    SpvId typeid = spirv_generate_type(cc, b, decl->base.ident->base.type);
+                    // if (decl->base.ident->base.type->kind == LL_TYPE_POINTER) {
+                    //     // LL_Type_Pointer* ptr = (LL_Type_Pointer*)decl->base.ident->base.type;
+
+                    //     // LL_Type* new_ptr_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, ptr->element_type, SpvStorageClassPhysicalStorageBuffer);
+                    //     typeid = spirv_generate_type(cc, b, new_ptr_type);
+                    //     // typeid = spirv_get_pointer_type(cc, b, ptr->element_type, SpvStorageClassPhysicalStorageBuffer);
+                    // } else {
+                    //     typeid = spirv_generate_type(cc, b, decl->base.type->type);
+                    // }
                     LL_Backend_Layout l = spirv_get_layout(decl->base.ident->base.type);
 
                     offset = oc_align_forward(offset, l.alignment);
@@ -381,8 +388,9 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
                     SpvId index = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &i);
                     SpvId typeid = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassPushConstant, parameter_ids[i]);
                     SpvId ptr = emit_op_dst(SpvOpAccessChain, typeid, b->push_const_id, index);
-                    SpvId loaded = emit_op_dst(SpvOpLoad, parameter_ids[i], decl->ir_index);
+                    SpvId loaded = emit_op_dst(SpvOpLoad, parameter_ids[i], ptr);
                     emit_op(SpvOpStore, decl->ir_index, loaded);
+                    decl->base.base.kind = CODE_KIND_VARIABLE_DECLARATION; // @Robustness: how bad is this
                 }
 
             } else {
@@ -713,13 +721,17 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
         Code_Ident* ident = CODE_AS(expr, Code_Ident);
         if (string_eql(ident->str, lit("vertex_index"))) {
             oc_assert(!lvalue);
-            return b->vertex_index;
+            result = b->vertex_index;
+            result = emit_op_dst(SpvOpLoad, typeid, result);
+            return result;
         } else if (string_eql(ident->str, lit("index_index"))) {
             oc_assert(!lvalue);
-            return b->index_index;
+            result = b->index_index;
+            result = emit_op_dst(SpvOpLoad, typeid, result);
         } else if (string_eql(ident->str, lit("instance_index"))) {
             oc_assert(!lvalue);
-            return b->instance_index;
+            result = b->instance_index;
+            result = emit_op_dst(SpvOpLoad, typeid, result);
         } else if (string_eql(ident->str, lit("position"))) {
             SpvId typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassOutput);
             int32_t index = 0;
@@ -854,16 +866,13 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
                 if (opr->left->type->kind == LL_TYPE_POINTER) {
                     b->current_access_chain_tmp = NULL;
-                    result = spirv_generate_expression(cc, b, opr->left, true);
+                    result = spirv_generate_expression(cc, b, opr->left, false);
                     result = emit_op_dst(SpvOpLoad, opr->left->type->spirv_type, result);
-
-                    // if (!lvalue) {
-                    //     result = emit_op_dst(SpvOpLoad, typeid, result);
-                    // }
 
                     // return result;
                     b->current_access_chain_tmp = old_chain_access;
                     if (b->current_access_chain_tmp) {
+                        oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, ((LL_Type_Pointer*)opr->left->type)->spirv_storage_class);
                         oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
                     }
                 } else {
@@ -872,6 +881,8 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
                     // if (opr->left->kind != CODE_KIND_INDEX && !(opr->left->kind == CODE_KIND_BINARY_OP && CODE_AS(opr->left, Code_Operation)->op.kind == '.')) {
                     if (b->current_access_chain_tmp && b->current_access_chain_tmp->count == 0) {
+                        // @TODO: don't hard code function sc here
+                        oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, SpvStorageClassFunction);
                         // base case. the commented line above was the old base case, but i think the current condition makes more sense and is more robust
                         oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
                     }
@@ -880,15 +891,25 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                 SpvId member_id = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &field_decl->ir_index);
                 oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, member_id);
 
+                SpvStorageClass load_sc = 0;
                 if (!had_access_chain) {
-                    SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassFunction);
-                    result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp->items, b->current_access_chain_tmp->count);
+                    // @Robustness: wow this is messy, we just assume storage class is in current access chain
+                    oc_assert(b->current_access_chain_tmp->count >= 2);
+                    load_sc = *b->current_access_chain_tmp->items;
+
+                    SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, load_sc);
+                    result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp->items + 1, b->current_access_chain_tmp->count - 1);
+
                     oc_arena_restore(&cc->tmp_arena, save);
                     b->current_access_chain_tmp = NULL;
                 }
 
                 if (!lvalue) {
-                    result = emit_op_dst(SpvOpLoad, typeid, result);
+                    if (load_sc == SpvStorageClassPhysicalStorageBuffer) {
+                        result = emit_op_dst(SpvOpLoad, typeid, result, SpvMemoryAccessAlignedMask, 16);
+                    } else {
+                        result = emit_op_dst(SpvOpLoad, typeid, result);
+                    }
                 }
 
                 return result;
@@ -1040,11 +1061,18 @@ DO_BIN_OP_ASSIGN_OP:
             }
         }
 
+        if (numbers_count < 2) {
+            SpvId base_id = spirv_generate_type(cc, b, swizzle->vector->type->base_type);
+            // type must be a vector so we just stick a null value here if there's only one element
+            numbers[numbers_count++] = emit_type_op_dst_rev(SpvOpConstantNull, base_id);
+        }
+
         if (numbers_count) {
             LL_Type new_type = *swizzle->vector->type;
             new_type.spirv_type = 0;
             new_type.rows = numbers_count;
-            if (!ll_type_is_vector(&new_type)) new_type.base_type = NULL;
+            oc_assert(ll_type_is_vector(&new_type));
+
 
             // even though this could be a scalar, let's keep it a distinct type by keeping base_type with a value
             LL_Type* number_vec = ll_intern_type(cc, cc->typer, &new_type);
@@ -1214,6 +1242,7 @@ DO_BIN_OP_ASSIGN_OP:
             result = emit_op_dst(SpvOpPtrAccessChain, op->ptr->type->spirv_type, lvalue_id, rvalue_id);
             if (b->current_access_chain_tmp) {
                 oc_assert(lvalue);
+                oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, ((LL_Type_Pointer*)op->ptr->type)->spirv_storage_class);
                 oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
             } else {
                 if (!lvalue) {
@@ -1244,6 +1273,9 @@ DO_BIN_OP_ASSIGN_OP:
         // if (op->ptr->kind != CODE_KIND_INDEX && !(op->ptr->kind == CODE_KIND_BINARY_OP && CODE_AS(op->ptr, Code_Operation)->op.kind == '.')) {
         if (b->current_access_chain_tmp && b->current_access_chain_tmp->count == 0) {
             // base case. the commented line above was the old base case, but i think the current condition makes more sense and is more robust
+
+            // @TODO: don't hard code function sc here
+            oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, SpvStorageClassFunction);
             oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, lvalue_id);
         }
 
@@ -1253,15 +1285,25 @@ DO_BIN_OP_ASSIGN_OP:
         oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, rvalue_id);
         b->current_access_chain_tmp = old_chain_access;
 
+        SpvStorageClass load_sc = 0;
         if (!had_access_chain) {
-            SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassFunction);
-            result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp->items, b->current_access_chain_tmp->count);
+            // @Robustness: wow this is messy, we just assume storage class is in current access chain
+            oc_assert(b->current_access_chain_tmp->count >= 2);
+            load_sc = *b->current_access_chain_tmp->items;
+
+            SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, load_sc);
+            result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp->items + 1, b->current_access_chain_tmp->count - 1);
+
             oc_arena_restore(&cc->tmp_arena, save);
             b->current_access_chain_tmp = NULL;
         }
 
         if (!lvalue) {
-            result = emit_op_dst(SpvOpLoad, typeid, result);
+            if (load_sc == SpvStorageClassPhysicalStorageBuffer) {
+                result = emit_op_dst(SpvOpLoad, typeid, result, SpvMemoryAccessAlignedMask, 16);
+            } else {
+                result = emit_op_dst(SpvOpLoad, typeid, result);
+            }
         }
     } break;
 
@@ -1329,7 +1371,7 @@ DO_BIN_OP_ASSIGN_OP:
         if (iff->else_clause) {
             emit_debug_name(else_block_id, lit("else_block"));
             emit_op(SpvOpLabel, else_block_id);
-            spirv_generate_statement(cc, b, iff->body);
+            spirv_generate_statement(cc, b, iff->else_clause);
             emit_op(SpvOpBranch, merge_block_id);
         }
 
@@ -1475,8 +1517,10 @@ SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* ty
             break;
         case LL_TYPE_POINTER: {
             LL_Type_Pointer* ptr = (LL_Type_Pointer*)type;
+            LL_Backend_Layout layout = spirv_get_layout(ptr->element_type);
             SpvId element_type = spirv_generate_type(cc, b, ptr->element_type);
             result = emit_type_op_dst(SpvOpTypePointer, ptr->spirv_storage_class, element_type);
+            emit_annotation_op(SpvOpDecorate, result, SpvDecorationArrayStride, max(layout.size, layout.alignment));
         } break;
         case LL_TYPE_FUNCTION: {
             LL_Type_Function* fn_type = (LL_Type_Function*)type;

@@ -53,7 +53,7 @@ void main()
     blockType b = r.root1;
     blockType1 b1 = r.root2;
     int i = gl_VertexIndex;
-    gl_Position = vec4(1, 2, 3, 4);
+    gl_Position = vec4(1, b1.x, 3, 4);
     // b = b.next.next.next.next.next;
 
     // int j = int(r.b);

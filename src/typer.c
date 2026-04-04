@@ -8,6 +8,7 @@
 #include "lexer.h"
 #include "eval.h"
 #include "parser.h"
+#include "../backends/spirv.h"
 
 #define CREATE_NODE(_kind, value, ...) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), v); create_node(cc, (Code*)&v, sizeof(v)); })
 
@@ -916,6 +917,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
     }
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS((*stmt), Code_Function_Declaration);
+        bool is_main = string_eql(fn_decl->base.ident->str, lit("main"));
 
         // LL_Scope* fn_scope = create_scope(LL_SCOPE_KIND_FUNCTION, fn_decl);
         // fn_scope->ident = fn_decl->base.ident;
@@ -949,6 +951,12 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
                         }
                         if (!types[i]) {
                             fn_decl->storage_class |= LL_STORAGE_CLASS_POLYMORPHIC;
+                        } else {
+                            if (types[i]->kind == LL_TYPE_POINTER) {
+                                LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)types[i];
+                                LL_Type* new_pointer_type = ll_typer_get_ptr_type_with_storage_class(cc, typer, ptr_type->element_type, SpvStorageClassPhysicalStorageBuffer);
+                                types[i] = new_pointer_type;
+                            }
                         }
                     }
                 }
@@ -1466,7 +1474,6 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         }
     } break;
     case CODE_KIND_IDENT: {
-        Code_Ident* ident = CODE_AS((*expr), Code_Ident);
         if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
             if (expected_type->kind == LL_TYPE_BOOL) {
                 result = expected_type;
@@ -3604,7 +3611,11 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     case LL_TYPE_POINTER: {
         LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
         ll_print_type_raw(ptr_type->element_type, w);
-        wprint(w, "*");
+        if (ptr_type->spirv_storage_class != SpvStorageClassFunction) {
+            wprint(w, "*{} ", SpvStorageClassToString(ptr_type->spirv_storage_class));
+        } else {
+            wprint(w, "*");
+        }
         break;
     }
     case LL_TYPE_ARRAY: {

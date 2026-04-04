@@ -107,6 +107,16 @@ struct StructWithPtr {
 //     struct_with_ptr[2].foobar.bar.b64;
 // }
 
-void main(Foobar* foobar) {
-    #position = float4(1, 2, 3, 4);
+struct Vertex {
+    float3 position;
+}
+
+struct FragmentData {
+    float4 color;
+}
+
+void main(Vertex* vertex_buffer) {
+    #position = vertex_buffer[#vertex_index].position.xyz1;
+
+    
 }

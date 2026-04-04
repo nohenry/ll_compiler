@@ -37,6 +37,8 @@
 #ifndef spirv_H
 #define spirv_H
 
+#define SPV_ENABLE_UTILITY_CODE
+
 typedef unsigned int SpvId;
 
 #define SPV_VERSION 0x10600

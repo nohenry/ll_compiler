@@ -1225,9 +1225,9 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
 
         case CODE_KIND_INVOKE: 
             print_node(CODE_AS(node, Code_Invoke)->expr, indent + 1, w);
-            // for (i = 0; i < CODE_AS(node, Code_Invoke)->arguments.count; ++i) {
-            //     print_node((Code*)CODE_AS(node, Code_Invoke)->arguments.items[i], indent + 1, w);
-            // }
+            for (i = 0; i < CODE_AS(node, Code_Invoke)->arguments.count; ++i) {
+                print_node((Code*)CODE_AS(node, Code_Invoke)->arguments.items[i], indent + 1, w);
+            }
             for (i = 0; i < CODE_AS(node, Code_Invoke)->ordered_arguments.count; ++i) {
                 print_node((Code*)CODE_AS(node, Code_Invoke)->ordered_arguments.items[i], indent + 1, w);
             }
@@ -1584,6 +1584,7 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
             .str = CODE_AS(node, Code_Literal)->str,
         }));
     } break;
+    case CODE_KIND_BUILTIN:
     case CODE_KIND_IDENT: {
         result = CREATE_NODE(node->kind, ((Code_Ident){
             .base.token_info = node->token_info,
