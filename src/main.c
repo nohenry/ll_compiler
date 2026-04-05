@@ -14,6 +14,9 @@ int main(int argc, char** argv) {
     bool output_ir = false;
 	shift(argv, argc);
     bool exit_0 = false;
+    bool vertex = false;
+    bool fragment = false;
+    char* output_path = "a.spv";
 
     while (argc) {
         char* arg = shift(argv, argc);
@@ -26,6 +29,16 @@ int main(int argc, char** argv) {
             output_ir = true;
         } else if (strcmp(arg, "--exit-0") == 0) {
             exit_0 = true;
+        } else if (strcmp(arg, "--vertex") == 0) {
+            vertex = true;
+        } else if (strcmp(arg, "--fragment") == 0) {
+            fragment = true;
+        } else if (strcmp(arg, "-o") == 0) {
+            if (!argc) {
+                eprint("-o expected a filename\n");
+                return 1;
+            }
+            output_path = shift(argv, argc);
         } else {
             if (arg[0] == '-' && arg[1] == '-') {
 				eprint("Ignoring unknown argument '{}'\n", arg);
@@ -44,9 +57,16 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+    if (!vertex && !fragment) {
+        eprint("Please specify shader stage with --vertex or --fragment\n");
+        return 1;
+    }
+
     Compiler_Context cc = ll_compiler_context_create();
 	cc.quiet = quiet;
     cc.exit_0 = exit_0;
+    cc.vertex = vertex;
+    cc.fragment = fragment;
 
     LL_Typer typer = ll_typer_create(&cc);
     cc.typer = &typer;
@@ -98,7 +118,7 @@ int main(int argc, char** argv) {
 
     LL_Backend backend_spirv = ll_backend_init(&cc, LL_BACKEND_SPIRV);
     ll_backend_generate_statement(&cc, &backend_spirv, root);
-    ll_backend_write_to_file(&cc, &backend_spirv, "out.spirv");
+    ll_backend_write_to_file(&cc, &backend_spirv, output_path);
     // if (run) ll_backend_execute(&cc, &backend_elf, backend_ir.backend);
 #endif
 

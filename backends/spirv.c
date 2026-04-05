@@ -35,6 +35,10 @@ typedef struct {
     SpvId instance_index;
     SpvId per_vertex;
 
+    SpvId frag_color_typeid;
+    SpvId frag_color_index;
+
+    Array(uint32_t, SpvId) input_variable_ids;
     Array(uint32_t, SpvId) output_variable_ids;
 
     Array(uint32_t, SpvId)* current_access_chain_tmp;
@@ -174,52 +178,105 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
 
     b->bool_id = emit_type_op_dst(SpvOpTypeBool);
 
-    // SpvId sint = spirv_get_pointer_type(cc, b, cc->typer->ty_int32, SpvStorageClassInput);
-    LL_Type* sint_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, cc->typer->ty_int32, SpvStorageClassInput);
-    bool is_invariant = false;
-    SpvId sint = spirv_generate_type_with_parameters(cc, b, sint_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+    
+    if (cc->vertex) {
+        // SpvId sint = spirv_get_pointer_type(cc, b, cc->typer->ty_int32, SpvStorageClassInput);
+        LL_Type* sint_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, cc->typer->ty_int32, SpvStorageClassInput);
+        bool is_invariant = false;
+        SpvId sint = spirv_generate_type_with_parameters(cc, b, sint_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
 
-    b->vertex_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
-    emit_annotation_op(SpvOpDecorate, b->vertex_index, SpvDecorationBuiltIn, SpvBuiltInVertexIndex);
-    b->index_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
-    emit_annotation_op(SpvOpDecorate, b->index_index, SpvDecorationBuiltIn, SpvBuiltInDrawIndex);
-    b->instance_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
-    emit_annotation_op(SpvOpDecorate, b->instance_index, SpvDecorationBuiltIn, SpvBuiltInInstanceIndex);
+        b->vertex_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
+        emit_annotation_op(SpvOpDecorate, b->vertex_index, SpvDecorationBuiltIn, SpvBuiltInVertexIndex);
+        b->index_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
+        emit_annotation_op(SpvOpDecorate, b->index_index, SpvDecorationBuiltIn, SpvBuiltInDrawIndex);
+        b->instance_index = emit_type_op_dst_rev(SpvOpVariable, sint, SpvStorageClassInput);
+        emit_annotation_op(SpvOpDecorate, b->instance_index, SpvDecorationBuiltIn, SpvBuiltInInstanceIndex);
 
-    SpvId per_vertex_id = emit_type_op_dst(SpvOpTypeStruct,
-        spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 4, 1)),
-        // spirv_generate_type(cc, b, cc->typer->ty_float32),
-        // spirv_generate_type(cc, b, cc->typer->ty_uint32),
-        // spirv_generate_type(cc, b, cc->typer->ty_uint32)
-    );
-    emit_annotation_op(SpvOpDecorate, per_vertex_id, SpvDecorationBlock);
-    emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 0, SpvDecorationBuiltIn, SpvBuiltInPosition);
-    // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 1, SpvDecorationBuiltIn, SpvBuiltInPointSize);
-    // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 2, SpvDecorationBuiltIn, SpvBuiltInClipDistance);
-    // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 3, SpvDecorationBuiltIn, SpvBuiltInCullDistance);
-    SpvId per_vertex_id_ptr = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassOutput, per_vertex_id);
-    b->per_vertex = emit_type_op_dst_rev(SpvOpVariable, per_vertex_id_ptr, SpvStorageClassOutput);
+        SpvId per_vertex_id = emit_type_op_dst(SpvOpTypeStruct,
+            spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 4, 1)),
+            // spirv_generate_type(cc, b, cc->typer->ty_float32),
+            // spirv_generate_type(cc, b, cc->typer->ty_uint32),
+            // spirv_generate_type(cc, b, cc->typer->ty_uint32)
+        );
+        emit_annotation_op(SpvOpDecorate, per_vertex_id, SpvDecorationBlock);
+        emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 0, SpvDecorationBuiltIn, SpvBuiltInPosition);
+        // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 1, SpvDecorationBuiltIn, SpvBuiltInPointSize);
+        // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 2, SpvDecorationBuiltIn, SpvBuiltInClipDistance);
+        // emit_annotation_op(SpvOpMemberDecorate, per_vertex_id, 3, SpvDecorationBuiltIn, SpvBuiltInCullDistance);
+        SpvId per_vertex_id_ptr = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassOutput, per_vertex_id);
+        b->per_vertex = emit_type_op_dst_rev(SpvOpVariable, per_vertex_id_ptr, SpvStorageClassOutput);
+    } else if (cc->fragment) {
+        bool is_invariant;
+        Code_Scope* frag_type_scope;
+        LL_Type* frag_type = ll_get_base_type_and_scope(cc->typer->fragment_input, &frag_type_scope);
+
+        if (frag_type->kind == LL_TYPE_STRUCT) {
+            LL_Type_Struct* struct_type = (LL_Type_Struct*)frag_type;
+            Code_Struct* decl = (Code_Struct*)frag_type_scope->decl;
+            oc_assert(decl->base.base.kind == CODE_KIND_STRUCT);
+
+            oc_array_resize(&cc->arena, &b->input_variable_ids, struct_type->field_count);
+            memset(b->input_variable_ids.items, 0, struct_type->field_count * sizeof(*b->input_variable_ids.items));
+
+            for (uint32_t i = 0; i < decl->block->statements.count; ++i) {
+                Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)decl->block->statements.items[i];
+                if (var_decl->base.base.kind != CODE_KIND_VARIABLE_DECLARATION) continue;
+
+                LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, SpvStorageClassInput);
+                SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+
+                SpvId input_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassInput);
+                emit_annotation_op(SpvOpDecorate, input_id, SpvDecorationLocation, var_decl->ordered_index);
+                var_decl->ir_index = input_id;
+                b->input_variable_ids.items[var_decl->ordered_index] = input_id;
+            }
+        } else {
+            LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, frag_type, SpvStorageClassInput);
+            SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+
+            SpvId input_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassInput);
+            emit_annotation_op(SpvOpDecorate, input_id, SpvDecorationLocation, 0);
+            oc_array_append(&cc->arena, &b->output_variable_ids, input_id);
+        }
+
+
+
+
+
+        SpvId color_typeid = spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 4, 1));
+        SpvId color_ptr_typeid = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassOutput, color_typeid);
+        b->frag_color_typeid = color_typeid;
+        b->frag_color_index = emit_type_op_dst_rev(SpvOpVariable, color_ptr_typeid, SpvStorageClassOutput);
+        emit_annotation_op(SpvOpDecorate, b->frag_color_index, SpvDecorationLocation, 0);
+    }
 }
 
 bool spirv_write_to_file(Compiler_Context* cc, LL_Backend_Spirv* b, char* filepath) {
     (void)cc;
     b->code_header.items[3] = b->next_result_id; // write id bound
-    // emit_entry_point(SpvExecutionModelVertex, b->entry_id, b->entry_name, b->push_const_id, b->vertex_index, b->index_index, b->instance_index, b->per_vertex);
-    SpvId interface_items[] = {
-        b->push_const_id, b->vertex_index, b->index_index, b->instance_index, b->per_vertex,
-    };
-    uint32_t interface_count = oc_len(interface_items) + b->output_variable_ids.count;
+
     Array(uint32, SpvId) entry_interface = { 0 };
-    oc_array_reserve(&cc->tmp_arena, &entry_interface, interface_count);
+    oc_array_append(&cc->tmp_arena, &entry_interface, b->push_const_id);
+    if (cc->vertex) {
+        oc_array_append(&cc->tmp_arena, &entry_interface, b->vertex_index);
+        oc_array_append(&cc->tmp_arena, &entry_interface, b->index_index);
+        oc_array_append(&cc->tmp_arena, &entry_interface, b->instance_index);
+        oc_array_append(&cc->tmp_arena, &entry_interface, b->per_vertex);
+        oc_array_append_many(&cc->tmp_arena, &entry_interface, b->output_variable_ids.items, b->output_variable_ids.count);
+    } else if (cc->fragment) {
+        oc_array_append(&cc->tmp_arena, &entry_interface, b->frag_color_index);
+        oc_array_append_many(&cc->tmp_arena, &entry_interface, b->input_variable_ids.items, b->input_variable_ids.count);
+    }
 
-    oc_array_append_many(&cc->tmp_arena, &entry_interface, interface_items, oc_len(interface_items));
-    oc_array_append_many(&cc->tmp_arena, &entry_interface, b->output_variable_ids.items, b->output_variable_ids.count);
+    _emit_entry_point(cc, b, cc->vertex ? SpvExecutionModelVertex : SpvExecutionModelFragment, b->entry_id, b->entry_name, entry_interface.items, entry_interface.count);
 
-    _emit_entry_point(cc, b, SpvExecutionModelVertex, b->entry_id, b->entry_name, entry_interface.items, entry_interface.count);
+    if (cc->fragment) {
+        emit_header_op(SpvOpExecutionMode, b->entry_id, SpvExecutionModeOriginUpperLeft);
+    }
 
     FILE* fptr;
     if (fopen_s(&fptr, filepath, "wb")) {
-        eprint("Unable to open output file: %s\n", filepath);
+        eprint("Unable to open output file: {}\n", filepath);
         return false;
     }
 
@@ -255,9 +312,13 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
             }
         }
 
-        for (size_t i = 0; i < blk->statements.count; ++i) {
-            spirv_generate_statement(cc, b, blk->statements.items[i]);
+        if (blk->flags & CODE_SCOPE_FLAG_DECLARATIVE) {
+        } else {
+            for (size_t i = 0; i < blk->statements.count; ++i) {
+                spirv_generate_statement(cc, b, blk->statements.items[i]);
+            }
         }
+
     } break;
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS(stmt, Code_Variable_Declaration);
@@ -797,28 +858,42 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
     case CODE_KIND_BUILTIN: {
         Code_Ident* ident = CODE_AS(expr, Code_Ident);
-        if (string_eql(ident->str, lit("vertex_index"))) {
-            oc_assert(!lvalue);
-            result = b->vertex_index;
-            result = emit_op_dst(SpvOpLoad, typeid, result);
-            return result;
-        } else if (string_eql(ident->str, lit("index_index"))) {
-            oc_assert(!lvalue);
-            result = b->index_index;
-            result = emit_op_dst(SpvOpLoad, typeid, result);
-        } else if (string_eql(ident->str, lit("instance_index"))) {
-            oc_assert(!lvalue);
-            result = b->instance_index;
-            result = emit_op_dst(SpvOpLoad, typeid, result);
-        } else if (string_eql(ident->str, lit("position"))) {
-            SpvId typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassOutput);
-            int32_t index = 0;
-            SpvId index_id = spirv_generate_constant(cc, b, cc->typer->ty_int32, &index);
-            result = emit_op_dst(SpvOpAccessChain, typeid, b->per_vertex, index_id);
-
-            if (!lvalue) {
+        if (cc->vertex) {
+            if (string_eql(ident->str, lit("vertex_index"))) {
+                oc_assert(!lvalue);
+                result = b->vertex_index;
                 result = emit_op_dst(SpvOpLoad, typeid, result);
-            }
+                return result;
+            } else if (string_eql(ident->str, lit("index_index"))) {
+                oc_assert(!lvalue);
+                result = b->index_index;
+                result = emit_op_dst(SpvOpLoad, typeid, result);
+            } else if (string_eql(ident->str, lit("instance_index"))) {
+                oc_assert(!lvalue);
+                result = b->instance_index;
+                result = emit_op_dst(SpvOpLoad, typeid, result);
+            } else if (string_eql(ident->str, lit("position"))) {
+                SpvId typeid = spirv_get_pointer_type(cc, b, expr->type, SpvStorageClassOutput);
+                int32_t index = 0;
+                SpvId index_id = spirv_generate_constant(cc, b, cc->typer->ty_int32, &index);
+                result = emit_op_dst(SpvOpAccessChain, typeid, b->per_vertex, index_id);
+
+                if (!lvalue) {
+                    result = emit_op_dst(SpvOpLoad, typeid, result);
+                }
+            } else oc_assert(false);
+        } else if (cc->fragment) {
+            if (string_eql(ident->str, lit("color"))) {
+                result = b->frag_color_index;
+
+                if (!lvalue) {
+                    result = emit_op_dst(SpvOpLoad, b->frag_color_typeid, result);
+                }
+            } else if (string_eql(ident->str, lit("fragment_input"))) {
+                oc_assert(!lvalue);
+                result = b->index_index;
+                result = emit_op_dst(SpvOpLoad, typeid, result);
+            } else oc_assert(false);
         } else oc_assert(false);
     } break;
 
@@ -920,6 +995,19 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
             Code_Declaration* field_scope = right_ident->resolved_decl ? right_ident->resolved_decl : NULL;
             if (field_scope) {
                 typeof(*b->current_access_chain_tmp) chain_access = { 0 };
+
+                if (opr->left->kind == CODE_KIND_BUILTIN) {
+                    Code_Ident* ident = CODE_AS(opr->left, Code_Ident);
+                    if (string_eql(ident->str, lit("fragment_input"))) {
+                        Code_Variable_Declaration* field_decl = CODE_AS(field_scope, Code_Variable_Declaration);
+
+                        result = field_decl->ir_index;
+                        if (!lvalue) {
+                            result = emit_op_dst(SpvOpLoad, typeid, field_decl->ir_index);
+                        }
+                        return result;
+                    }
+                }
 
                 Oc_Arena_Save save;
                 bool had_access_chain = b->current_access_chain_tmp != NULL;

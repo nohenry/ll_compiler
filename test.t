@@ -115,13 +115,11 @@ struct FragmentData {
     float4 color;
 }
 
-float4 main(Vertex* vertex_buffer) {
+FragmentData main(Vertex* vertex_buffer) {
     #position = vertex_buffer[#vertex_index].position.xyz1;
     // Vertex v = *vertex_buffer;
 
-    // int i;
-    // FragmentData fd; 
-    // fd.color = float4(1, 0, 1, 1);
-    // return fd;
-    return float4(1, 0, 1, 1);
+    FragmentData fd; 
+    fd.color = float4(1, 0, 1, 1);
+    return fd;
 }

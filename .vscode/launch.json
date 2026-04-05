@@ -21,7 +21,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/main.exe",
-            "args": ["test.t"],
+            "args": ["test.frag.t", "--fragment"],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}",
             "environment": [],

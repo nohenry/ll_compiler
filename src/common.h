@@ -167,6 +167,7 @@ typedef struct {
     struct ll_lexer* lexer;
 	bool quiet;
     bool exit_0;
+    bool vertex, fragment;
 
 
     Array(uint32, LL_Queued*) queued_stack;

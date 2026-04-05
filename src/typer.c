@@ -769,16 +769,51 @@ bool ll_typer_handle_block(Compiler_Context* cc, LL_Typer* typer, LL_Type* expec
             queued->imperative_index = (uint32)-1;
         } else i = 0;
 
-        for (; i < blk->declarations.capacity; ++i) {
-            if (blk->declarations.entries[i].filled) {
-                result = ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value);
+        // for (; i < blk->declarations.capacity; ++i) {
+        //     if (blk->declarations.entries[i].filled) {
+        //         result = ll_typer_type_statement(cc, typer, (Code**)&blk->declarations.entries[i]._value);
 
-                if (!result) {
-                    queued->imperative_index = i;
+        //         if (!result) {
+        //             queued->imperative_index = i;
+        //         }
+        //     }
+        // }
+        for (; i < blk->statements.count; ++i) {
+            Code* stmt = blk->statements.items[i];
+            if (stmt->kind == CODE_KIND_INVOKE) {
+                Code_Invoke* inv = CODE_AS(stmt, Code_Invoke);
+                if (inv->expr->kind == CODE_KIND_BUILTIN) {
+                    Code_Ident* ident = CODE_AS(inv->expr, Code_Ident);
+                    if (string_eql(ident->str, lit("fragment_input"))) {
+                        if (typer->fragment_input) {
+                            ll_typer_report_error(((LL_Error){ .main_token = inv->expr->token_info }), "#fragment_input can only be declared once");
+                            ll_typer_report_error_info(((LL_Error){ .main_token = typer->fragment_input_code->expr->token_info }), "First declared here");
+                            ll_typer_report_error_done(cc, typer);
+                        }
+                        if (inv->arguments.count != 1) {
+                            ll_typer_report_error(((LL_Error){ .highlight_start = inv->base.token_info, .highlight_end = inv->p_close }), "#fragment_input expects one argument, the type of the fragment input");
+                            ll_typer_report_error_done(cc, typer);
+                        }
+
+                        bool can_continue;
+                        LL_Type* type = ll_typer_get_type_from_typename(cc, typer, inv->arguments.items[0], &can_continue);
+
+                        if (!can_continue) {
+                            queued->imperative_index = i;
+                            break;
+                        }
+
+                        typer->fragment_input = type;
+                        typer->fragment_input_code = inv;
+                        continue;
+                    }
                 }
             }
+
+
+            ll_typer_report_error(((LL_Error){ .main_token = stmt->token_info }), "Invalid statement in declarative scope.");
+            ll_typer_report_error_done(cc, typer);
         }
-        oc_assert(blk->statements.count == 0);
     } else {
         oc_assert(blk->flags & CODE_SCOPE_FLAG_IMPERATIVE);
 
@@ -1460,14 +1495,31 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
     }
     case CODE_KIND_BUILTIN: {
         Code_Ident* ident = CODE_AS((*expr), Code_Ident);
-        if (string_eql(ident->str, lit("vertex_index"))) {
-            result = typer->ty_int32;
-        } else if (string_eql(ident->str, lit("index_index"))) {
-            result = typer->ty_int32;
-        } else if (string_eql(ident->str, lit("instance_index"))) {
-            result = typer->ty_int32;
-        } else if (string_eql(ident->str, lit("position"))) {
-            result = ll_typer_get_vector_type(cc, typer, typer->ty_float32, 4, 1);
+        if (cc->vertex) {
+            if (string_eql(ident->str, lit("vertex_index"))) {
+                result = typer->ty_int32;
+            } else if (string_eql(ident->str, lit("index_index"))) {
+                result = typer->ty_int32;
+            } else if (string_eql(ident->str, lit("instance_index"))) {
+                result = typer->ty_int32;
+            } else if (string_eql(ident->str, lit("position"))) {
+                result = ll_typer_get_vector_type(cc, typer, typer->ty_float32, 4, 1);
+            } else {
+                ll_typer_report_error(((LL_Error){ .main_token = ident->base.token_info }), "Invalid builtin '#{}'", ident->str);
+                ll_typer_report_error_done(cc, typer);
+            }
+        } else if (cc->fragment) {
+            if (string_eql(ident->str, lit("color"))) {
+                result = ll_typer_get_vector_type(cc, typer, typer->ty_float32, 4, 1);
+            } else if (string_eql(ident->str, lit("fragment_input"))) {
+                if (!typer->fragment_input) {
+                    return false;
+                }
+                result = typer->fragment_input;
+            } else {
+                ll_typer_report_error(((LL_Error){ .main_token = ident->base.token_info }), "Invalid builtin '#{}'", ident->str);
+                ll_typer_report_error_done(cc, typer);
+            }
         } else {
             ll_typer_report_error(((LL_Error){ .main_token = ident->base.token_info }), "Invalid builtin '#{}'", ident->str);
             ll_typer_report_error_done(cc, typer);

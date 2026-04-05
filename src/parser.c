@@ -116,6 +116,10 @@ Code* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
     Code_Scope* block = (Code_Scope*)block_result;
     LL_Token token;
 
+    LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, block_result);
+
+    uint32 last_ordering = parser->block_ordering;
+    parser->block_ordering = 0;
     parser->current_scope = block;
     while (parser->lexer.pos < parser->lexer.source.len) {
         Code* stmt = parser_parse_statement(cc, parser);
@@ -123,7 +127,12 @@ Code* parser_parse_file(Compiler_Context* cc, LL_Parser* parser) {
         insert_into_block(cc, block, stmt);
         PEEK(&token);
     }
+    parser->current_scope = block->parent_scope;
+    parser->block_ordering = last_ordering;
+
     block->flags |= CODE_SCOPE_FLAG_DECLARATIVE;
+
+    actually_queue(cc, STAGE_TYPECHECK, queued);
 
     return (Code*)block;
 }

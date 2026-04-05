@@ -184,6 +184,8 @@ typedef struct ll_typer {
     LL_Typer_Current_Record* current_record;
     LL_Typer_Record_Values* current_record_values;
 
+    LL_Type* fragment_input;
+    Code_Invoke* fragment_input_code;
 
     Code* waited_on_code;
     Array(uint32, LL_Queued*) queue;
