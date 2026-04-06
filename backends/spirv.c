@@ -139,6 +139,7 @@ LL_Backend_Layout spirv_get_layout(LL_Type* ty);
 void spirv_calculate_struct_offsets(LL_Type* type);
 SpvId spirv_get_pointer_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, SpvStorageClass storage_class);
 SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, void* value);
+bool spirv_determine_if_explicit(Compiler_Context* cc, LL_Backend_Spirv* b, Code* expression);
 
 typedef struct {
     // bool omit_array_stride;
@@ -153,6 +154,7 @@ typedef struct {
 SpvId spirv_generate_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type);
 SpvId spirv_generate_type_with_parameters(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, Spirv_Type_Parameters parameters);
 SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code* expr, bool lvalue);
+SpvId spirv_explicit_copy_fix(Compiler_Context* cc, LL_Backend_Spirv* b, Code* from_expression, Code* to_expression, SpvId from_id);
 
 void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
     memset(b, 0, sizeof(*b));
@@ -482,8 +484,9 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
                 for (uint32 i = 0; i < fn_decl->parameters.count; ++i) {
                     Code_Variable_Declaration* decl = &fn_decl->parameters.items[i];
 
-                    SpvId typeid = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassFunction, parameter_ids[i]);
-                    SpvId variable_id = emit_op_dst(SpvOpVariable, typeid, SpvStorageClassFunction);
+                    LL_Type* variable_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, decl->base.ident->base.type, SpvStorageClassFunction);
+                    SpvId variable_type_id = spirv_generate_type_with_parameters(cc, b, variable_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+                    SpvId variable_id = emit_op_dst(SpvOpVariable, variable_type_id, SpvStorageClassFunction);
                     emit_debug_name(variable_id, decl->base.ident->str);
 
                     decl->ir_index = variable_id;
@@ -527,6 +530,13 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
                     SpvId typeid = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassPushConstant, parameter_ids[i]);
                     SpvId ptr = emit_op_dst(SpvOpAccessChain, typeid, b->push_const_id, index);
                     SpvId loaded = emit_op_dst(SpvOpLoad, parameter_ids[i], ptr);
+
+                    LL_Type* base_type = ll_get_base_type(decl->base.ident->base.type); 
+                    if (base_type->kind == LL_TYPE_STRUCT) {
+                        SpvId variable_typeid = spirv_generate_type_with_parameters(cc, b, decl->base.ident->base.type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+                        loaded = emit_op_dst(SpvOpCopyLogical, variable_typeid, loaded);
+                    }
+
                     emit_op(SpvOpStore, decl->ir_index, loaded);
                     decl->base.base.kind = CODE_KIND_VARIABLE_DECLARATION; // @Robustness: how bad is this
                 }
@@ -553,7 +563,9 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
         b->current_function = last_function;
     } break;
     case CODE_KIND_STRUCT: {} break;
-    default: spirv_generate_expression(cc, b, stmt, false);
+    default: {
+        spirv_generate_expression(cc, b, stmt, false);
+    } break;
     }
 }
 
@@ -765,6 +777,29 @@ SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type
     return result;
 }
 
+bool spirv_determine_if_explicit(Compiler_Context* cc, LL_Backend_Spirv* b, Code* expression) {
+    LL_Type* base_type = ll_get_base_type(expression->type);
+    if (base_type->kind == LL_TYPE_POINTER) {
+        if (spirv_storage_class_needs_explicit(((LL_Type_Pointer*)base_type)->spirv_storage_class)) {
+            expression->spv.is_explicit = true;
+            return true;
+        }
+    }
+    return expression->spv.is_explicit;
+}
+
+SpvId spirv_explicit_copy_fix(Compiler_Context* cc, LL_Backend_Spirv* b, Code* from_expression, Code* to_expression, SpvId from_id) {
+    if (from_expression->spv.is_explicit == to_expression->spv.is_explicit) return from_id;
+    SpvId result = 0;
+
+    bool is_invariant;
+    SpvId to_typeid = spirv_generate_type_with_parameters(cc, b, to_expression->type, (Spirv_Type_Parameters) { .needs_explicit_layout = to_expression->spv.is_explicit, .is_invariant = &is_invariant });
+    if (to_expression->type->spirv_type != to_expression->type->explicit_spirv_type) {
+        result = emit_op_dst(SpvOpCopyLogical, to_typeid, from_id);
+    }
+    return result;
+}
+
 SpvId spirv_generate_vector_constructor(Compiler_Context* cc, LL_Backend_Spirv* b, Code_Invoke* inv) {
     oc_assert(inv->expr->has_const);
     LL_Type* dest_type = inv->expr->const_value.as_type;
@@ -803,6 +838,30 @@ SpvId spirv_generate_vector_constructor(Compiler_Context* cc, LL_Backend_Spirv* 
 
     SpvId dest_typeid = spirv_generate_type(cc, b, dest_type);
     SpvId result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpCompositeConstruct, dest_typeid, args, components);
+    return result;
+}
+
+SpvId spirv_load(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, SpvId ptr, bool dst_is_explicit) {
+    oc_assert(type->kind == LL_TYPE_POINTER);
+    type = ll_get_base_type(type);
+    LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
+    SpvId result = 0;
+    bool is_invariant;
+    bool explicit = spirv_storage_class_needs_explicit(ptr_type->spirv_storage_class);
+
+    SpvId typeid = spirv_generate_type_with_parameters(cc, b, ptr_type->element_type, (Spirv_Type_Parameters) { .needs_explicit_layout = explicit, .is_invariant = &is_invariant });
+    if (explicit) {
+        result = emit_op_dst(SpvOpLoad, typeid, ptr, SpvMemoryAccessAlignedMask, 16);
+    } else {
+        result = emit_op_dst(SpvOpLoad, typeid, ptr);
+    }
+
+    LL_Type* element_type = ll_get_base_type(ptr_type->element_type);
+
+    if (dst_is_explicit != explicit && element_type->kind == LL_TYPE_STRUCT) {
+        SpvId non_explicit_typeid = spirv_generate_type_with_parameters(cc, b, ptr_type->element_type, (Spirv_Type_Parameters) { .needs_explicit_layout = dst_is_explicit, .is_invariant = &is_invariant });
+        result = emit_op_dst(SpvOpCopyLogical, non_explicit_typeid, result);
+    }
     return result;
 }
 
@@ -923,6 +982,7 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
         switch (decl->kind) {
         case CODE_KIND_VARIABLE_DECLARATION:
             result = CODE_AS(decl, Code_Variable_Declaration)->ir_index;
+            expr->spv.is_explicit = decl->spv.is_explicit;
             break;
         case CODE_KIND_FUNCTION_DECLARATION:
             if (CODE_AS(decl, Code_Function_Declaration)->ir_index == 0) {
@@ -964,8 +1024,9 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
         } break;
         case '*': {
             result = spirv_generate_expression(cc, b, op->right, false);
+            expr->spv.is_explicit = spirv_determine_if_explicit(cc, b, op->right);
             if (!lvalue) {
-                result = emit_op_dst(SpvOpLoad, typeid, result);
+                result = spirv_load(cc, b, op->right->type, result, false);
             }
         } break;
         case '&': {
@@ -987,17 +1048,15 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
         switch (op->op.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
-		case '.': {
-            Code_Operation* opr = CODE_AS(expr, Code_Operation);
-            Code_Ident* right_ident = CODE_AS(opr->right, Code_Ident);
-            static uint32_t offset_value = 0;
+        case '.': {
+            Code_Ident* right_ident = CODE_AS(op->right, Code_Ident);
 
             Code_Declaration* field_scope = right_ident->resolved_decl ? right_ident->resolved_decl : NULL;
             if (field_scope) {
                 typeof(*b->current_access_chain_tmp) chain_access = { 0 };
 
-                if (opr->left->kind == CODE_KIND_BUILTIN) {
-                    Code_Ident* ident = CODE_AS(opr->left, Code_Ident);
+                if (op->left->kind == CODE_KIND_BUILTIN) {
+                    Code_Ident* ident = CODE_AS(op->left, Code_Ident);
                     if (string_eql(ident->str, lit("fragment_input"))) {
                         Code_Variable_Declaration* field_decl = CODE_AS(field_scope, Code_Variable_Declaration);
 
@@ -1030,28 +1089,25 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
                 typeof(b->current_access_chain_tmp) old_chain_access = b->current_access_chain_tmp;
 
-                if (opr->left->type->kind == LL_TYPE_POINTER) {
+                if (op->left->type->kind == LL_TYPE_POINTER) {
                     b->current_access_chain_tmp = NULL;
-                    result = spirv_generate_expression(cc, b, opr->left, false);
-                    bool is_invariant;
-                    SpvId typeid = spirv_generate_type_with_parameters(cc, b, op->left->type, (Spirv_Type_Parameters) { .needs_explicit_layout = spirv_storage_class_needs_explicit(((LL_Type_Pointer*)op->left->type)->spirv_storage_class), .is_invariant = &is_invariant });
-                    result = emit_op_dst(SpvOpLoad, typeid, result);
+                    result = spirv_generate_expression(cc, b, op->left, false);
 
                     // return result;
                     b->current_access_chain_tmp = old_chain_access;
                     if (b->current_access_chain_tmp) {
-                        oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, ((LL_Type_Pointer*)opr->left->type)->spirv_storage_class);
+                        oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, ((LL_Type_Pointer*)op->left->type)->spirv_storage_class);
                         oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
                     }
                 } else {
-                    result = spirv_generate_expression(cc, b, opr->left, true);
+                    result = spirv_generate_expression(cc, b, op->left, true);
                     b->current_access_chain_tmp = old_chain_access;
 
-                    // if (opr->left->kind != CODE_KIND_INDEX && !(opr->left->kind == CODE_KIND_BINARY_OP && CODE_AS(opr->left, Code_Operation)->op.kind == '.')) {
+                    // if (op->left->kind != CODE_KIND_INDEX && !(op->left->kind == CODE_KIND_BINARY_OP && CODE_AS(op->left, Code_Operation)->op.kind == '.')) {
                     if (b->current_access_chain_tmp && b->current_access_chain_tmp->count == 0) {
+                        // base case. the commented line above was the old base case, but i think the current condition makes more sense and is more robust
                         // @TODO: don't hard code function sc here
                         oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, SpvStorageClassFunction);
-                        // base case. the commented line above was the old base case, but i think the current condition makes more sense and is more robust
                         oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
                     }
                 }
@@ -1082,11 +1138,11 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
                 return result;
             } else {
-                LL_Type* base_type = ll_get_base_type(opr->left->type);
-                if (base_type->kind == LL_TYPE_ARRAY && opr->base.has_const) {
+                LL_Type* base_type = ll_get_base_type(op->left->type);
+                if (base_type->kind == LL_TYPE_ARRAY && op->base.has_const) {
                     if (lvalue) oc_todo("handle invalid lvalue");
 
-                    result = spirv_generate_constant(cc, b, opr->base.type, &opr->base.const_value.as_u64);
+                    result = spirv_generate_constant(cc, b, op->base.type, &op->base.const_value.as_u64);
                     return result;
                 }
             }
@@ -1417,7 +1473,7 @@ DO_BIN_OP_ASSIGN_OP:
                 oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
             } else {
                 if (!lvalue) {
-                    result = emit_op_dst(SpvOpLoad, typeid, result);
+                    result = spirv_load(cc, b, op->ptr->type, result, false);
                 }
             } 
 
@@ -1470,11 +1526,7 @@ DO_BIN_OP_ASSIGN_OP:
         }
 
         if (!lvalue) {
-            if (load_sc == SpvStorageClassPhysicalStorageBuffer) {
-                result = emit_op_dst(SpvOpLoad, typeid, result, SpvMemoryAccessAlignedMask, 16);
-            } else {
-                result = emit_op_dst(SpvOpLoad, typeid, result);
-            }
+            spirv_load(cc, b, op->ptr->type, result, false);
         }
     } break;
 
@@ -1526,7 +1578,7 @@ DO_BIN_OP_ASSIGN_OP:
                         SpvId field_type_id = spirv_generate_type(cc, b, var_decl->base.ident->base.type);
                         SpvId field_index = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &var_decl->ordered_index);
                         SpvId field_id = emit_op_dst(SpvOpAccessChain, field_ptr_type_id, result, field_index);
-                            field_id = emit_op_dst(SpvOpLoad, field_type_id, field_id);
+                            field_id = emit_op_dst(SpvOpLoad, field_type_id, field_id); // @TODO: support other ptr storage classes
                         emit_op(SpvOpStore, var_decl->ir_index, field_id);
                     }
                 } else {

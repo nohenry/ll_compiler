@@ -60,8 +60,6 @@ struct Foobar {
 }
 
 struct StructWithPtr {
-    int jj;
-    int kk;
     Foobar* foobar;
 }
 
@@ -107,8 +105,14 @@ struct StructWithPtr {
 //     struct_with_ptr[2].foobar.bar.b64;
 // }
 
+struct Data {
+    int i;
+}
+
 struct Vertex {
     float3 position;
+    Data* ptr;
+    Data dd;
 }
 
 struct FragmentData {
@@ -117,7 +121,26 @@ struct FragmentData {
 
 FragmentData main(Vertex* vertex_buffer) {
     #position = vertex_buffer[#vertex_index].position.xyz1;
-    // Vertex v = *vertex_buffer;
+    float3 v = vertex_buffer.position;
+    Data d = *vertex_buffer.ptr;
+    Vertex v1 = *vertex_buffer;
+    int ii = vertex_buffer.ptr.i;
+
+    Vertex& pv = &v1;
+    int ii1 = pv.ptr.i;
+
+    int i;
+    int& p = &i;
+
+
+    // Foobar f;
+    // StructWithPtr p;
+    // p.foobar = &f;
+
+    // test1();
+
+    // StructWithPtr struct_with_ptr;
+    // struct_with_ptr.foobar.bar;
 
     FragmentData fd; 
     fd.color = float4(1, 0, 1, 1);

@@ -401,7 +401,6 @@ void compiler_cycle_stage_typecheck(Compiler_Context* cc, uint32* number_of_dele
     cc->number_of_queued = number_of_insertions;
 
     for (uint32 i = 0; i < stage->input.count; ++i) {
-        typer->waited_on_code = NULL;
         LL_Queued* queued_item = stage->input.items[i];
         oc_assert(queued_item->dependency_counter[STAGE_TYPECHECK] == 0);
         oc_assert(queued_item->index_in_stage == i);
@@ -476,7 +475,6 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
     cc->number_of_queued = number_of_insertions;
 
     for (uint32 i = 0; i < stage->input.count; ++i) {
-        typer->waited_on_code = NULL;
         LL_Queued* queued_item = stage->input.items[i];
         oc_assert(queued_item->index_in_stage == i);
         // if (compiller_consume_dependencies(cc, queued_item)) continue;
@@ -548,7 +546,6 @@ void compiler_cycle_stage_eval(Compiler_Context* cc, uint32* number_of_deletions
     cc->number_of_queued = number_of_insertions;
 
     for (uint32 i = 0; i < stage->input.count; ++i) {
-        typer->waited_on_code = NULL;
         LL_Queued* queued_item = stage->input.items[i];
         oc_assert(queued_item->index_in_stage == i);
         // if (compiller_consume_dependencies(cc, queued_item)) continue;
@@ -604,25 +601,25 @@ void compiler_run_stages(Compiler_Context* cc) {
         if (number_of_insertions == 0 && number_of_deletions == 0) break;
     }
 
-    // for (uint32 i = 0; i < typer->queue.count; ++i) {
-    //     typer->waited_on_code = NULL;
-    //     LL_Queued* queued_item = typer->queue.items[i];
+    LL_Typer* typer = cc->typer;
+    for (uint32 i = 0; i < cc->stages[STAGE_TYPECHECK].input.count; ++i) {
+        // typer->waited_on_code = NULL;
+        LL_Queued* queued_item = cc->stages[STAGE_TYPECHECK].input.items[i];
 
-    //     if (queued_item->code) {
-    //         if (queued_item->imperative_index != (uint32)-1) {
-    //             ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(queued_item->code, Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
-    //             // ll_typer_report_error_done(cc, typer);
-    //         } else {
-    //             ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(queued_item->code, Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
-    //             // ll_typer_report_error_done(cc, typer);
-    //         }
-    //     } else {
-    //         if (queued_item->imperative_index != (uint32)-1) {
-    //             ll_typer_report_error(((LL_Error){ .main_token = queued_item->scope->statements.items[queued_item->imperative_index]->token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
-    //         } else {
-    //             Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &queued_item->scope->declarations, typer->queue.items[i]->decl_str, typer->queue.items[i]->decl_yielded_hash);
-    //             ll_typer_report_error(((LL_Error){ .main_token = (*v)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
-    //         }
-    //     }
-    // }
+        if (queued_item->yielded_on) {
+            ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(queued_item->yielded_on, Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->yielded_on, Code_Ident)->str);
+        } else {
+            if (queued_item->imperative_index != (uint32)-1) {
+                ll_typer_report_error(((LL_Error){ .main_token = queued_item->scope->statements.items[queued_item->imperative_index]->token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
+            } else {
+                oc_assert(false);
+                // Code_Declaration** v = hash_map_get_from_hash(&cc.arena, &queued_item->scope->declarations, typer->queue.items[i]->decl_str, typer->queue.items[i]->decl_yielded_hash);
+                // ll_typer_report_error(((LL_Error){ .main_token = (*v)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);
+            }
+        }
+    }
+
+    if (cc->stages[STAGE_TYPECHECK].input.count) {
+        ll_typer_report_error_done(cc, typer);
+    }
 }

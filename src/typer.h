@@ -187,7 +187,6 @@ typedef struct ll_typer {
     LL_Type* fragment_input;
     Code_Invoke* fragment_input_code;
 
-    Code* waited_on_code;
     Array(uint32, LL_Queued*) queue;
     uint32* number_of_queued;
 } LL_Typer;
@@ -209,6 +208,14 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
 bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result);
 bool ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string input, uint8_t* rows, uint8_t* cols, string* to_lookup);
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename, bool* can_continue);
+
+typedef struct {
+	uint32 storage_class;
+} LL_Typename_Parameters;
+
+#define LL_Typename_Parameters_Default ((LL_Typename_Parameters) { .storage_class = 7 });
+LL_Type* ll_typer_get_type_from_typename_with_parameters(Compiler_Context* cc, LL_Typer* typer, Code* typename, LL_Typename_Parameters parameters, bool* can_continue);
+
 void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);
 

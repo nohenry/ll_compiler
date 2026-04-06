@@ -313,7 +313,6 @@ void ll_typer_run(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     if (!cc->quiet) print_node((Code*)typer->root_scope, 0, &stdout_writer);
 
     typer->current_scope = (Code_Scope*)node;
-    typer->waited_on_code = NULL;
     CODE_AS(node, Code_Scope)->parent_scope = typer->root_scope;
     ll_typer_type_statement(cc, typer, &node);
 }
@@ -953,6 +952,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
     }
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS((*stmt), Code_Function_Declaration);
+		bool is_main = string_eql(fn_decl->base.ident->str, lit("main"));
 
         // LL_Scope* fn_scope = create_scope(LL_SCOPE_KIND_FUNCTION, fn_decl);
         // fn_scope->ident = fn_decl->base.ident;
@@ -980,7 +980,11 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
                     did_variadic = true;
                 } else {
                     if (parameter->base.type) {
-                        types[i] = ll_typer_get_type_from_typename(cc, typer, parameter->base.type, &can_continue);
+						LL_Typename_Parameters typename = LL_Typename_Parameters_Default;
+						if (is_main) {
+							typename.storage_class = SpvStorageClassPhysicalStorageBuffer;
+						}
+						types[i] = ll_typer_get_type_from_typename_with_parameters(cc, typer, parameter->base.type, typename, &can_continue);
                         if (!can_continue) {
                             return false;
                         }
@@ -1548,7 +1552,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 
         Code_Declaration* decl = ll_typer_find_symbol_up_scope_string(cc, typer, typer->current_scope, to_lookup, CODE_AS((*expr), Code_Ident)->flags & CODE_IDENT_FLAG_EXPAND);
         if (!decl) {
-            typer->waited_on_code = (*expr);
+            current_queued()->yielded_on = (*expr);
             return false;
         }
 
@@ -1560,7 +1564,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             // @Robustness: there's probably a better way to do this. maybe we just do vector if it starts with known vector base types (float, int, etc)
             decl = ll_typer_find_symbol_up_scope(cc, typer, typer->current_scope, CODE_AS((*expr), Code_Ident));
             if (!decl) {
-                typer->waited_on_code = (*expr);
+                current_queued()->yielded_on = (*expr);
                 return false;
             }
         }
@@ -1646,7 +1650,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         if (decl->base.kind != CODE_KIND_PARAMETER) {
             if (!result) {
                 depend(current_queued(), decl->base.queued, STAGE_TYPECHECK);
-                typer->waited_on_code = (*expr);
+                current_queued()->yielded_on = (*expr);
                 return false;
             }
         }
@@ -1666,7 +1670,22 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 
         if (!result) oc_todo("returned here before, not sure what to do");
         if ((*element)->has_const) {
-            result = ll_typer_get_ptr_type(cc, typer, (*element)->const_value.as_type);
+            result = ll_typer_get_ptr_type_with_storage_class(cc, typer, (*element)->const_value.as_type, SpvStorageClassPhysicalStorageBuffer);
+            (*expr)->has_const = 1;
+            (*expr)->const_value.as_type = result;
+
+            result = typer->ty_type;
+        } else oc_todo("handle runtime");
+    } break;
+    case CODE_KIND_TYPE_REFERENCE: {
+        Code** element = &CODE_AS((*expr), Code_Type_Pointer)->element;
+        can_continue = ll_typer_type_expression(cc, typer, element, NULL, NULL);
+        if (!can_continue) return can_continue;
+        result = (*element)->type;
+
+        if (!result) oc_todo("returned here before, not sure what to do");
+        if ((*element)->has_const) {
+            result = ll_typer_get_ptr_type_with_storage_class(cc, typer, (*element)->const_value.as_type, SpvStorageClassFunction);
             (*expr)->has_const = 1;
             (*expr)->const_value.as_type = result;
 
@@ -3376,6 +3395,11 @@ bool ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string in
 }
 
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename, bool* can_continue) {
+	LL_Typename_Parameters parameters = LL_Typename_Parameters_Default;
+	return ll_typer_get_type_from_typename_with_parameters(cc, typer, typename, parameters, can_continue);
+}
+
+LL_Type* ll_typer_get_type_from_typename_with_parameters(Compiler_Context* cc, LL_Typer* typer, Code* typename, LL_Typename_Parameters parameters, bool* can_continue) {
     LL_Type* result = NULL;
 
     switch (typename->kind) {
@@ -3394,7 +3418,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 
         Code_Declaration* decl = ll_typer_find_symbol_up_scope_string(cc, typer, typer->current_scope, to_lookup, CODE_AS(typename, Code_Ident)->flags & CODE_IDENT_FLAG_EXPAND);
         if (!decl) {
-            typer->waited_on_code = typename;
+            current_queued()->yielded_on = typename;
             *can_continue = false;
             return NULL;
         }
@@ -3432,7 +3456,7 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         }
 
         if (result == NULL) {
-            typer->waited_on_code = typename;
+            current_queued()->yielded_on = typename;
             *can_continue = NULL;
             return NULL;
         }
@@ -3441,7 +3465,13 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
     case CODE_KIND_TYPE_POINTER: {
         result = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Type_Pointer)->element, can_continue);
         if (!result) return NULL;
-        result = ll_typer_get_ptr_type(cc, typer, result);
+        result = ll_typer_get_ptr_type_with_storage_class(cc, typer, result, SpvStorageClassPhysicalStorageBuffer);
+        break;
+    }
+    case CODE_KIND_TYPE_REFERENCE: {
+        result = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Type_Pointer)->element, can_continue);
+        if (!result) return NULL;
+        result = ll_typer_get_ptr_type_with_storage_class(cc, typer, result, SpvStorageClassFunction);
         break;
     }
     case CODE_KIND_INDEX: {
@@ -3663,7 +3693,9 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     case LL_TYPE_POINTER: {
         LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
         ll_print_type_raw(ptr_type->element_type, w);
-        if (ptr_type->spirv_storage_class != SpvStorageClassFunction) {
+        if (ptr_type->spirv_storage_class != SpvStorageClassPhysicalStorageBuffer) {
+            wprint(w, "&");
+        } else if (ptr_type->spirv_storage_class != SpvStorageClassFunction) {
             wprint(w, "*{} ", SpvStorageClassToString(ptr_type->spirv_storage_class));
         } else {
             wprint(w, "*");

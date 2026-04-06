@@ -131,6 +131,7 @@ typedef struct LL_Queued {
     struct Code_Function_Declaration* function;
     struct Code_Scope* scope;
     Code* code;
+    Code* yielded_on;
 
     struct LL_Ir_State* ir_state;
     LL_Stage_Kind stage, max_completed_stage;

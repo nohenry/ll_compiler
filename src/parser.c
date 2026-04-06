@@ -498,7 +498,7 @@ int get_binary_precedence(LL_Token token, bool from_statement) {
         case LL_TOKEN_KIND_AND: return 50;
         case '|': return 60;
         case '^': return 70;
-        case '&': return 80;
+        case '&': return from_statement ? 0 : 80;
         case LL_TOKEN_KIND_EQUALS:
         case LL_TOKEN_KIND_NEQUALS:
             return from_statement ? 0 : 90;
@@ -526,6 +526,7 @@ int get_postfix_precedence(LL_Token token) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
         case '*':
+        case '&':
         case '[':
         case '(':
             return 150;
@@ -643,6 +644,7 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
             switch (token.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
+            case '&':
             case '*':
             case '[':
             case '%':
@@ -653,6 +655,25 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
             case ',':
 #pragma GCC diagnostic pop
                 left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
+                left->token_info = TOKEN_INFO(op_tok);
+                continue;
+            default: break;
+            }
+            } else if (op_tok.kind == '&') {
+            switch (token.kind) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
+            case '&':
+            case '*':
+            case '[':
+            case '%':
+            case ')':
+            case '}':
+            case ';':
+            case '.':
+            case ',':
+#pragma GCC diagnostic pop
+                left = CREATE_NODE(CODE_KIND_TYPE_REFERENCE, ((Code_Type_Pointer){ .element = left }));
                 left->token_info = TOKEN_INFO(op_tok);
                 continue;
             default: break;
@@ -747,6 +768,15 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                     CONSUME();
                     
                     left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
+                    left->token_info = TOKEN_INFO(token);
+
+                    break;
+                }
+                case '&': {
+                    if (!from_statement) return left;
+                    CONSUME();
+                    
+                    left = CREATE_NODE(CODE_KIND_TYPE_REFERENCE, ((Code_Type_Pointer){ .element = left }));
                     left->token_info = TOKEN_INFO(token);
 
                     break;
@@ -1146,6 +1176,7 @@ const char* ast_get_node_kind(Code* node) {
         case CODE_KIND_STRUCT: return "Struct";
         case CODE_KIND_GENERIC: return "Generic";
         case CODE_KIND_TYPE_POINTER: return "Pointer";
+        case CODE_KIND_TYPE_REFERENCE: return "Reference";
         case CODE_KIND_TYPENAME: return "Typename";
         case CODE_KIND_SWIZZLE: return "Swizzle";
         default: oc_unreachable("");
@@ -1187,6 +1218,7 @@ void print_node_value(Code* node, Oc_Writer* w) {
             print_node_value(&CODE_AS(node, Code_Struct)->base.ident->base, w);
             break;
         case CODE_KIND_TYPE_POINTER: break;
+        case CODE_KIND_TYPE_REFERENCE: break;
         case CODE_KIND_TYPENAME:
             wprint(w, "{} ", CODE_AS(node, Code_Declaration)->ident->str);
             ll_print_type_raw(CODE_AS(node, Code_Declaration)->declared_type, w);
@@ -1331,6 +1363,7 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             print_node((Code*)CODE_AS(node, Code_Generic)->ident, indent + 1, w);
             break;
 
+        case CODE_KIND_TYPE_REFERENCE:
         case CODE_KIND_TYPE_POINTER:
             print_node(CODE_AS(node, Code_Type_Pointer)->element, indent + 1, w);
             break;
@@ -1537,6 +1570,7 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
         }));
         break;
 
+    case CODE_KIND_TYPE_REFERENCE:
     case CODE_KIND_TYPE_POINTER:
         result = CREATE_NODE(node->kind, ((Code_Type_Pointer){
             .base.token_info = node->token_info,

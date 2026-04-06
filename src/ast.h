@@ -40,6 +40,7 @@ typedef enum {
     CODE_KIND_CAST,
     CODE_KIND_GENERIC,
     CODE_KIND_TYPE_POINTER,
+    CODE_KIND_TYPE_REFERENCE,
 
 
     // Generated
@@ -73,6 +74,10 @@ struct code {
     struct ll_type* type;
     LL_Eval_Value const_value;
     LL_Token_Info token_info;
+
+    struct {
+        bool is_explicit : 1;
+    } spv __attribute__((packed));
 };
 
 typedef struct ll_function_instantiation {
