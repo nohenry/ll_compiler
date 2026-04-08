@@ -195,7 +195,7 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
         emit_annotation_op(SpvOpDecorate, b->instance_index, SpvDecorationBuiltIn, SpvBuiltInInstanceIndex);
 
         SpvId per_vertex_id = emit_type_op_dst(SpvOpTypeStruct,
-            spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 4, 1)),
+            spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 1, 4)),
             // spirv_generate_type(cc, b, cc->typer->ty_float32),
             // spirv_generate_type(cc, b, cc->typer->ty_uint32),
             // spirv_generate_type(cc, b, cc->typer->ty_uint32)
@@ -245,7 +245,7 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
 
 
 
-        SpvId color_typeid = spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 4, 1));
+        SpvId color_typeid = spirv_generate_type(cc, b, ll_typer_get_vector_type(cc, cc->typer, cc->typer->ty_float32, 1, 4));
         SpvId color_ptr_typeid = emit_type_op_dst(SpvOpTypePointer, SpvStorageClassOutput, color_typeid);
         b->frag_color_typeid = color_typeid;
         b->frag_color_index = emit_type_op_dst_rev(SpvOpVariable, color_ptr_typeid, SpvStorageClassOutput);
@@ -424,8 +424,7 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
                     //     SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
                     //     emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, (uint32_t)i);
                     // }
-                } else {
-
+                } else if (return_type->kind != LL_TYPE_VOID) {
                     LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, return_type, SpvStorageClassOutput);
                     SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
 
@@ -1147,9 +1146,35 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                 }
             }
         } break;
+        case '*':
+            if (ll_type_is_vector_or_matrix(op->left->type) && ll_type_is_vector_or_matrix(op->right->type)) {
+                // vector/matrix mul
+                r2 = spirv_generate_expression(cc, b, op->right, false);
+                r1 = spirv_generate_expression(cc, b, op->left, false);
+                if (ll_type_is_matrix(op->left->type) && ll_type_is_matrix(op->right->type)) {
+                    result = emit_op_dst(SpvOpMatrixTimesMatrix, typeid, r1, r2);
+                } else if (ll_type_is_vector(op->left->type) && ll_type_is_matrix(op->right->type)) {
+                    result = emit_op_dst(SpvOpVectorTimesMatrix, typeid, r1, r2);
+                } else if (ll_type_is_matrix(op->left->type) && ll_type_is_vector(op->right->type)) {
+                    result = emit_op_dst(SpvOpMatrixTimesVector, typeid, r1, r2);
+                } else oc_assert(false);
+                return result;
+            } else if (ll_type_is_vector_or_matrix(op->left->type) || ll_type_is_vector_or_matrix(op->right->type)) {
+                // mul by scalar
+                r2 = spirv_generate_expression(cc, b, op->right, false);
+                r1 = spirv_generate_expression(cc, b, op->left, false);
+
+                if (ll_type_is_vector(op->left->type)) {
+                    result = emit_op_dst(SpvOpVectorTimesScalar, typeid, r1, r2);
+                } else if (ll_type_is_matrix(op->left->type)) {
+                    result = emit_op_dst(SpvOpMatrixTimesScalar, typeid, r1, r2);
+                } else oc_assert(false);
+                return result;
+            }
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMul : SpvOpIMul;
+            break;
         case '+': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFAdd : SpvOpIAdd; break;
         case '-': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFSub : SpvOpISub; break;
-        case '*': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMul : SpvOpIMul; break;
         case '/': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFDiv : (expr->type->kind == LL_TYPE_INT) ? SpvOpSDiv : SpvOpUDiv; break;
         case '%': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMod : (expr->type->kind == LL_TYPE_INT) ? SpvOpSMod : SpvOpUMod; break;
 
@@ -1262,7 +1287,7 @@ DO_BIN_OP_ASSIGN_OP:
             if (CODE_SWIZZLE_IS_COMPONENT(swizzle->components[i])) {
                 operands.selectors[i] = CODE_SWIZZLE_GET_COMPONENT(swizzle->components[i]);
             } else {
-                operands.selectors[i] = swizzle->vector->type->rows + numbers_count;
+                operands.selectors[i] = swizzle->vector->type->columns + numbers_count;
 
                 union {
                     float f;
@@ -1285,7 +1310,7 @@ DO_BIN_OP_ASSIGN_OP:
             }
         }
 
-        if (numbers_count < 2) {
+        if (numbers_count == 1) {
             SpvId base_id = spirv_generate_type(cc, b, swizzle->vector->type->base_type);
             // type must be a vector so we just stick a null value here if there's only one element
             numbers[numbers_count++] = emit_type_op_dst_rev(SpvOpConstantNull, base_id);
@@ -1294,7 +1319,7 @@ DO_BIN_OP_ASSIGN_OP:
         if (numbers_count) {
             LL_Type new_type = *swizzle->vector->type;
             new_type.spirv_type = 0;
-            new_type.rows = numbers_count;
+            new_type.columns = numbers_count;
             oc_assert(ll_type_is_vector(&new_type));
 
 
@@ -1751,13 +1776,12 @@ SpvId spirv_generate_type_with_parameters(Compiler_Context* cc, LL_Backend_Spirv
         is_invariant = true;
 
         if (type->rows > 1) {
-            result = emit_type_op_dst(SpvOpTypeVector, result, type->rows);
-        }
-        if (type->columns > 1) {
-            if (type->rows == 1) {
-                result = emit_type_op_dst(SpvOpTypeVector, result, 1);
-            }
+            oc_assert(type->columns > 1);
+            LL_Type* new_type = ll_typer_get_vector_type(cc, cc->typer, type->base_type, 1, type->rows);
+            result = spirv_generate_type_with_parameters(cc, b, new_type, parameters);
             result = emit_type_op_dst(SpvOpTypeMatrix, result, type->columns);
+        } else if (type->columns > 1) {
+            result = emit_type_op_dst(SpvOpTypeVector, result, type->columns);
         }
     } else {
         // leaf types
@@ -1854,6 +1878,11 @@ SpvId spirv_generate_type_with_parameters(Compiler_Context* cc, LL_Backend_Spirv
             for (uint32_t i = 0; i < struc->field_count; ++i) {
                 member_types[i] = spirv_generate_type_with_parameters(cc, b, struc->fields[i], parameters);
                 if (parameters.needs_explicit_layout) emit_annotation_op(SpvOpMemberDecorate, result, i, SpvDecorationOffset, struc->offsets[i]);
+                if (ll_type_is_matrix(struc->fields[i])) {
+                    // emit_annotation_op(SpvOpMemberDecorate, result, i, SpvDecorationRowMajor);
+                    LL_Backend_Layout layout = spirv_get_layout(struc->fields[i]);
+                    emit_annotation_op(SpvOpMemberDecorate, result, i, SpvDecorationMatrixStride, layout.alignment);
+                }
             }
 
             oc_array_append(&cc->arena, &b->code_types, (SpvOpTypeStruct) | ((2 + struc->field_count) << 16));
@@ -1900,7 +1929,7 @@ LL_Backend_Layout spirv_get_layout(LL_Type* ty) {
     case LL_TYPE_CHAR:
     case LL_TYPE_FLOAT:
         sub_layout = (LL_Backend_Layout) { .size = ty->width / 8 * ty->rows * ty->columns, .alignment = ty->width / 8 };
-        switch (ty->rows) {
+        switch (ty->columns) {
         case 2: sub_layout.alignment *= 2; break;
         case 3:
         case 4: sub_layout.alignment *= 4; break;

@@ -105,44 +105,61 @@ struct StructWithPtr {
 //     struct_with_ptr[2].foobar.bar.b64;
 // }
 
-struct Data {
-    int i;
-}
+
+
+// struct Data {
+//     int i;
+// }
+
+// struct Vertex {
+//     float3 position;
+//     Data* ptr;
+//     Data dd;
+// }
+
+// struct FragmentData {
+//     float4 color;
+// }
+
+// FragmentData main(Vertex* vertex_buffer) {
+//     #position = vertex_buffer[#vertex_index].position.xyz1;
+//     float3 v = vertex_buffer.position;
+//     Data d = *vertex_buffer.ptr;
+//     Vertex v1 = *vertex_buffer;
+//     int ii = vertex_buffer.ptr.i;
+
+//     Vertex& pv = &v1;
+//     int ii1 = pv.ptr.i;
+
+//     int i;
+//     int& p = &i;
+
+
+//     // Foobar f;
+//     // StructWithPtr p;
+//     // p.foobar = &f;
+
+//     // test1();
+
+//     // StructWithPtr struct_with_ptr;
+//     // struct_with_ptr.foobar.bar;
+
+//     FragmentData fd; 
+//     fd.color = float4(1, 0, 1, 1);
+//     return fd;
+// }
 
 struct Vertex {
     float3 position;
-    Data* ptr;
-    Data dd;
 }
 
-struct FragmentData {
-    float4 color;
+struct OtherData {
+    float4x4 matrix;
 }
 
-FragmentData main(Vertex* vertex_buffer) {
-    #position = vertex_buffer[#vertex_index].position.xyz1;
-    float3 v = vertex_buffer.position;
-    Data d = *vertex_buffer.ptr;
-    Vertex v1 = *vertex_buffer;
-    int ii = vertex_buffer.ptr.i;
+float4 main(Vertex* vertex_buffer, OtherData* data) {
+    float4 position = vertex_buffer[#vertex_index].position.xyz1;
+    #position = position * data.matrix;
 
-    Vertex& pv = &v1;
-    int ii1 = pv.ptr.i;
-
-    int i;
-    int& p = &i;
-
-
-    // Foobar f;
-    // StructWithPtr p;
-    // p.foobar = &f;
-
-    // test1();
-
-    // StructWithPtr struct_with_ptr;
-    // struct_with_ptr.foobar.bar;
-
-    FragmentData fd; 
-    fd.color = float4(1, 0, 1, 1);
-    return fd;
+    return float4(1, 1, 0, 1);
 }

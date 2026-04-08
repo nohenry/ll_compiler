@@ -259,7 +259,9 @@ static inline LL_Type* ll_get_base_type_and_scope(LL_Type* type, Code_Scope** ou
     return type;
 }
 
-#define ll_type_is_vector(type) ((type)->rows > 1 || ((type)->columns > 1))
+#define ll_type_is_vector(type) ((type)->columns > 1)
+#define ll_type_is_matrix(type) ((type)->rows > 1)
+#define ll_type_is_vector_or_matrix(type) ((type)->columns > 1 || (type)->rows > 1)
 
 typedef struct {
     LL_Type *expected, *actual;

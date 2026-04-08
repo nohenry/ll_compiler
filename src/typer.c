@@ -564,7 +564,7 @@ LL_Type* ll_typer_get_vector_type(Compiler_Context* cc, LL_Typer* typer, LL_Type
     LL_Type new_type = *base_type;
     new_type.rows = rows;
     new_type.columns = columns;
-    if (ll_type_is_vector(&new_type)) {
+    if (ll_type_is_vector_or_matrix(&new_type)) {
         new_type.base_type = base_type;
     } else {
         new_type.base_type = NULL;
@@ -1442,7 +1442,7 @@ bool ll_typer_type_vector_constructor(Compiler_Context* cc, LL_Typer* typer, Cod
             // @TODO: think about better wording
             ll_typer_report_error_no_src(" result type ");
             ll_typer_report_error_type(cc, typer, dest_type);
-            ll_typer_report_error_no_src(" requires {} components, but this argument tries to be component {}\n", dest_type->rows, di);
+            ll_typer_report_error_no_src(" requires {} components, but this argument tries to be component {}\n", dest_type->columns, di);
 
             ll_typer_report_error_done(cc, typer);
             continue;
@@ -1507,14 +1507,14 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             } else if (string_eql(ident->str, lit("instance_index"))) {
                 result = typer->ty_int32;
             } else if (string_eql(ident->str, lit("position"))) {
-                result = ll_typer_get_vector_type(cc, typer, typer->ty_float32, 4, 1);
+                result = ll_typer_get_vector_type(cc, typer, typer->ty_float32, 1, 4);
             } else {
                 ll_typer_report_error(((LL_Error){ .main_token = ident->base.token_info }), "Invalid builtin '#{}'", ident->str);
                 ll_typer_report_error_done(cc, typer);
             }
         } else if (cc->fragment) {
             if (string_eql(ident->str, lit("color"))) {
-                result = ll_typer_get_vector_type(cc, typer, typer->ty_float32, 4, 1);
+                result = ll_typer_get_vector_type(cc, typer, typer->ty_float32, 1, 4);
             } else if (string_eql(ident->str, lit("fragment_input"))) {
                 if (!typer->fragment_input) {
                     return false;
@@ -1877,9 +1877,9 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 
                 LL_Type* vtype = opr->left->type;
                 oc_assert(vtype->kind == LL_TYPE_INT || vtype->kind == LL_TYPE_UINT || vtype->kind == LL_TYPE_FLOAT || vtype->kind == LL_TYPE_BOOL);
-                oc_assert(vtype->columns == 1);
+                oc_assert(vtype->rows == 1);
                 LL_Type new_type = *vtype;
-                new_type.rows = right_ident->str.len;
+                new_type.columns = right_ident->str.len;
                 // new_type.columns = cols;
                 if (!ll_type_is_vector(&new_type)) {
                     // @Robustness: base type is part of hash..., so can't have it set for scalars when type matching
@@ -2180,11 +2180,62 @@ TRY_MEMBER_FUNCTION_CALL:
         switch (opr->op.kind) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
+        case '*':
+            if (ll_type_is_vector_or_matrix(opr->left->type) && ll_type_is_vector_or_matrix(opr->right->type)) {
+                if (opr->right->type->base_type != opr->left->type->base_type) { 
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Matrix/vector multiplication requires the types of both sides have the same base type");
+                    ll_typer_report_error_no_src("    left hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, lhs_type);
+                    ll_typer_report_error_no_src(", and right hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, rhs_type);
+                    ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error_done(cc, typer);
+                }
+                if (opr->right->type->rows != opr->left->type->columns) {
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Matrix/vector multiplication requires the right side have the same number of rows as columns on the left side");
+
+                    ll_typer_report_error_no_src("    left hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, lhs_type);
+                    ll_typer_report_error_no_src(", and right hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, rhs_type);
+                    ll_typer_report_error_no_src("\n");
+
+                    ll_typer_report_error_done(cc, typer);
+
+                }
+                result = ll_typer_get_vector_type(cc, typer, opr->left->type->base_type, opr->left->type->rows, opr->right->type->columns);
+                break;
+            } else if (ll_type_is_vector_or_matrix(opr->left->type)) {
+                if (opr->right->type != opr->left->type->base_type) { 
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Matrix/vector multiplication requires the types of both sides have the same base type");
+                    ll_typer_report_error_no_src("    left hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, lhs_type);
+                    ll_typer_report_error_no_src(", and right hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, rhs_type);
+                    ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error_done(cc, typer);
+                }
+                result = opr->left->type;
+                break;
+            } else if (ll_type_is_vector_or_matrix(opr->right->type)) {
+                if (opr->left->type != opr->right->type->base_type) { 
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Matrix/vector multiplication requires the types of both sides have the same base type");
+                    ll_typer_report_error_no_src("    left hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, lhs_type);
+                    ll_typer_report_error_no_src(", and right hand side has the type ");
+                    ll_typer_report_error_type(cc, typer, rhs_type);
+                    ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error_done(cc, typer);
+                }
+                result = opr->right->type;
+                break;
+            }
+            goto DO_NORMAL_ARITHMETIC_OP;
         case '+':
         case '-':
-        case '*':
         case '/':
         case '%':
+DO_NORMAL_ARITHMETIC_OP:
             if (expected_type) {
                 result = expected_type;
 
@@ -3351,6 +3402,9 @@ bool ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string in
     char* ptr = input.ptr;
     int64_t idx = input.len - 1;
 
+    uint8_t *outputs[] = { cols, rows };
+    int64_t output_idx = 0;
+
     int64_t current_number = 0;
     int64_t current_number_multiple = 1;
     int64_t end_index = input.len;
@@ -3359,23 +3413,26 @@ bool ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string in
             current_number += current_number_multiple * (ptr[idx] - '0');
             current_number_multiple *= 10;
         } else if (current_number_multiple > 1 && ptr[idx] == 'x') {
-            *cols = *rows;
-            *rows = current_number;
+            *outputs[output_idx++] = current_number;
+            // *cols = *rows;
+            // *rows = current_number;
             current_number = 0;
             current_number_multiple = 1;
             end_index = idx;
         } else {
             if (current_number_multiple > 1)  {
                 if (current_number < 16 && idx > 0 && ptr[idx - 1] == 'a') { // probably ends in float
-                    *cols = *rows;
-                    *rows = current_number;
+                    // *cols = *rows;
+                    // *rows = current_number;
+                    *outputs[output_idx++] = current_number;
                     current_number = 0;
                     current_number_multiple = 1;
                     end_index = idx + 1;
                 }
                 if (current_number < 8 && idx > 0 && ptr[idx - 1] == 'n') { // probably ends in float
-                    *cols = *rows;
-                    *rows = current_number;
+                    // *cols = *rows;
+                    // *rows = current_number;
+                    *outputs[output_idx++] = current_number;
                     current_number = 0;
                     current_number_multiple = 1;
                     end_index = idx + 1;

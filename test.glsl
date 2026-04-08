@@ -32,6 +32,11 @@ layout(buffer_reference, std430, buffer_reference_align = 16) buffer blockType1 
     // blockType next;
 };
 
+layout(row_major, std430, binding=0) uniform Mat {
+    mat2x2 mat2x;
+    mat3x4 mat;
+};
+
 // A normal block declaration that includes a reference to blockType
 // layout(set = 4, binding = 0) buffer rootBlock {
 //     bool b;
@@ -57,7 +62,7 @@ void main()
     int i = gl_VertexIndex;
     Struct s;
     s.i = gl_VertexIndex;
-    gl_Position = vec4(1, b1.x, 3, 4);
+    gl_Position = mat * vec3(1, b1.x, 3);
     // b = b.next.next.next.next.next;
 
     // int j = int(r.b);
