@@ -1,9 +1,10 @@
 
-- implement casting
-- implement control flow
-- implement arrays/structs
-- implement pointers
-- implement inputs
+- implement casting               *
+- implement control flow          *
+- implement arrays/structs        *
+- implement pointers              *
+- implement inputs                *
+- swizzle lvalues (at least assignmnet)
 - semantic variables
 - add back macros
 - implement dynamic vector indexing

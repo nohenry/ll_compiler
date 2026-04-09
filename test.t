@@ -155,11 +155,30 @@ struct Vertex {
 
 struct OtherData {
     float4x4 matrix;
+    float& outvalue;
+    float& outvalue1;
+}
+
+struct MyData {
+    float& input;
+}
+
+float other_function(MyData data) {
+    *data.input *= 20;
+    return *data.input;
 }
 
 float4 main(Vertex* vertex_buffer, OtherData* data) {
     float4 position = vertex_buffer[#vertex_index].position.xyz1;
-    #position = position * data.matrix;
+    float a = position.x;
+    float b;
+    MyData data1;
+    data1.input = &a;
+    a = other_function(data1);
+    position = float4(a, a, a, a);
+    #position = position * data.matrix + position;
+    data.outvalue = &a;
+    data.outvalue1 = &b;
 
     return float4(1, 1, 0, 1);
 }

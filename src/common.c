@@ -607,7 +607,26 @@ void compiler_run_stages(Compiler_Context* cc) {
         LL_Queued* queued_item = cc->stages[STAGE_TYPECHECK].input.items[i];
 
         if (queued_item->yielded_on) {
-            ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(queued_item->yielded_on, Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->yielded_on, Code_Ident)->str);
+            switch (queued_item->yielded_on->kind) {
+            case CODE_KIND_BINARY_OP: {
+                Code_Operation* op = CODE_AS(queued_item->yielded_on, Code_Operation);
+                if (op->op.kind == '.') {
+                    Code_Ident* right_ident = CODE_AS(op->right, Code_Ident);
+                    ll_typer_report_error(((LL_Error){ .main_token = op->right->token_info }), "Field '{}' not found", right_ident->str);
+
+                    Code_Scope* found_scope = NULL;
+                    ll_get_base_type_and_scope(op->left->type, &found_scope);
+                    if (found_scope) {
+                        ll_typer_report_error_info(((LL_Error){ .main_token = found_scope->decl->ident->base.token_info }), "Type defined here");
+                    }
+                } else oc_assert(false);
+            } break;
+            case CODE_KIND_BUILTIN:
+            case CODE_KIND_IDENT:
+                ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(queued_item->yielded_on, Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->yielded_on, Code_Ident)->str);
+            default:
+                ll_typer_report_error(((LL_Error){ .main_token = CODE_AS(queued_item->yielded_on, Code_Ident)->base.token_info }), "Symbol '{}' not found", CODE_AS(queued_item->yielded_on, Code_Ident)->str);
+            }
         } else {
             if (queued_item->imperative_index != (uint32)-1) {
                 ll_typer_report_error(((LL_Error){ .main_token = queued_item->scope->statements.items[queued_item->imperative_index]->token_info }), "Symbol '{}' not found", CODE_AS(queued_item->code, Code_Ident)->str);

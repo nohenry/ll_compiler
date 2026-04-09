@@ -990,12 +990,6 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
                         }
                         if (!types[i]) {
                             fn_decl->storage_class |= LL_STORAGE_CLASS_POLYMORPHIC;
-                        } else {
-                            if (types[i]->kind == LL_TYPE_POINTER) {
-                                LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)types[i];
-                                LL_Type* new_pointer_type = ll_typer_get_ptr_type_with_storage_class(cc, typer, ptr_type->element_type, SpvStorageClassPhysicalStorageBuffer);
-                                types[i] = new_pointer_type;
-                            }
                         }
                     }
                 }
@@ -1967,6 +1961,11 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 right_ident->resolved_decl = (*member_scope);
                 right_ident->base.type = (*member_scope)->ident->base.type;
 
+                if (result.decl && result.decl->base.kind == CODE_KIND_PARAMETER) {
+                    // this will promote the parameter to a local variable so we can used OpAccessChain
+                    result.decl->usage.pointers_created++;
+                }
+
                 if (resolve_result) {
                     resolve_result->decl = (*member_scope);
                 }
@@ -1977,7 +1976,12 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 TRY_MEMBER_FUNCTION_CALL:
                 // if we have `a.foo()` we lookup foo as it's own function
                 can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, &result);
-                if (!can_continue) return false;
+                if (!can_continue) {
+                    if (!current_queued()->yielded_on || current_queued()->yielded_on->kind == CODE_KIND_IDENT) {
+                        current_queued()->yielded_on = (*expr); 
+                    }
+                    return false;
+                }
 
                 if (result.decl->base.kind == CODE_KIND_FUNCTION_DECLARATION) {
                     LL_Type_Function* fn_type = (LL_Type_Function*)result.decl->ident->base.type;
@@ -2161,7 +2165,8 @@ TRY_MEMBER_FUNCTION_CALL:
 
 
         can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
-        oc_assert(can_continue);
+        if (!can_continue) return false;
+        // oc_assert(can_continue);
         can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
         if (!can_continue) return false;
 

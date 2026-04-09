@@ -42,6 +42,8 @@ typedef struct {
     Array(uint32_t, SpvId) output_variable_ids;
 
     Array(uint32_t, SpvId)* current_access_chain_tmp;
+
+    SpvStorageClass result_sc;
 } LL_Backend_Spirv;
 
 #define SPIRV_INVALID_FUNCTION 0u
@@ -1127,6 +1129,8 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                     b->current_access_chain_tmp = NULL;
                 }
 
+                b->result_sc = load_sc;
+
                 if (!lvalue) {
                     if (load_sc == SpvStorageClassPhysicalStorageBuffer) {
                         result = emit_op_dst(SpvOpLoad, typeid, result, SpvMemoryAccessAlignedMask, 16);
@@ -1251,7 +1255,11 @@ DO_BIN_OP_ASSIGN_OP:
             result = spirv_generate_expression(cc, b, op->left, true);
             r2 = spirv_generate_expression(cc, b, op->right, false);
             r2 = spirv_generate_cast_if_needed(cc, b, expr->type, r2, op->right->type);
-            emit_op(SpvOpStore, result, r2);
+            if (spirv_storage_class_needs_explicit(b->result_sc)) {
+                emit_op(SpvOpStore, result, r2, SpvMemoryAccessAlignedMask, 16);
+            } else {
+                emit_op(SpvOpStore, result, r2);
+            }
             return r2;
 
 #pragma GCC diagnostic pop
@@ -1332,7 +1340,12 @@ DO_BIN_OP_ASSIGN_OP:
         operands.v1 = r1;
         operands.v2 = r2;
 
-        result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpVectorShuffle, typeid, &operands.v1, 2 + swizzle->count);
+        if (swizzle->count == 1 && numbers_count == 0) {
+            // Just extract
+            result = emit_op_dst(SpvOpCompositeExtract, typeid, operands.v1, operands.selectors[0]);
+        } else {
+            result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpVectorShuffle, typeid, &operands.v1, 2 + swizzle->count);
+        }
     } break;
 
     case CODE_KIND_CAST: {

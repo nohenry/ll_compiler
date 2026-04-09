@@ -1,0 +1,84 @@
+_amdgpu_gs_main:
+	s_mov_b64 exec, -1                                         // 000000000000: BEFE01C1
+	v_mbcnt_lo_u32_b32 v1, -1, 0                               // 000000000004: D71F0001 000100C1
+	s_lshr_b32 s3, s3, 18                                      // 00000000000C: 85039203
+	s_delay_alu instid0(SALU_CYCLE_1) | instskip(NEXT) | instid1(VALU_DEP_1)// 000000000010: BF870099
+	s_and_b32 s3, s3, 0x3c0                                    // 000000000014: 8B03FF03 000003C0
+	v_mbcnt_hi_u32_b32 v1, -1, v1                              // 00000000001C: D7200001 000202C1
+	s_delay_alu instid0(VALU_DEP_1) | instskip(SKIP_2) | instid1(VALU_DEP_1)// 000000000024: BF8700B1
+	v_add_nc_u32_e32 v1, s3, v1                                // 000000000028: 4A020203
+	s_bfe_u32 s3, s2, 0x9000c                                  // 00000000002C: 9303FF02 0009000C
+	s_wait_alu 0xfffe                                          // 000000000034: BF88FFFE
+	v_cmp_gt_u32_e32 vcc_lo, s3, v1                            // 000000000038: 7C980203
+	s_and_saveexec_b64 s[6:7], vcc                             // 00000000003C: BE86216A
+	s_cbranch_execz _L0                                        // 000000000040: BFA50037
+	v_add_nc_u32_e32 v10, s13, v3                              // 000000000044: 4A14060D
+	s_mov_b32 s0, s11                                          // 000000000048: BE80000B
+	s_mov_b32 s11, s10                                         // 00000000004C: BE8B000A
+	s_mov_b32 s10, s9                                          // 000000000050: BE8A0009
+	v_mov_b32_e32 v20, 0                                       // 000000000054: 7E280280
+	v_mad_co_i64_i32 v[18:19], null, v10, 12, s[10:11]         // 000000000058: D6FF7C12 0029190A
+	s_mov_b32 s1, s12                                          // 000000000060: BE81000C
+	s_clause 0x3                                               // 000000000064: BF850003
+	global_load_b128 v[2:5], v20, s[0:1] offset:16             // 000000000068: EE05C000 00000002 00001014
+	global_load_b128 v[6:9], v20, s[0:1]                       // 000000000074: EE05C000 00000006 00000014
+	global_load_b128 v[10:13], v20, s[0:1] offset:32           // 000000000080: EE05C000 0000000A 00002014
+	global_load_b128 v[14:17], v20, s[0:1] offset:48           // 00000000008C: EE05C000 0000000E 00003014
+	global_load_b32 v18, v[18:19], off                         // 000000000098: EE05007C 00000012 00000012
+	s_wait_loadcnt 0x4                                         // 0000000000A4: BFC00004
+	v_add_f32_e32 v2, v2, v3                                   // 0000000000A8: 06040702
+	s_wait_loadcnt 0x3                                         // 0000000000AC: BFC00003
+	v_add_f32_e32 v6, v6, v7                                   // 0000000000B0: 060C0F06
+	s_wait_loadcnt 0x2                                         // 0000000000B4: BFC00002
+	v_add_f32_e32 v3, v10, v11                                 // 0000000000B8: 0606170A
+	s_wait_loadcnt 0x1                                         // 0000000000BC: BFC00001
+	v_add_f32_e32 v7, v14, v15                                 // 0000000000C0: 060E1F0E
+	v_add_f32_e32 v4, v2, v4                                   // 0000000000C4: 06080902
+	v_add_f32_e32 v6, v6, v8                                   // 0000000000C8: 060C1106
+	v_add_f32_e32 v3, v3, v12                                  // 0000000000CC: 06061903
+	s_delay_alu instid0(VALU_DEP_4)                            // 0000000000D0: BF870004
+	v_add_f32_e32 v7, v7, v16                                  // 0000000000D4: 060E2107
+	s_wait_loadcnt 0x0                                         // 0000000000D8: BFC00000
+	v_mul_f32_e32 v2, 0x41a00000, v18                          // 0000000000DC: 100424FF 41A00000
+	v_add_f32_e32 v5, v4, v5                                   // 0000000000E4: 060A0B04
+	v_add_f32_e32 v6, v6, v9                                   // 0000000000E8: 060C1306
+	v_add_f32_e32 v3, v3, v13                                  // 0000000000EC: 06061B03
+	v_add_f32_e32 v7, v7, v17                                  // 0000000000F0: 060E2307
+	v_mov_b32_e32 v8, 0                                        // 0000000000F4: 7E100280
+	v_fma_f32 v5, v5, v2, v2                                   // 0000000000F8: D6130005 040A0505
+	v_fma_f32 v4, v6, v2, v2                                   // 000000000100: D6130004 040A0506
+	v_fma_f32 v6, v3, v2, v2                                   // 000000000108: D6130006 040A0503
+	v_fmac_f32_e32 v2, v7, v2                                  // 000000000110: 56040507
+	global_store_b32 v20, v8, s[0:1] offset:64                 // 000000000114: EE068000 04000000 00004014
+_L0:
+	s_or_b64 exec, exec, s[6:7]                                // 000000000120: 8CFE067E
+	s_bfe_u32 s0, s2, 0x90016                                  // 000000000124: 9300FF02 00090016
+	s_mov_b64 s[2:3], exec                                     // 00000000012C: BE82017E
+	v_cmpx_gt_u32_e64 s0, v1                                   // 000000000130: D4CC007E 00020200
+	s_cbranch_execz _L1                                        // 000000000138: BFA50002
+	export prim v0, off, off, off done                         // 00000000013C: F8000941 00000000
+_L1:
+	s_wait_expcnt 0x0                                          // 000000000144: BFC40000
+	s_wait_alu 0xfffe                                          // 000000000148: BF88FFFE
+	s_or_b64 exec, exec, s[2:3]                                // 00000000014C: 8CFE027E
+	s_and_saveexec_b64 s[0:1], vcc                             // 000000000150: BE80216A
+	s_cbranch_execz _L2                                        // 000000000154: BFA50016
+	s_getpc_b64 s[0:1]                                         // 000000000158: BE804700
+	s_lshl_b32 s4, s5, 9                                       // 00000000015C: 84048905
+	s_wait_alu 0xfffe                                          // 000000000160: BF88FFFE
+	s_sext_i32_i16 s1, s1                                      // 000000000164: BE810F01
+	s_and_b32 s4, s4, 0xfffe00                                 // 000000000168: 8B04FF04 00FFFE00
+	s_wait_alu 0xfffe                                          // 000000000170: BF88FFFE
+	s_mov_b32 s9, s1                                           // 000000000174: BE890001
+	s_load_b128 s[0:3], s[8:9], 0xb0                           // 000000000178: F4004004 F80000B0
+	export pos0 v4, v5, v6, v2 done                            // 000000000180: F80008CF 02060504
+	s_wait_expcnt 0x0                                          // 000000000188: BFC40000
+	v_mov_b32_e32 v2, 1.0                                      // 00000000018C: 7E0402F2
+	v_mov_b32_e32 v4, 0                                        // 000000000190: 7E080280
+	s_delay_alu instid0(VALU_DEP_2)                            // 000000000194: BF870002
+	v_mov_b32_e32 v3, v2                                       // 000000000198: 7E060302
+	v_mov_b32_e32 v5, v2                                       // 00000000019C: 7E0A0302
+	s_wait_kmcnt 0x0                                           // 0000000001A0: BFC70000
+	buffer_store_b128 v[2:5], v1, s[0:3], s4 idxen th:TH_STORE_NT_WB scope:SCOPE_DEV// 0000000001A4: C4074004 80F80002 00000001
+_L2:
+	s_endpgm                                                   // 0000000001B0: BFB00000
