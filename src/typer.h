@@ -186,6 +186,7 @@ typedef struct ll_typer {
 
     LL_Type* fragment_input;
     Code_Invoke* fragment_input_code;
+    uint32 result_sc;
 
     Array(uint32, LL_Queued*) queue;
     uint32* number_of_queued;

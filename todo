@@ -15,7 +15,10 @@
     + disable dead code elim
     + entry point name
     + input config
-
+- figure out multi component pointers: &vec.yz is not possible right now
+    + For function pointers, i mean this should be possible, since these values are inlined anyways.
+        Cuz each component would be a separate vector register that the spv compiler intrinsically tracks and inlines
+    + For storage buffer pointers, this might be hard if alignment is not correct. Need to thinnk about this more
 
 
 

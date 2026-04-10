@@ -18,7 +18,7 @@
         },
         {
             "name": "Vertex Launch",
-            "type": "cppvsdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceRoot}/main.exe",
             "args": ["test.t", "--vertex", "-o", "out.vert.spv"],

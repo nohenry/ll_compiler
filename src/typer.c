@@ -1654,6 +1654,8 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             (*expr)->const_value = possible_const->const_value;
         }
 
+        typer->result_sc = SpvStorageClassFunction;
+
         break;
     }
     case CODE_KIND_TYPE_POINTER: {
@@ -1810,6 +1812,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 // vector swizzle
 
                 Code_Swizzle* swizzle_result = (Code_Swizzle*)CREATE_NODE(CODE_KIND_SWIZZLE, (Code_Swizzle){ .vector = opr->left });
+                swizzle_result->base.token_info = opr->right->token_info;
 
                 if (opr->right->kind != CODE_KIND_IDENT) {
                     ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "vector swizzle/access should have identifier");
@@ -1964,6 +1967,11 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 if (result.decl && result.decl->base.kind == CODE_KIND_PARAMETER) {
                     // this will promote the parameter to a local variable so we can used OpAccessChain
                     result.decl->usage.pointers_created++;
+                }
+
+                if (opr->left->type->kind == LL_TYPE_POINTER) {
+                    LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)opr->left->type;
+                    typer->result_sc = ptr_type->spirv_storage_class;
                 }
 
                 if (resolve_result) {
@@ -2485,7 +2493,10 @@ DO_NORMAL_ARITHMETIC_OP:
             expr_type = CODE_AS((*expr), Code_Operation)->right->type;
 
             switch (expr_type->kind) {
-            case LL_TYPE_POINTER: result = ((LL_Type_Pointer*)expr_type)->element_type; break;
+            case LL_TYPE_POINTER:
+                result = ((LL_Type_Pointer*)expr_type)->element_type;
+                typer->result_sc = ((LL_Type_Pointer*)expr_type)->spirv_storage_class;
+                break;
             default:
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Dereference only works with a pointer");
                 ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Operation)->right->token_info }), "");
@@ -2497,15 +2508,41 @@ DO_NORMAL_ARITHMETIC_OP:
             }
         } break;
         case '&': {
+            Code_Operation* op = CODE_AS((*expr), Code_Operation);
             if (expected_type && expected_type->kind == LL_TYPE_POINTER) {
                 LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)expected_type;
-                can_continue = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, ptr_type->element_type, NULL);
+                can_continue = ll_typer_type_expression(cc, typer, &op->right, ptr_type->element_type, NULL);
             } else {
-                can_continue = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, NULL, NULL);
+                can_continue = ll_typer_type_expression(cc, typer, &op->right, NULL, NULL);
             }
             if (!can_continue) return false;
-            expr_type = CODE_AS((*expr), Code_Operation)->right->type;
-            result = ll_typer_get_ptr_type(cc, typer, expr_type);
+
+
+            if (op->right->kind == CODE_KIND_SWIZZLE) {
+                Code_Swizzle* swizzle = CODE_AS(op->right, Code_Swizzle);
+                if (swizzle->count != 1) {
+                    ll_typer_report_error(((LL_Error){ .main_token = swizzle->base.token_info }), "References to vector swizzles can only have a single component, but you tried taking reference to multiple components");;
+                    ll_typer_report_error_no_src("    This is due to a limitation of the memory model of GPUs.\n    \x1b[22mWe could get around this, by creating a temporary vector variable, then deferring a store to it at the end of the expression, but I think it's better if the user does this themselves.\n");
+                    for (uint32 i = 0; i < swizzle->count; ++i) {
+                        if (!CODE_SWIZZLE_IS_COMPONENT(swizzle->components[i])) {
+                            ll_typer_report_error_no_src("    Also, references to vector swizzles can not be constant swizzles (constants do not have storage)");
+                            break;
+                        }
+                    }
+                    // ll_typer_report_error_no_src("    This is due to a limitation of the memory model of GPUs.\n    We ccould get around this, by creating a temporary vector variable, then deferring a store to it at the end of the expression, but I think it's better if the user does this themselves.");
+                    ll_typer_report_error_done(cc, typer);
+                }
+                for (uint32 i = 0; i < swizzle->count; ++i) {
+                    if (!CODE_SWIZZLE_IS_COMPONENT(swizzle->components[i])) {
+                        ll_typer_report_error(((LL_Error){ .main_token = swizzle->base.token_info }), "References to vector swizzles can not be constant swizzles (constants do not have storage)");;
+                        ll_typer_report_error_done(cc, typer);
+                        break;
+                    }
+                }
+            }
+
+            expr_type = op->right->type;
+            result = ll_typer_get_ptr_type_with_storage_class(cc, typer, expr_type, typer->result_sc);
         } break;
 #pragma GCC diagnostic pop
         default: break;
@@ -3014,6 +3051,7 @@ DO_NORMAL_ARITHMETIC_OP:
             break;
         case LL_TYPE_POINTER:
             result = ((LL_Type_Pointer*)result)->element_type;
+            typer->result_sc = ((LL_Type_Pointer*)result)->spirv_storage_class;
             break;
         case LL_TYPE_SLICE:
             result = ((LL_Type_Slice*)result)->element_type;

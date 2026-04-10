@@ -389,7 +389,6 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
 
         if (fn_decl->body) {
             SpvId parameter_ids[fn_decl->parameters.count];
-            b->push_const_id = 0;
 
             if (is_main) {
                 LL_Type* return_type = fn_decl->base.type->type;
@@ -870,6 +869,7 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
     SpvId result = 0;
     SpvId typeid = spirv_generate_type(cc, b, expr->type);
     SpvId r1, r2;
+    typeof(*b->current_access_chain_tmp) chain_access = { 0 };
 
     switch (expr->kind) {
     // @Note: dxc generates constants in types section... why?
@@ -1054,7 +1054,6 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
             Code_Declaration* field_scope = right_ident->resolved_decl ? right_ident->resolved_decl : NULL;
             if (field_scope) {
-                typeof(*b->current_access_chain_tmp) chain_access = { 0 };
 
                 if (op->left->kind == CODE_KIND_BUILTIN) {
                     Code_Ident* ident = CODE_AS(op->left, Code_Ident);
@@ -1280,7 +1279,70 @@ DO_BIN_OP_ASSIGN_OP:
 
     case CODE_KIND_SWIZZLE: {
         Code_Swizzle* swizzle = CODE_AS(expr, Code_Swizzle);
-        r1 = spirv_generate_expression(cc, b, swizzle->vector, false);
+
+        if (lvalue) {
+            oc_assert(swizzle->count == 1);
+            oc_assert(CODE_SWIZZLE_IS_COMPONENT(swizzle->components[0]));
+
+            // @Copy: Copy paste from binary op and array index
+
+            Oc_Arena_Save save;
+            bool had_access_chain = b->current_access_chain_tmp != NULL;
+            if (!had_access_chain) {
+                save = oc_arena_save(&cc->tmp_arena);
+                b->current_access_chain_tmp = &chain_access;
+            }
+
+
+
+            typeof(b->current_access_chain_tmp) old_chain_access = b->current_access_chain_tmp;
+
+            if (swizzle->vector->type->kind == LL_TYPE_POINTER) {
+                b->current_access_chain_tmp = NULL;
+                result = spirv_generate_expression(cc, b, swizzle->vector, false);
+
+                // return result;
+                b->current_access_chain_tmp = old_chain_access;
+                if (b->current_access_chain_tmp) {
+                    oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, ((LL_Type_Pointer*)swizzle->vector->type)->spirv_storage_class);
+                    oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
+                }
+            } else {
+                result = spirv_generate_expression(cc, b, swizzle->vector, true);
+                b->current_access_chain_tmp = old_chain_access;
+
+                // if (op->left->kind != CODE_KIND_INDEX && !(op->left->kind == CODE_KIND_BINARY_OP && CODE_AS(op->left, Code_Operation)->op.kind == '.')) {
+                if (b->current_access_chain_tmp && b->current_access_chain_tmp->count == 0) {
+                    // base case. the commented line above was the old base case, but i think the current condition makes more sense and is more robust
+                    // @TODO: don't hard code function sc here
+                    oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, SpvStorageClassFunction);
+                    oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, result);
+                }
+            }
+
+            uint64 value = CODE_SWIZZLE_GET_COMPONENT(swizzle->components[0]);
+            SpvId constant_id = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &value);
+            oc_array_append(&cc->tmp_arena, b->current_access_chain_tmp, constant_id);
+
+            SpvStorageClass load_sc = 0;
+            if (!had_access_chain) {
+                // @Robustness: wow this is messy, we just assume storage class is in current access chain
+                oc_assert(b->current_access_chain_tmp->count >= 2);
+                load_sc = *b->current_access_chain_tmp->items;
+
+                SpvId ptr_typeid = spirv_get_pointer_type(cc, b, expr->type, load_sc);
+                result = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpAccessChain, ptr_typeid, b->current_access_chain_tmp->items + 1, b->current_access_chain_tmp->count - 1);
+
+                oc_arena_restore(&cc->tmp_arena, save);
+                b->current_access_chain_tmp = NULL;
+            }
+
+            b->result_sc = load_sc;
+
+            return result;
+        }
+
+        r1 = spirv_generate_expression(cc, b, swizzle->vector, lvalue);
         r2 = r1;
 
         struct {

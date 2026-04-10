@@ -179,6 +179,9 @@ float4 main(Vertex* vertex_buffer, OtherData* data) {
     #position = position * data.matrix + position;
     data.outvalue = &a;
     data.outvalue1 = &b;
+    float* fp = &vertex_buffer.position.x;
+
+    // &position.x;
 
     return float4(1, 1, 0, 1);
 }
