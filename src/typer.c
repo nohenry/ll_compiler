@@ -97,9 +97,12 @@ void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error e
 
     va_list list;
     va_start(list, fmt);
-    _oc_vprintw(&stderr_writer, fmt, list);
+    if (do_color) {
+        _oc_vprintw(&stderr_writer, fmt, list, "\x1b[0;1m", sizeof("\x1b[0;1m") - 1);
+    } else {
+        _oc_vprintw(&stderr_writer, fmt, list, NULL, 0);
+    }
     va_end(list);
-    if (do_color) eprint("\x1b[0m");
     eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
@@ -139,9 +142,12 @@ void ll_typer_report_error_note_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
 
     va_list list;
     va_start(list, fmt);
-    _oc_vprintw(&stderr_writer, fmt, list);
+    if (do_color) {
+        _oc_vprintw(&stderr_writer, fmt, list, "\x1b[0;1m", sizeof("\x1b[0;1m") - 1);
+    } else {
+        _oc_vprintw(&stderr_writer, fmt, list, NULL, 0);
+    }
     va_end(list);
-    if (do_color) eprint("\x1b[0m");
     eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
@@ -184,13 +190,15 @@ void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
     // } else {
     //     eprint("{}: \x1b[31;1merror\x1b[0m: \x1b[1m", cc->lexer->filename);
     // }
-    if (do_color) eprint("\x1b[1m");
 
     va_list list;
     va_start(list, fmt);
-    _oc_vprintw(&stderr_writer, fmt, list);
+    if (do_color) {
+        _oc_vprintw(&stderr_writer, fmt, list, "\x1b[0;1m", sizeof("\x1b[0;1m") - 1);
+    } else {
+        _oc_vprintw(&stderr_writer, fmt, list, NULL, 0);
+    }
     va_end(list);
-    if (do_color) eprint("\x1b[0m");
     eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
@@ -210,12 +218,14 @@ void ll_typer_report_error_no_src_raw(Compiler_Context* cc, LL_Typer* typer, con
     (void)cc;
     (void)typer;
     bool do_color = oc_fd_supports_color(OC_FD_ERROR);
-    if (do_color) eprint("\x1b[0;1m");
     va_list list;
     va_start(list, fmt);
-    _oc_vprintw(&stderr_writer, fmt, list);
+    if (do_color) {
+        _oc_vprintw(&stderr_writer, fmt, list, "\x1b[0;1m", sizeof("\x1b[0;1m") - 1);
+    } else {
+        _oc_vprintw(&stderr_writer, fmt, list, NULL, 0);
+    }
     va_end(list);
-    if (do_color) eprint("\x1b[0m");
 }
 
 void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type) {
@@ -1750,9 +1760,11 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             uint32_t element_index = 0;
             for (i = 0; i < init->count; ++i, ++element_index) {
                 LL_Type* provided_type;
+                Code* report_value;
                 if (init->items[i]->kind == CODE_KIND_KEY_VALUE) {
-                    Code_Key_Value* kv = CODE_AS((*expr), Code_Key_Value);
+                    Code_Key_Value* kv = CODE_AS(init->items[i], Code_Key_Value);
                     oc_assert((kv->key->has_const)); // @Cleanup @Errors report non const error
+                    report_value = kv->value;
                     // LL_Eval_Value key = ll_eval_node(cc, cc->eval_context, cc->bir, kv->key, &can_continue);
                     // if (!can_continue) {
                     //     typer->waited_on_code = *expr;
@@ -1765,6 +1777,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     is_constant = is_constant && kv->key->has_const && kv->value->has_const;
                     provided_type = kv->value->type;
                 } else {
+                    report_value = init->items[i];
                     can_continue = ll_typer_type_expression(cc, typer, &init->items[i], arr_type->element_type, NULL);
                     if (!can_continue) return false;
                     is_constant = is_constant && init->items[i]->has_const;
@@ -1772,7 +1785,8 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 }
 
                 if (provided_elements[element_index]) {
-                    eprint("\x1b[31;1merror\x1b[0;1m: a value for the index %u was provided more than once\n", element_index);
+                    ll_typer_report_error(((LL_Error){ .main_token = report_value->token_info }), "A value for index {} was provided more than once", element_index);
+                    ll_typer_report_error_done(cc, typer);
                 }
 
                 provided_elements[element_index] = 1u;
@@ -1780,11 +1794,8 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 if (!ll_typer_implicit_cast_tofrom(cc, typer, provided_type, arr_type->element_type)) {
                     oc_assert(provided_type != NULL);
                     oc_assert(arr_type->element_type != NULL);
-                    eprint("\x1b[31;1merror\x1b[0;1m: array initializer element does not match declared type of array! Expected ");
-                    ll_typer_report_error_type(cc, typer, arr_type->element_type);
-                    eprint(" but got ");
-                    ll_typer_report_error_type(cc, typer, provided_type);
-                    eprint("\n");
+                    ll_typer_report_error(((LL_Error){ .main_token = report_value->token_info }), "Type {t} does not match array base type {t}", provided_type, arr_type->element_type);
+                    ll_typer_report_error_done(cc, typer);
                 }
             }
             init->base.has_const = is_constant;
@@ -1829,6 +1840,11 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     int8_t swizzle;
                     switch (right_ident->str.ptr[i]) {
                     case '0' ... '9': {
+                        if (resolve_result && resolve_result->from_assignment) {
+                            ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Invalid constant in swizzle for assignment.");
+                            ll_typer_report_error_done(cc, typer);
+                        }
+
                         char c = right_ident->str.ptr[i] - '0';
                         swizzle = CODE_SWIZZLE_MAKE_VALUE(c);
                     } break;
@@ -2079,15 +2095,8 @@ TRY_MEMBER_FUNCTION_CALL:
             result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign value to left hand side");
-
-                ll_typer_report_error_no_src("    left hand side has the type ");
-                ll_typer_report_error_type(cc, typer, result);
-                ll_typer_report_error_no_src(", but tried to assign value with type ");
-                ll_typer_report_error_type(cc, typer, opr->right->type);
-                ll_typer_report_error_no_src(" to it. You can explicitly cast the value with `cast(");
-                ll_typer_report_error_type_no_fmt(cc, typer, lhs_type);
-                ll_typer_report_error_no_src(")`\n");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign {t} to {t}", result, opr->right->type);
+                ll_typer_report_error_no_src("    You can try explicitly casting the value with `cast({})`\n", lhs_type);
 
                 ll_typer_report_error_done(cc, typer);
                 break;
@@ -2100,6 +2109,8 @@ TRY_MEMBER_FUNCTION_CALL:
         } break;
         case '=': {
             LL_Typer_Resolve_Result lhs_resolve = { 0 };
+            lhs_resolve.from_assignment = true;
+
             can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
             if (!can_continue) return false;
             // if (opr->is_var_decl) {
@@ -2148,15 +2159,8 @@ TRY_MEMBER_FUNCTION_CALL:
             LL_Type* rhs_type = opr->right->type;
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, lhs_type)) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign value to left hand side");
-
-                ll_typer_report_error_no_src("    left hand side has the type ");
-                ll_typer_report_error_type(cc, typer, lhs_type);
-                ll_typer_report_error_no_src(", but tried to assign value with type ");
-                ll_typer_report_error_type(cc, typer, rhs_type);
-                ll_typer_report_error_no_src(" to it. You can explicitly cast the value with `cast(");
-                ll_typer_report_error_type_no_fmt(cc, typer, lhs_type);
-                ll_typer_report_error_no_src(")`\n");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign {t} to {t}", rhs_type, lhs_type);
+                ll_typer_report_error_no_src("    You can try explicitly casting the value with `cast({})`\n", lhs_type);
 
                 ll_typer_report_error_done(cc, typer);
                 break;
@@ -2196,22 +2200,24 @@ TRY_MEMBER_FUNCTION_CALL:
         case '*':
             if (ll_type_is_vector_or_matrix(opr->left->type) && ll_type_is_vector_or_matrix(opr->right->type)) {
                 if (opr->right->type->base_type != opr->left->type->base_type) { 
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Matrix/vector multiplication requires the types of both sides have the same base type");
-                    ll_typer_report_error_no_src("    left hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, lhs_type);
-                    ll_typer_report_error_no_src(", and right hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, rhs_type);
-                    ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't multiply {t} by {t}", lhs_type, rhs_type);
+                    ll_typer_report_error_no_src("    Matrix/vector multiplication requires the types of both sides have the same base type.\n");
+                    // ll_typer_report_error_no_src("    left hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, lhs_type);
+                    // ll_typer_report_error_no_src(", and right hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, rhs_type);
+                    // ll_typer_report_error_no_src("\n");
                     ll_typer_report_error_done(cc, typer);
                 }
                 if (opr->right->type->rows != opr->left->type->columns) {
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Matrix/vector multiplication requires the right side have the same number of rows as columns on the left side");
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't multiply {t} by {t}", lhs_type, rhs_type);
+                    ll_typer_report_error_no_src("    Matrix/vector multiplication requires the right side have the same number of rows as columns on the left side.\n");
 
-                    ll_typer_report_error_no_src("    left hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, lhs_type);
-                    ll_typer_report_error_no_src(", and right hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, rhs_type);
-                    ll_typer_report_error_no_src("\n");
+                    // ll_typer_report_error_no_src("    left hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, lhs_type);
+                    // ll_typer_report_error_no_src(", and right hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, rhs_type);
+                    // ll_typer_report_error_no_src("\n");
 
                     ll_typer_report_error_done(cc, typer);
 
@@ -2220,24 +2226,39 @@ TRY_MEMBER_FUNCTION_CALL:
                 break;
             } else if (ll_type_is_vector_or_matrix(opr->left->type)) {
                 if (opr->right->type != opr->left->type->base_type) { 
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Matrix/vector multiplication requires the types of both sides have the same base type");
-                    ll_typer_report_error_no_src("    left hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, lhs_type);
-                    ll_typer_report_error_no_src(", and right hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, rhs_type);
-                    ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't multiply {t} by {t}", lhs_type, rhs_type);
+
+                    if (ll_type_is_matrix(opr->left->type)) {
+                        ll_typer_report_error_no_src("    Matrix multiplication by a scalar requires the scalar to have the same base type as the matrix.\n");
+                    } else {
+                        ll_typer_report_error_no_src("    Vector multiplication by a scalar requires the scalar to have the same base type as the vector.\n");
+                    }
+
+                    // ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Matrix/vector multiplication requires the types of both sides have the same base type");
+                    // ll_typer_report_error_no_src("    left hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, lhs_type);
+                    // ll_typer_report_error_no_src(", and right hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, rhs_type);
+                    // ll_typer_report_error_no_src("\n");
                     ll_typer_report_error_done(cc, typer);
                 }
                 result = opr->left->type;
                 break;
             } else if (ll_type_is_vector_or_matrix(opr->right->type)) {
                 if (opr->left->type != opr->right->type->base_type) { 
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Matrix/vector multiplication requires the types of both sides have the same base type");
-                    ll_typer_report_error_no_src("    left hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, lhs_type);
-                    ll_typer_report_error_no_src(", and right hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, rhs_type);
-                    ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't multiply {t} by {t}", rhs_type, lhs_type);
+
+                    if (ll_type_is_matrix(opr->right->type)) {
+                        ll_typer_report_error_no_src("    Matrix multiplication by a scalar requires the scalar to have the same base type as the matrix.\n");
+                    } else {
+                        ll_typer_report_error_no_src("    Vector multiplication by a scalar requires the scalar to have the same base type as the vector.\n");
+                    }
+                    // ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Matrix/vector multiplication requires the types of both sides have the same base type");
+                    // ll_typer_report_error_no_src("    left hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, lhs_type);
+                    // ll_typer_report_error_no_src(", and right hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, rhs_type);
+                    // ll_typer_report_error_no_src("\n");
                     ll_typer_report_error_done(cc, typer);
                 }
                 result = opr->right->type;
@@ -2253,33 +2274,36 @@ DO_NORMAL_ARITHMETIC_OP:
                 result = expected_type;
 
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't {} {t} and {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type, rhs_type);
 
-                    ll_typer_report_error_no_src("    left hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, lhs_type);
-                    ll_typer_report_error_no_src(", and right hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, rhs_type);
-                    ll_typer_report_error_no_src("\n");
+                    // ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
 
-                    ll_typer_report_error_no_src("    expecting type ");
-                    ll_typer_report_error_type(cc, typer, result);
-                    ll_typer_report_error_no_src("\n");
+                    // ll_typer_report_error_no_src("    left hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, lhs_type);
+                    // ll_typer_report_error_no_src(", and right hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, rhs_type);
+                    // ll_typer_report_error_no_src("\n");
+
+                    ll_typer_report_error_no_src("    expecting type {t}\n", result);
+                    // ll_typer_report_error_type(cc, typer, result);
+                    // ll_typer_report_error_no_src("\n");
                     ll_typer_report_error_done(cc, typer);
                     break;
                 }
 
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't {} {t} and {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type, rhs_type);
+                    // ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
 
-                    ll_typer_report_error_no_src("    left hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, lhs_type);
-                    ll_typer_report_error_no_src(", and right hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, rhs_type);
-                    ll_typer_report_error_no_src("\n");
+                    // ll_typer_report_error_no_src("    left hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, lhs_type);
+                    // ll_typer_report_error_no_src(", and right hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, rhs_type);
+                    // ll_typer_report_error_no_src("\n");
 
-                    ll_typer_report_error_no_src("    expecting type ");
-                    ll_typer_report_error_type(cc, typer, result);
-                    ll_typer_report_error_no_src("\n");
+                    ll_typer_report_error_no_src("    expecting type {t}\n", result);
+                    // ll_typer_report_error_type(cc, typer, result);
+                    // ll_typer_report_error_no_src("\n");
                     ll_typer_report_error_done(cc, typer);
                     break;
                 }
@@ -2287,13 +2311,14 @@ DO_NORMAL_ARITHMETIC_OP:
             } else {
                 result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
                 if (result == NULL) {
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
+                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't {} {t} and {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type, rhs_type);
+                    // ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid operation of expression with different types.");
 
-                    ll_typer_report_error_no_src("    left hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, lhs_type);
-                    ll_typer_report_error_no_src(", and right hand side has the type ");
-                    ll_typer_report_error_type(cc, typer, rhs_type);
-                    ll_typer_report_error_no_src("\n");
+                    // ll_typer_report_error_no_src("    left hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, lhs_type);
+                    // ll_typer_report_error_no_src(", and right hand side has the type ");
+                    // ll_typer_report_error_type(cc, typer, rhs_type);
+                    // ll_typer_report_error_no_src("\n");
 
                     ll_typer_report_error_done(cc, typer);
                     break;
@@ -2313,13 +2338,14 @@ DO_NORMAL_ARITHMETIC_OP:
             result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
 
             if (result == NULL) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types (1)");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't compare {t} with {t}", lhs_type, rhs_type);
+                // ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types (1)");
 
-                ll_typer_report_error_no_src("    left hand side has the type ");
-                ll_typer_report_error_type(cc, typer, lhs_type);
-                ll_typer_report_error_no_src(", and right hand side has the type ");
-                ll_typer_report_error_type(cc, typer, rhs_type);
-                ll_typer_report_error_no_src("\n");
+                // ll_typer_report_error_no_src("    left hand side has the type ");
+                // ll_typer_report_error_type(cc, typer, lhs_type);
+                // ll_typer_report_error_no_src(", and right hand side has the type ");
+                // ll_typer_report_error_type(cc, typer, rhs_type);
+                // ll_typer_report_error_no_src("\n");
 
                 ll_typer_report_error_done(cc, typer);
 
@@ -2327,13 +2353,14 @@ DO_NORMAL_ARITHMETIC_OP:
             }
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types (2)");
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't compare {t} with {t}", lhs_type, rhs_type);
+                // ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Invalid comparison of expressions with different types (2)");
 
-                ll_typer_report_error_no_src("    left hand side has the type ");
-                ll_typer_report_error_type(cc, typer, lhs_type);
-                ll_typer_report_error_no_src(", and right hand side has the type ");
-                ll_typer_report_error_type(cc, typer, rhs_type);
-                ll_typer_report_error_no_src("\n");
+                // ll_typer_report_error_no_src("    left hand side has the type ");
+                // ll_typer_report_error_type(cc, typer, lhs_type);
+                // ll_typer_report_error_no_src(", and right hand side has the type ");
+                // ll_typer_report_error_type(cc, typer, rhs_type);
+                // ll_typer_report_error_no_src("\n");
 
                 ll_typer_report_error_done(cc, typer);
 
@@ -2435,15 +2462,7 @@ DO_NORMAL_ARITHMETIC_OP:
             }
         }
 
-        if (!result) {
-            eprint("\x1b[31;1merror\x1b[0;1m: types of operands to operation do not match! Found left type was ");
-            ll_typer_report_error_type(cc, typer, lhs_type);
-            eprint(" but right type was ");
-            ll_typer_report_error_type(cc, typer, rhs_type);
-            eprint("\n");
-
-            eprint("Error: lhs type does not match rhs type\n");
-        }
+        oc_assert(result);
         break;
     }
     case CODE_KIND_PRE_OP: {
@@ -2463,11 +2482,9 @@ DO_NORMAL_ARITHMETIC_OP:
             case LL_TYPE_INT:
                 break;
             default:
-                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Negation only works for signed ints and floats");
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Can't negate type {t}", expr_type);
                 ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Operation)->right->token_info }), "");
-                ll_typer_report_error_no_src("    has type");
-                ll_typer_report_error_type(cc, typer, expr_type);
-                ll_typer_report_error_no_src("\n");
+                ll_typer_report_error_no_src("    Negation only works for signed ints and floats.\n");
                 ll_typer_report_error_done(cc, typer);
 
                 break;
@@ -2498,11 +2515,10 @@ DO_NORMAL_ARITHMETIC_OP:
                 typer->result_sc = ((LL_Type_Pointer*)expr_type)->spirv_storage_class;
                 break;
             default:
-                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Dereference only works with a pointer");
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Can't dereference type {t}", expr_type);
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "");
                 ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Operation)->right->token_info }), "");
-                ll_typer_report_error_no_src("    has type");
-                ll_typer_report_error_type(cc, typer, expr_type);
-                ll_typer_report_error_no_src("\n");
+                ll_typer_report_error_no_src("    Dereference only works with pointers.\n");
                 ll_typer_report_error_done(cc, typer);
                 break;
             }
@@ -2569,14 +2585,7 @@ DO_NORMAL_ARITHMETIC_OP:
         LL_Type* src_type = cast->expr->type;
         
         if (!ll_typer_can_cast(cc, typer, src_type, specified_type)) {
-            ll_typer_report_error(((LL_Error){ .highlight_start = (*expr)->token_info, .highlight_end = cast->p_close }), "Incompatible cast types");
-
-            eprint("\x1b[1m    unable to cast value with type ");
-            ll_typer_report_error_type(cc, typer, src_type);
-            eprint(" to type ");
-            ll_typer_report_error_type(cc, typer, specified_type);
-            eprint("\x1b[0m\n");
-
+            ll_typer_report_error(((LL_Error){ .highlight_start = (*expr)->token_info, .highlight_end = cast->p_close }), "Can't cast {t} to {t}", src_type, specified_type);
             ll_typer_report_error_done(cc, typer);
         }
 
@@ -2619,10 +2628,7 @@ DO_NORMAL_ARITHMETIC_OP:
 
         LL_Type_Function* fn_type = (LL_Type_Function*)inv->expr->type;
         if (fn_type->base.kind != LL_TYPE_FUNCTION) {
-            ll_typer_report_error(((LL_Error){ .main_token = inv->expr->token_info }), "Unable to call this like a function");
-            ll_typer_report_error_no_src("    type ");
-            ll_typer_report_error_type(cc, typer, &fn_type->base);
-            ll_typer_report_error_no_src(" is not a callable function\n");
+            ll_typer_report_error(((LL_Error){ .main_token = inv->expr->token_info }), "Type {t} is not a callable function", fn_type);
             ll_typer_report_error_done(cc, typer);
             return true;
         }
@@ -2688,7 +2694,7 @@ DO_NORMAL_ARITHMETIC_OP:
             if ((*current_arg)->kind == CODE_KIND_KEY_VALUE) {
                 Code_Key_Value* kv = CODE_AS((*current_arg), Code_Key_Value);
                 if (!fn_decl) {
-                    ll_typer_report_error(((LL_Error){ .highlight_start = kv->key->token_info, .highlight_end = kv->value->token_info }), "Keyed arguments are only allowed when calling a functino directly.");
+                    ll_typer_report_error(((LL_Error){ .highlight_start = kv->key->token_info, .highlight_end = kv->value->token_info }), "Keyed arguments are only allowed when calling a function directly.");
                     eprint("\x1b[1m    this is probably due to calling a function pointer, but this is invalid\x1b[0m\n");
                     ll_typer_report_error_done(cc, typer);
                     break;
@@ -2762,15 +2768,13 @@ DO_NORMAL_ARITHMETIC_OP:
 
             if (check_type_matches && provided_type && declared_type) {
                 if (!ll_typer_can_implicitly_cast_expression(cc, typer, *value, declared_type)) {
-                    ll_typer_report_error(((LL_Error){ .main_token = (*value)->token_info }), "Can't pass value to function parameter");
+                    ll_typer_report_error(((LL_Error){ .main_token = (*value)->token_info }), "Can't pass type {t} to parameter type of {t}", provided_type, declared_type);
+                    if (fn_decl) {
+                        ll_typer_report_error(((LL_Error){ .main_token = fn_decl->parameters.items[di].base.ident->base.token_info }), "Tried passing to this parameter");
+                    }
 
-                    ll_typer_report_error_no_src("    the parameter expects type ");
-                    ll_typer_report_error_type(cc, typer, declared_type);
-                    ll_typer_report_error_no_src(", but tried passing value with type ");
-                    ll_typer_report_error_type(cc, typer, provided_type);
-                    ll_typer_report_error_no_src(" to it. ");
                     if (ll_typer_can_cast(cc, typer, (*value)->type, declared_type)) {
-                        ll_typer_report_error_no_src("You can try explicitly casting the value with `cast(");
+                        ll_typer_report_error_no_src("   You can try explicitly casting the value with `cast(");
                         ll_typer_report_error_type_no_fmt(cc, typer, declared_type);
                         ll_typer_report_error_no_src(")`");
                     }
@@ -3032,12 +3036,7 @@ DO_NORMAL_ARITHMETIC_OP:
         if (!can_continue) return false;
         LL_Type* index_type = cf->start->type;
         if (!ll_typer_can_cast(cc, typer, index_type, typer->ty_anyint)) {
-            ll_typer_report_error(((LL_Error){ .main_token = cf->start->token_info }), "Expected integer to index array");
-
-            ll_typer_report_error_no_src(" you tried to index with type ");
-            ll_typer_report_error_type(cc, typer, index_type);
-            ll_typer_report_error_no_src("\n");
-
+            ll_typer_report_error(((LL_Error){ .main_token = cf->start->token_info }), "Can't index into array/pointer with type {t}", index_type);
             ll_typer_report_error_done(cc, typer);
         }
         // if (index_type == typer->ty_anyint) {
@@ -3060,11 +3059,8 @@ DO_NORMAL_ARITHMETIC_OP:
             result = typer->ty_char;
             break;
         default:
-            ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Index expression requires an array or pointer type on the left");
-
-            ll_typer_report_error_no_src(" found type ");
-            ll_typer_report_error_type(cc, typer, result);
-            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Can't index into type {t}.", result);
+            ll_typer_report_error_no_src("    Indexing requires an array or pointer type.\n");
 
             ll_typer_report_error_done(cc, typer);
             break;
@@ -3108,10 +3104,8 @@ DO_NORMAL_ARITHMETIC_OP:
         case LL_TYPE_STRING:
             break;
         default:
-            ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Slice expression requires an array, pointer, or slice type on the left");
-            ll_typer_report_error_no_src(" found type ");
-            ll_typer_report_error_type(cc, typer, result);
-            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error(((LL_Error){ .main_token = cf->ptr->token_info }), "Can't slice into type {t}.", result);
+            ll_typer_report_error_no_src("    Slicing requires an array or pointer type.\n");
             ll_typer_report_error_done(cc, typer);
             break;
         }
@@ -3310,13 +3304,7 @@ CODE_BREAK_EXIT_SCOPE:
             LL_Type* value_type = cf->expr->type;
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, cf->expr, break_type)) {
-                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with a value that is incompatible with the expected type");
-
-                ll_typer_report_error_no_src("    expecting type ");
-                ll_typer_report_error_type(cc, typer, break_type);
-                ll_typer_report_error_no_src(", but tried to break with value of type ");
-                ll_typer_report_error_type(cc, typer, value_type);
-                ll_typer_report_error_no_src("\n");
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking with type {t}, but scope expected a result of type {t}", value_type, break_type);
 
                 if (cf->referenced_scope->decl) {
                     switch (cf->referenced_scope->decl->base.kind) {
@@ -3337,7 +3325,7 @@ CODE_BREAK_EXIT_SCOPE:
             ll_typer_add_implicit_cast(cc, typer, &cf->expr, break_type);
         } else {
             if (break_type != NULL) {
-                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking without a value, but scope to break from expects a value");
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Tried breaking without a value, but scope expected a result of type {t}", break_type);
                 if (cf->referenced_scope->decl) {
                     switch (cf->referenced_scope->decl->base.kind) {
                     case CODE_KIND_FOR:
@@ -3350,9 +3338,6 @@ CODE_BREAK_EXIT_SCOPE:
                 } else {
                     ll_typer_report_error_note(((LL_Error){ .main_token = cf->referenced_scope->base.token_info }), "Breaking from this block");
                 }
-                ll_typer_report_error_no_src("    expecting type ");
-                ll_typer_report_error_type(cc, typer, break_type);
-                ll_typer_report_error_no_src("\n");
                 ll_typer_report_error_done(cc, typer);
             }
         }
@@ -3373,10 +3358,7 @@ CODE_BREAK_EXIT_SCOPE:
         case LL_TYPE_INT:
             break;
         default:
-            ll_typer_report_error(((LL_Error){ .main_token = iff->cond->token_info }), "If statement condition should be boolean, integer or pointer");
-            ll_typer_report_error_no_src(" found type ");
-            ll_typer_report_error_type(cc, typer, result);
-            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error(((LL_Error){ .main_token = iff->cond->token_info }), "If statement condition should be boolean, integer or pointer, found {t}", result);
             ll_typer_report_error_done(cc, typer);
             break;
         }
@@ -3408,10 +3390,7 @@ CODE_BREAK_EXIT_SCOPE:
             case LL_TYPE_UINT:
             case LL_TYPE_INT: break;
             default:
-                ll_typer_report_error(((LL_Error){ .main_token = loop->cond->token_info }), "Loop condition should be boolean, integer or pointer");
-                ll_typer_report_error_no_src(" found type ");
-                ll_typer_report_error_type(cc, typer, result);
-                ll_typer_report_error_no_src("\n");
+                ll_typer_report_error(((LL_Error){ .main_token = loop->cond->token_info }), "Loop condition should be boolean, integer or pointer, found {t}", loop->cond->type);
                 ll_typer_report_error_done(cc, typer);
                 break;
             }
@@ -3655,9 +3634,7 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* typ
 
         if (!result) {
             ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected a pointer type");
-            ll_typer_report_error_no_src("    you provided the type ");
-            ll_typer_report_error_type(cc, typer, provided_type);
-            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error_no_src("    you provided the type {t}\n", provided_type);
             ll_typer_report_error_note(((LL_Error){ .main_token = type_decl->token_info }), "Parameter type defined here");
             ll_typer_report_error_done(cc, typer);
             return false;
@@ -3675,9 +3652,7 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* typ
         Code_Slice* slice = CODE_AS(type_decl, Code_Slice);
         if (provided_type->kind != LL_TYPE_ARRAY) {
             ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected an array type");
-            ll_typer_report_error_no_src("    you provided the type ");
-            ll_typer_report_error_type(cc, typer, provided_type);
-            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error_no_src("    you provided the type {t}\n", provided_type);
             ll_typer_report_error_note(((LL_Error){ .main_token = slice->base.token_info }), "Parameter type defined here");
             ll_typer_report_error_done(cc, typer);
             return false;
@@ -3746,9 +3721,7 @@ bool ll_typer_match_polymorphic(Compiler_Context* cc, LL_Typer* typer, Code* typ
         Code_Slice* slice = CODE_AS(type_decl, Code_Slice);
         if (provided_type->kind != LL_TYPE_SLICE) {
             ll_typer_report_error((LL_Error){ .main_token = site->token_info }, "Expected a slice type");
-            ll_typer_report_error_no_src("    you provided the type ");
-            ll_typer_report_error_type(cc, typer, provided_type);
-            ll_typer_report_error_no_src("\n");
+            ll_typer_report_error_no_src("    you provided the type {t}\n", provided_type);
             ll_typer_report_error_note(((LL_Error){ .main_token = slice->base.token_info}), "Parameter type defined here");
             ll_typer_report_error_done(cc, typer);
             return false;

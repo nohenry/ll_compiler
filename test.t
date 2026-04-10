@@ -171,15 +171,17 @@ float other_function(MyData data) {
 float4 main(Vertex* vertex_buffer, OtherData* data) {
     float4 position = vertex_buffer[#vertex_index].position.xyz1;
     float a = position.x;
-    float b;
-    MyData data1;
-    data1.input = &a;
-    a = other_function(data1);
-    position = float4(a, a, a, a);
-    #position = position * data.matrix + position;
-    data.outvalue = &a;
-    data.outvalue1 = &b;
-    float* fp = &vertex_buffer.position.x;
+    // float b;
+    // MyData data1;
+    // data1.input = &a;
+    // a = other_function(data1);
+    // position = float4(a, a, a, a);
+    // #position = position * data.matrix + position;
+    // data.outvalue = &a;
+    // data.outvalue1 = &b;
+    // float* fp = &vertex_buffer.position.x;
+
+    position.ywz = float3(1, 2, 3);
 
     // &position.x;
 

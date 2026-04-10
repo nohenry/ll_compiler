@@ -147,6 +147,8 @@ typedef struct ll_type_intern_map_entry {
 typedef struct {
     Code_Declaration* decl;
     Code** this_arg;
+
+    bool from_assignment;
 } LL_Typer_Resolve_Result;
 
 typedef struct {
@@ -217,7 +219,7 @@ typedef struct {
 #define LL_Typename_Parameters_Default ((LL_Typename_Parameters) { .storage_class = 7 });
 LL_Type* ll_typer_get_type_from_typename_with_parameters(Compiler_Context* cc, LL_Typer* typer, Code* typename, LL_Typename_Parameters parameters, bool* can_continue);
 
-void ll_print_type_raw(LL_Type* type, Oc_Writer* w);
+void ll_print_type_raw(struct ll_type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);
 
 bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type, LL_Type* dst_type);
@@ -284,3 +286,26 @@ void ll_typer_report_error_no_src_raw(Compiler_Context* cc, LL_Typer* typer, con
 void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 void _ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer, const char* file, size_t line);
+
+
+inline
+const char* ll_get_human_readable_operation(LL_Token_Kind op) {
+    switch (op) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
+    case '+': return "add";
+    case '-': return "subtract";
+    case '/': return "divide";
+    case '%': return "modulo";
+    case '>':
+    case '<':
+    case LL_TOKEN_KIND_GTE:
+    case LL_TOKEN_KIND_LTE:
+    case LL_TOKEN_KIND_EQUALS:
+    case LL_TOKEN_KIND_NEQUALS:
+#pragma GCC diagnostic pop
+        return "compare";
+    default: oc_assert(false); return "[INVALID OP]";
+    }
+}
+

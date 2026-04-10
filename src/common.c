@@ -1,8 +1,8 @@
 #define OC_CORE_IMPLEMENTATION
+#include "typer.h"
 #include "../core/core1.h"
 #include "common.h"
 #include "ast.h"
-#include "typer.h"
 #include "eval.h"
 #include "../backends/ir.h"
 

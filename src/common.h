@@ -4,7 +4,6 @@
 // #include <stddef.h>
 // #include <stdbool.h>
 // #include <stdbool.h>
-
 #include "../core/core1.h"
 
 #define EQL(a, b) (is_eql((a), (b), sizeof((a))))

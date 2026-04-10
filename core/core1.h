@@ -91,6 +91,12 @@ typedef struct {
     const volatile type*                : OC_TYPE_VOLATILE_POINTER, \
           volatile type*                : OC_TYPE_VOLATILE_POINTER, \
           
+struct ll_type;
+          
+#ifndef OC_LL_COMPILER
+typedef struct ll_type { int tmp; };
+#endif
+          
 #if __STDC_VERSION__ >= 201112L
 #define typeinfo_kind(x) _Generic((x),                 \
         char:               OC_TYPE_CHAR,              \
@@ -140,6 +146,7 @@ typedef struct {
         string: OC_TYPE_STRING, \
         string*: OC_TYPE_POINTER, \
         string**: OC_TYPE_POINTER_POINTER, \
+        struct ll_type*: OC_TYPE_LL_TYPE, \
         default:  oc_assert(false && "unsupported type: "#x) \
     )
 #else
@@ -169,6 +176,7 @@ typedef enum {
     OC_TYPE_POINTER_VOLATILE,
     OC_TYPE_VOLATILE_POINTER_VOLATILE,
     OC_TYPE_POINTER_POINTER,
+    OC_TYPE_LL_TYPE,
 } Oc_Type_Kind;
 
 typedef struct {
@@ -500,7 +508,7 @@ void oc_sb_init(Oc_String_Builder* sb, Oc_Arena* arena);
 void oc_writer_format_and_write_int(Oc_Writer *writer, Oc_Format_Config cfg, uint64 ivalue);
 void oc_writer_format_and_write_float(Oc_Writer *writer, Oc_Format_Config cfg, double fvalue);
 void _oc_printw(void *writer, const char* fmt, ...);
-void _oc_vprintw(void *writer, const char* fmt, va_list args);
+void _oc_vprintw(void *writer, const char* fmt, va_list args, char* ansi_base, int ansi_base_count);
 _Noreturn void oc_exit(int status);
 void oc_hex_dump(void* data, int count, int indent, int mark_mod);
 
@@ -882,7 +890,7 @@ string oc_sprintf(Oc_Arena* arena, const char* fmt, ...) {
 
     va_list args;
     va_start(args, fmt);
-    _oc_vprintw(&b.writer, fmt, args);
+    _oc_vprintw(&b.writer, fmt, args, NULL, 0);
     va_end(args);
 
     return oc_sb_to_string(&b);
@@ -1053,15 +1061,26 @@ void oc_writer_format_and_write_float(Oc_Writer *writer, Oc_Format_Config cfg, d
 void _oc_printw(void *writer, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    _oc_vprintw(writer, fmt, args);
+    _oc_vprintw(writer, fmt, args, NULL, 0);
     va_end(args);
 }
 
-void _oc_vprintw(void *writer, const char* fmt, va_list args) {
+void _oc_vprintw(void *writer, const char* fmt, va_list args, char* ansi_base, int ansi_base_count) {
     Oc_Writer* w = writer;
+
+    // int ansi_full_base_count = 0;
+    // char* ansi_full_base = NULL;
+    if (ansi_base) {
+        w->write(w, ansi_base, ansi_base_count);
+    }
 
     while (*fmt) {
         char c = *fmt;
+        // if (c == '\x1b') {
+        //     ansi_full_base = fmt;
+        //     for (; *fmt && *fmt != 'm'; fmt++) ansi_full_base_count++;
+        //     fmt++;
+        //     ansi_full_base_count++;
         if (c == '{') {
             if (*(fmt + 1) == '{') {
                 w->write(w, "{", 1);
@@ -1076,6 +1095,11 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
             int f_size_accum = 0;
             int f_base_accum = 10;
             int f_base_upper = 0;
+            int f_type = 0;
+
+            int ansi_specific_count = 0;
+            char* ansi_specific = NULL;
+
             for (; *fmt && *fmt != '}'; fmt++) {
                 if ((f & f_size) == 0 && *fmt >= '0' && *fmt <= '9') {
                     f_size_accum *= 10;
@@ -1092,6 +1116,19 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                     f |= f_base;
                     f_base_upper = 1;
                 }
+                if (*fmt == 'a' && *fmt++ == ':') {
+                    ansi_specific = fmt;
+                    for (; *fmt && *fmt != '}'; fmt++) {
+                        if (*fmt >= '0' && *fmt <= '9') {
+                            ansi_specific_count++;
+                        } else if (*fmt == ';') {
+                            ansi_specific_count++;
+                        } else break;
+                    }
+                }
+                if ((f & f_base) == 0 && *fmt == 't') {
+                    f_type = 1;
+                }
             }
             Oc_Format_Config cfg = {
                 .base = f_base_accum,
@@ -1099,6 +1136,13 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                 .size = f_size_accum,
             };
 
+            if (f_type) {
+                w->write(w, "\x1b[0;36m", sizeof( "\x1b[0;36m") - 1);
+            } else if (ansi_specific) {
+                w->write(w, "\x1b[0;", sizeof("\x1b[0;") - 1);
+                w->write(w, ansi_specific, ansi_specific_count);
+                w->write(w, "m", 1);
+            }
             switch (value.kind) {
             case OC_TYPE_CHAR:
                 w->write(w, (uint8*)value.data, 1);
@@ -1246,12 +1290,27 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args) {
                 w->write(w, "0x", 2);
                 oc_writer_format_and_write_int(w, cfg, ivalue);
             } break;
+            case OC_TYPE_LL_TYPE: {
+                #ifdef OC_LL_COMPILER
+                    void ll_print_type_raw(struct ll_type* type, Oc_Writer* w);
+                    ll_print_type_raw(*(struct ll_type**)value.data, w);
+                #else
+                    w->write(w, "[MISSING LL COMPILER]", sizeof("[MISSING LL COMPILER]") - 1);
+                #endif
+            } break;
             }
 
+            if (ansi_base) {
+                w->write(w, ansi_base, ansi_base_count);
+            }
         } else {
             w->write(w, (uint8*)fmt, 1);
         }
         fmt++;
+    }
+
+    if (ansi_base) {
+        w->write(w, "\x1b[0m", sizeof("\x1b[0m") - 1);
     }
 }
 

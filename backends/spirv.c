@@ -1251,6 +1251,38 @@ DO_BIN_OP_ASSIGN_OP:
             emit_op(SpvOpStore, result, r1);
             return r1;
         case '=':
+            if (op->left->kind == CODE_KIND_SWIZZLE) {
+                Code_Swizzle* swizzle = CODE_AS(op->left, Code_Swizzle);
+                result = spirv_generate_expression(cc, b, swizzle->vector, true);
+                SpvId vec_typeid = spirv_generate_type(cc, b, swizzle->vector->type);
+                r1 = emit_op_dst(SpvOpLoad, vec_typeid, result);
+                r2 = spirv_generate_expression(cc, b, op->right, false);
+
+                struct {
+                    SpvId v1;
+                    SpvId v2;
+                    SpvId selectors[64];
+                } operands;
+                oc_assert(swizzle->vector->type->columns < oc_len(operands.selectors));
+
+                operands.v1 = r1;
+                operands.v2 = r2;
+
+
+                for (uint32 i = 0; i < swizzle->vector->type->columns; ++i) {
+                    operands.selectors[i] = i;
+                }
+                for (uint32 i = 0; i < swizzle->count; ++i) {
+                    oc_assert(CODE_SWIZZLE_IS_COMPONENT(swizzle->components[i]));
+                    uint32 component = CODE_SWIZZLE_GET_COMPONENT(swizzle->components[i]);
+                    operands.selectors[component] = swizzle->vector->type->columns + i;
+                }
+
+                r1 = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpVectorShuffle, vec_typeid, &operands.v1, 2 + swizzle->vector->type->columns);
+                emit_op(SpvOpStore, result, r1);
+                return result;
+            }
+
             result = spirv_generate_expression(cc, b, op->left, true);
             r2 = spirv_generate_expression(cc, b, op->right, false);
             r2 = spirv_generate_cast_if_needed(cc, b, expr->type, r2, op->right->type);
