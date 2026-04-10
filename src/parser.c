@@ -219,7 +219,7 @@ Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser, Code_Dec
 
     // we don't queue declarative blocks since each of their declarations
     // will be queued individually
-    LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, block_result);
+    (void)create_queued(cc, parser->current_function, parser->current_scope, block_result);
     // if (block_flags & CODE_SCOPE_FLAG_IMPERATIVE && decl && decl->base.kind == CODE_KIND_FUNCTION_DECLARATION) {
     //     queued->imperative_index = 0;
     //     actually_queue(cc, STAGE_TYPECHECK, queued);
@@ -493,7 +493,16 @@ int get_binary_precedence(LL_Token token, bool from_statement) {
         case LL_TOKEN_KIND_ASSIGN_TIMES:
         case LL_TOKEN_KIND_ASSIGN_DIVIDE:
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
+        case LL_TOKEN_KIND_ASSIGN_AND:
+        case LL_TOKEN_KIND_ASSIGN_OR:
+        case LL_TOKEN_KIND_ASSIGN_XOR:
+        case LL_TOKEN_KIND_ASSIGN_BIT_AND:
+        case LL_TOKEN_KIND_ASSIGN_BIT_OR:
+        case LL_TOKEN_KIND_ASSIGN_BIT_XOR:
+        case LL_TOKEN_KIND_ASSIGN_LEFT_SHIFT:
+        case LL_TOKEN_KIND_ASSIGN_RIGHT_SHIFT:
             return 20;
+        case LL_TOKEN_KIND_XOR: return 30;
         case LL_TOKEN_KIND_OR: return 40;
         case LL_TOKEN_KIND_AND: return 50;
         case '|': return 60;

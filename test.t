@@ -170,7 +170,7 @@ float other_function(MyData data) {
 
 float4 main(Vertex* vertex_buffer, OtherData* data) {
     float4 position = vertex_buffer[#vertex_index].position.xyz1;
-    float a = position.x;
+    // float a = position.x;
     // float b;
     // MyData data1;
     // data1.input = &a;
@@ -183,6 +183,11 @@ float4 main(Vertex* vertex_buffer, OtherData* data) {
 
     // position.ywz = float3(1, 2, 3);
     vertex_buffer.position.yzx = float3(1, 2, 3);
+    int a = 80;
+    int b = 08;
+    int c = a | b;
+    c |= a;
+
 
     // &position.x;
 

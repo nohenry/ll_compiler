@@ -12,7 +12,7 @@ typedef struct scope_map_entry {
 
 typedef enum {
     LL_SCOPE_KIND_LOCAL,
-	LL_SCOPE_KIND_FIELD,
+    LL_SCOPE_KIND_FIELD,
     LL_SCOPE_KIND_PARAMETER,
     LL_SCOPE_KIND_MACRO_PARAMETER,
     LL_SCOPE_KIND_FUNCTION,
@@ -212,13 +212,6 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 bool ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string input, uint8_t* rows, uint8_t* cols, string* to_lookup);
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename, bool* can_continue);
 
-typedef struct {
-	uint32 storage_class;
-} LL_Typename_Parameters;
-
-#define LL_Typename_Parameters_Default ((LL_Typename_Parameters) { .storage_class = 7 });
-LL_Type* ll_typer_get_type_from_typename_with_parameters(Compiler_Context* cc, LL_Typer* typer, Code* typename, LL_Typename_Parameters parameters, bool* can_continue);
-
 void ll_print_type_raw(struct ll_type* type, Oc_Writer* w);
 void ll_print_type(LL_Type* type);
 
@@ -287,6 +280,25 @@ void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* 
 void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 void _ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer, const char* file, size_t line);
 
+inline
+LL_Token_Kind ll_get_regular_token_kind_from_assign_kind(LL_Token_Kind op) {
+    switch (op) {
+    case LL_TOKEN_KIND_ASSIGN_PLUS:        return '+';
+    case LL_TOKEN_KIND_ASSIGN_MINUS:       return '-';
+    case LL_TOKEN_KIND_ASSIGN_TIMES:       return '*';
+    case LL_TOKEN_KIND_ASSIGN_DIVIDE:      return '/';
+    case LL_TOKEN_KIND_ASSIGN_PERCENT:     return '%';
+    case LL_TOKEN_KIND_ASSIGN_AND:         return LL_TOKEN_KIND_AND;
+    case LL_TOKEN_KIND_ASSIGN_OR:          return LL_TOKEN_KIND_OR;
+    case LL_TOKEN_KIND_ASSIGN_XOR:         return LL_TOKEN_KIND_XOR;
+    case LL_TOKEN_KIND_ASSIGN_BIT_AND:     return '&';
+    case LL_TOKEN_KIND_ASSIGN_BIT_OR:      return '|';
+    case LL_TOKEN_KIND_ASSIGN_BIT_XOR:     return '^';
+    case LL_TOKEN_KIND_ASSIGN_LEFT_SHIFT:  return LL_TOKEN_KIND_LEFT_SHIFT;
+    case LL_TOKEN_KIND_ASSIGN_RIGHT_SHIFT: return LL_TOKEN_KIND_RIGHT_SHIFT;
+    default: oc_assert(false); return 0;
+    }
+}
 
 inline
 const char* ll_get_human_readable_operation(LL_Token_Kind op) {
@@ -297,6 +309,13 @@ const char* ll_get_human_readable_operation(LL_Token_Kind op) {
     case '-': return "subtract";
     case '/': return "divide";
     case '%': return "modulo";
+    case '&': return "bitwise and";
+    case '|': return "bitwise or";
+    case '^': return "bitwise xor";
+    case LL_TOKEN_KIND_AND: return "and";
+    case LL_TOKEN_KIND_OR: return "or";
+    case LL_TOKEN_KIND_XOR: return "xor";
+
     case '>':
     case '<':
     case LL_TOKEN_KIND_GTE:

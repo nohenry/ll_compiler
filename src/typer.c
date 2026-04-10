@@ -10,7 +10,7 @@
 #include "parser.h"
 #include "../backends/spirv.h"
 
-#define CREATE_NODE(_kind, value, ...) ({ __typeof__(value) v = (value); _CREATE_ASSIGN_KIND((_kind), v); create_node(cc, (Code*)&v, sizeof(v)); })
+#define CREATE_NODE(_kind, value, ...) ({ __typeof__(value, ##__VA_ARGS__) v = (value, ##__VA_ARGS__); _CREATE_ASSIGN_KIND((_kind), v); create_node(cc, (Code*)&v, sizeof(v)); })
 
 #define create_type(type) ({\
             __typeof__(type) t = type; \
@@ -252,7 +252,11 @@ void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL
 void _ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer, const char* file, size_t line) {
     (void)cc;
     (void)typer;
-    // print("{}:{}\n", file, line);
+    (void)file;
+    (void)line;
+    #ifdef _DEBUG
+        print("{}:{}\n", file, line);
+    #endif
     if (cc->exit_0) oc_exit(0);
     oc_exit(-1);
 }
@@ -962,7 +966,6 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
     }
     case CODE_KIND_FUNCTION_DECLARATION: {
         Code_Function_Declaration* fn_decl = CODE_AS((*stmt), Code_Function_Declaration);
-		bool is_main = string_eql(fn_decl->base.ident->str, lit("main"));
 
         // LL_Scope* fn_scope = create_scope(LL_SCOPE_KIND_FUNCTION, fn_decl);
         // fn_scope->ident = fn_decl->base.ident;
@@ -990,11 +993,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
                     did_variadic = true;
                 } else {
                     if (parameter->base.type) {
-						LL_Typename_Parameters typename = LL_Typename_Parameters_Default;
-						if (is_main) {
-							typename.storage_class = SpvStorageClassPhysicalStorageBuffer;
-						}
-						types[i] = ll_typer_get_type_from_typename_with_parameters(cc, typer, parameter->base.type, typename, &can_continue);
+                        types[i] = ll_typer_get_type_from_typename(cc, typer, parameter->base.type, &can_continue);
                         if (!can_continue) {
                             return false;
                         }
@@ -1488,6 +1487,9 @@ bool ll_typer_type_vector_constructor(Compiler_Context* cc, LL_Typer* typer, Cod
 
         di += (*current_arg)->type->rows * (*current_arg)->type->columns;
     }
+
+    (void)expected_type;
+    (void)resolve_result;
 
     return true;
 }
@@ -2064,60 +2066,252 @@ TRY_MEMBER_FUNCTION_CALL:
                 return true;
             }
         }
-        case LL_TOKEN_KIND_ASSIGN_PERCENT:
-        case LL_TOKEN_KIND_ASSIGN_DIVIDE:
-        case LL_TOKEN_KIND_ASSIGN_TIMES:
-        case LL_TOKEN_KIND_ASSIGN_MINUS:
-        case LL_TOKEN_KIND_ASSIGN_PLUS: {
-            LL_Typer_Resolve_Result lhs_resolve = { 0 };
-            can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
-            if (!can_continue) return false;
-            can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
-            if (!can_continue) return false;
+        // case LL_TOKEN_KIND_ASSIGN_PERCENT:
+        // case LL_TOKEN_KIND_ASSIGN_DIVIDE:
+        // case LL_TOKEN_KIND_ASSIGN_TIMES:
+        // case LL_TOKEN_KIND_ASSIGN_MINUS:
+        // case LL_TOKEN_KIND_ASSIGN_PLUS: {
+        //     LL_Typer_Resolve_Result lhs_resolve = { 0 };
+        //     can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
+        //     if (!can_continue) return false;
+        //     can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
+        //     if (!can_continue) return false;
 
-            if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
-                can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, &lhs_resolve);
-                if (!can_continue) return false;
-                can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
-                if (!can_continue) return false;
-            } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
-                can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, &lhs_resolve);
-                if (!can_continue) return false;
-            } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
-                can_continue = ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
-                if (!can_continue) return false;
-            }
+        //     if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
+        //         can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, &lhs_resolve);
+        //         if (!can_continue) return false;
+        //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
+        //         if (!can_continue) return false;
+        //     } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
+        //         can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, &lhs_resolve);
+        //         if (!can_continue) return false;
+        //     } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
+        //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
+        //         if (!can_continue) return false;
+        //     }
 
-            // @Todo: add this back (but it's not crrect right now)
-            // if (!lhs_resolve.decl) {
-            //     ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
-            //     ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
+        //     // @Todo: add this back (but it's not crrect right now)
+        //     // if (!lhs_resolve.decl) {
+        //     //     ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
+        //     //     ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
+        //     //     ll_typer_report_error_done(cc, typer);
+        //     //     break;
+        //     // }
+
+        //     if (lhs_resolve.decl) {
+        //         lhs_resolve.decl->usage.direct_stores++;
+        //     }
+
+            
+        //     LL_Type* lhs_type = opr->left->type;
+        //     LL_Type* rhs_type = opr->right->type;
+
+        //     result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+
+        //     if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
+        //         ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign {t} to {t}", result, opr->right->type);
+        //         ll_typer_report_error_no_src("    You can try explicitly casting the value with `cast({})`\n", lhs_type);
+        //         ll_typer_report_error_done(cc, typer);
+        //         break;
+        //     }
+
+        //     // @oc_todo: look at casting lhs
+        //     ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
+        //     (*expr)->type = result;
+        //     return true;
+        // } break;
+
+        // case LL_TOKEN_KIND_ASSIGN_LEFT_SHIFT:
+        // case LL_TOKEN_KIND_ASSIGN_RIGHT_SHIFT:
+        // case LL_TOKEN_KIND_ASSIGN_BIT_AND:
+        // case LL_TOKEN_KIND_ASSIGN_BIT_OR:
+        // case LL_TOKEN_KIND_ASSIGN_BIT_XOR: {
+        //     LL_Typer_Resolve_Result lhs_resolve = { 0 };
+        //     can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
+        //     if (!can_continue) return false;
+        //     can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
+        //     if (!can_continue) return false;
+
+        //     if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
+        //         can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, &lhs_resolve);
+        //         if (!can_continue) return false;
+        //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
+        //         if (!can_continue) return false;
+        //     } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
+        //         can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, &lhs_resolve);
+        //         if (!can_continue) return false;
+        //     } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
+        //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
+        //         if (!can_continue) return false;
+        //     }
+
+        //     LL_Type* lhs_type = opr->left->type;
+        //     LL_Type* rhs_type = opr->right->type;
+
+        //     if (lhs_type->kind != LL_TYPE_UINT && lhs_type->kind != LL_TYPE_INT && lhs_type->kind != LL_TYPE_ANYINT) {
+        //         ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do bitwise operation on type {t}", lhs_type);
+        //         ll_typer_report_error_done(cc, typer);
+        //     }
+        //     if (rhs_type->kind != LL_TYPE_UINT && rhs_type->kind != LL_TYPE_INT && rhs_type->kind != LL_TYPE_ANYINT) {
+        //         ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do bitwise operation on type {t}", rhs_type);
+        //         ll_typer_report_error_done(cc, typer);
+        //     }
+
+        //     result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+
+        //     if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
+        //         ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign {t} to {t}", result, opr->right->type);
+        //         ll_typer_report_error_no_src("    You can try explicitly casting the value with `cast({})`\n", lhs_type);
+        //         ll_typer_report_error_done(cc, typer);
+        //         break;
+        //     }
+
+        //     ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
+        //     (*expr)->type = result;
+        //     return true;
+        // } break;
+        // case LL_TOKEN_KIND_ASSIGN_PERCENT:
+        // case LL_TOKEN_KIND_ASSIGN_DIVIDE:
+        // case LL_TOKEN_KIND_ASSIGN_TIMES:
+        // case LL_TOKEN_KIND_ASSIGN_MINUS:
+        // case LL_TOKEN_KIND_ASSIGN_PLUS:
+
+        // case LL_TOKEN_KIND_ASSIGN_LEFT_SHIFT:
+        // case LL_TOKEN_KIND_ASSIGN_RIGHT_SHIFT:
+        // case LL_TOKEN_KIND_ASSIGN_BIT_AND:
+        // case LL_TOKEN_KIND_ASSIGN_BIT_OR:
+        // case LL_TOKEN_KIND_ASSIGN_BIT_XOR:
+
+        // case LL_TOKEN_KIND_ASSIGN_AND:
+        // case LL_TOKEN_KIND_ASSIGN_OR:
+        // case LL_TOKEN_KIND_ASSIGN_XOR: {
+        //     LL_Token_Kind new_op = ll_get_regular_token_kind_from_assign_kind(opr->op.kind);
+        //     Code* new_rhs = CREATE_NODE(CODE_KIND_BINARY_OP, (Code_Operation) {
+        //         .base.token_info = opr->base.token_info,
+        //         .left = opr->left,
+        //         .op = { .kind = new_op, .position = opr->op.position },
+        //         .right = opr->right,
+        //     });
+        //     Code* new_assign = CREATE_NODE(CODE_KIND_BINARY_OP, (Code_Operation) {
+        //         .base.token_info = opr->base.token_info,
+        //         .left = opr->left,
+        //         .op = { .kind = '=', .position = opr->op.position },
+        //         .right = new_rhs,
+        //     });
+
+        //     if (!ll_typer_type_expression(cc, typer, &new_assign, expected_type, resolve_result)) {
+        //         *expr = new_assign;
+        //         return false;
+        //     }
+        //     *expr = new_assign;
+
+
+            // LL_Typer_Resolve_Result lhs_resolve = { 0 };
+            // can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
+            // if (!can_continue) return false;
+            // can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
+            // if (!can_continue) return false;
+
+            // if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
+            //     can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, &lhs_resolve);
+            //     if (!can_continue) return false;
+            //     can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
+            //     if (!can_continue) return false;
+            // } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
+            //     can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, &lhs_resolve);
+            //     if (!can_continue) return false;
+            // } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
+            //     can_continue = ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
+            //     if (!can_continue) return false;
+            // }
+
+            // LL_Type* lhs_type = opr->left->type;
+            // LL_Type* rhs_type = opr->right->type;
+
+            // switch (lhs_type->kind) {
+            // case LL_TYPE_BOOL:
+            //     result = lhs_type;
+            //     break;
+            // case LL_TYPE_ANYBOOL:
+            // case LL_TYPE_POINTER:
+            // case LL_TYPE_ANYINT:
+            // case LL_TYPE_UINT:
+            // case LL_TYPE_INT:
+            //     result = typer->ty_anybool;
+            //     break;
+            // default:
+            //     ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do {} with type {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type);
             //     ll_typer_report_error_done(cc, typer);
             //     break;
             // }
 
-            if (lhs_resolve.decl) {
-                lhs_resolve.decl->usage.direct_stores++;
+            // switch (rhs_type->kind) {
+            // case LL_TYPE_BOOL:
+            //     if (result->width < rhs_type->width) {
+            //         result = rhs_type;
+            //     } else {
+            //         ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
+            //     }
+            //     ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
+            //     break;
+            // case LL_TYPE_ANYBOOL:
+            // case LL_TYPE_POINTER:
+            // case LL_TYPE_ANYINT:
+            // case LL_TYPE_UINT:
+            // case LL_TYPE_INT:
+            //     if (result->kind != LL_TYPE_BOOL) {
+            //         result = typer->ty_anybool;
+            //         ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
+            //     }
+            //     ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
+            //     break;
+            // default:
+            //     ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do {} with type {t}", ll_get_human_readable_operation(opr->op.kind), rhs_type);
+            //     ll_typer_report_error_done(cc, typer);
+            //     break;
+            // }
+
+            // (*expr)->type = result;
+        //     return true;
+        // }
+
+        case LL_TOKEN_KIND_ASSIGN_PERCENT:
+        case LL_TOKEN_KIND_ASSIGN_DIVIDE:
+        case LL_TOKEN_KIND_ASSIGN_TIMES:
+        case LL_TOKEN_KIND_ASSIGN_MINUS:
+        case LL_TOKEN_KIND_ASSIGN_PLUS:
+
+        case LL_TOKEN_KIND_ASSIGN_LEFT_SHIFT:
+        case LL_TOKEN_KIND_ASSIGN_RIGHT_SHIFT:
+        case LL_TOKEN_KIND_ASSIGN_BIT_AND:
+        case LL_TOKEN_KIND_ASSIGN_BIT_OR:
+        case LL_TOKEN_KIND_ASSIGN_BIT_XOR:
+
+        case LL_TOKEN_KIND_ASSIGN_AND:
+        case LL_TOKEN_KIND_ASSIGN_OR:
+        case LL_TOKEN_KIND_ASSIGN_XOR: {
+            LL_Token_Kind new_op = ll_get_regular_token_kind_from_assign_kind(opr->op.kind);
+            Code* new_rhs = CREATE_NODE(CODE_KIND_BINARY_OP, (Code_Operation) {
+                .base.token_info = opr->base.token_info,
+                .left = opr->left,
+                .op = { .kind = new_op, .position = opr->op.position },
+                .right = opr->right,
+            });
+            Code* new_assign = CREATE_NODE(CODE_KIND_BINARY_OP, (Code_Operation) {
+                .base.token_info = opr->base.token_info,
+                .left = opr->left,
+                .op = { .kind = '=', .position = opr->op.position },
+                .right = new_rhs,
+            });
+
+            if (!ll_typer_type_expression(cc, typer, &new_assign, expected_type, resolve_result)) {
+                *expr = new_assign;
+                return false;
             }
-
-            
-            LL_Type* lhs_type = opr->left->type;
-            LL_Type* rhs_type = opr->right->type;
-
-            result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
-
-            if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign {t} to {t}", result, opr->right->type);
-                ll_typer_report_error_no_src("    You can try explicitly casting the value with `cast({})`\n", lhs_type);
-                ll_typer_report_error_done(cc, typer);
-                break;
-            }
-
-            // @oc_todo: look at casting lhs
-            ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
-            (*expr)->type = result;
+            *expr = new_assign;
             return true;
-        } break;
+        }
+
         case '=': {
             LL_Typer_Resolve_Result lhs_resolve = { 0 };
             lhs_resolve.from_assignment = true;
@@ -2310,7 +2504,6 @@ DO_NORMAL_ARITHMETIC_OP:
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't compare {t} with {t}", lhs_type, rhs_type);
                 ll_typer_report_error_done(cc, typer);
-                ll_typer_report_error_done(cc, typer);
                 break;
             }
 
@@ -2319,10 +2512,87 @@ DO_NORMAL_ARITHMETIC_OP:
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
             result = typer->ty_anybool;
             break;
+
+        case LL_TOKEN_KIND_LEFT_SHIFT:
+        case LL_TOKEN_KIND_RIGHT_SHIFT:
+        case '&':
+        case '|':
+        case '^':
+            if (lhs_type->kind != LL_TYPE_UINT && lhs_type->kind != LL_TYPE_INT && lhs_type->kind != LL_TYPE_ANYINT) {
+                ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do bitwise operation on type {t}", lhs_type);
+                ll_typer_report_error_done(cc, typer);
+            }
+            if (rhs_type->kind != LL_TYPE_UINT && rhs_type->kind != LL_TYPE_INT && rhs_type->kind != LL_TYPE_ANYINT) {
+                ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do bitwise operation on type {t}", rhs_type);
+                ll_typer_report_error_done(cc, typer);
+            }
+
+            result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+            if (result == NULL) {
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't do bitwise operation with types {t} and {t}", lhs_type, rhs_type);
+                ll_typer_report_error_done(cc, typer);
+                break;
+            }
+
+            ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
+            ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
+
+            if (expected_type) {
+                if (ll_typer_can_implicitly_cast(cc, typer, result, expected_type)) {
+                    (*expr)->type = result;
+                    ll_typer_add_implicit_cast(cc, typer, expr, expected_type);
+                }
+                result = expected_type;
+            }
+
+            break;
 #pragma GCC diagnostic pop
         case LL_TOKEN_KIND_AND:
         case LL_TOKEN_KIND_OR:
-            result = typer->ty_anybool;
+        case LL_TOKEN_KIND_XOR:
+            switch (lhs_type->kind) {
+            case LL_TYPE_BOOL:
+                result = lhs_type;
+                break;
+            case LL_TYPE_ANYBOOL:
+            case LL_TYPE_POINTER:
+            case LL_TYPE_ANYINT:
+            case LL_TYPE_UINT:
+            case LL_TYPE_INT:
+                result = typer->ty_anybool;
+                break;
+            default:
+                ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do {} with type {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type);
+                ll_typer_report_error_done(cc, typer);
+                break;
+            }
+
+            switch (rhs_type->kind) {
+            case LL_TYPE_BOOL:
+                if (result->width < rhs_type->width) {
+                    result = rhs_type;
+                } else {
+                    ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
+                }
+                ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
+                break;
+            case LL_TYPE_ANYBOOL:
+            case LL_TYPE_POINTER:
+            case LL_TYPE_ANYINT:
+            case LL_TYPE_UINT:
+            case LL_TYPE_INT:
+                if (result->kind != LL_TYPE_BOOL) {
+                    result = typer->ty_anybool;
+                    ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
+                }
+                ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
+                break;
+            default:
+                ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do {} with type {t}", ll_get_human_readable_operation(opr->op.kind), rhs_type);
+                ll_typer_report_error_done(cc, typer);
+                break;
+            }
+
             break;
         default: 
             eprint("Error: Invalid binary operation '");
@@ -2594,6 +2864,7 @@ DO_NORMAL_ARITHMETIC_OP:
 
         int ordered_arg_count = 0;
         int variadic_arg_count = 0;
+        (void)variadic_arg_count; // @Cleanup
 
         if (resolve.this_arg) {
             LL_Type* declared_type = fn_type->parameters[0];
@@ -2848,6 +3119,7 @@ DO_NORMAL_ARITHMETIC_OP:
 
 
                     Code_Scope* old_scope = typer->current_scope;
+                    (void)old_scope; // @Cleanup
 
 
 
@@ -3355,6 +3627,7 @@ CODE_BREAK_EXIT_SCOPE:
 }
 
 bool ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string input, uint8_t* rows, uint8_t* cols, string* to_lookup) {
+    (void)typer;
     char* ptr = input.ptr;
     int64_t idx = input.len - 1;
 
@@ -3408,11 +3681,6 @@ bool ll_typer_parse_vector_type(Compiler_Context* cc, LL_Typer* typer, string in
 }
 
 LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, Code* typename, bool* can_continue) {
-	LL_Typename_Parameters parameters = LL_Typename_Parameters_Default;
-	return ll_typer_get_type_from_typename_with_parameters(cc, typer, typename, parameters, can_continue);
-}
-
-LL_Type* ll_typer_get_type_from_typename_with_parameters(Compiler_Context* cc, LL_Typer* typer, Code* typename, LL_Typename_Parameters parameters, bool* can_continue) {
     LL_Type* result = NULL;
 
     switch (typename->kind) {

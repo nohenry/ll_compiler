@@ -18,6 +18,9 @@ int main(int argc, char** argv) {
     bool fragment = false;
     char* output_path = "a.spv";
 
+    (void)run;
+    (void)output_ir;
+
     while (argc) {
         char* arg = shift(argv, argc);
 

@@ -778,6 +778,8 @@ SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type
 }
 
 bool spirv_determine_if_explicit(Compiler_Context* cc, LL_Backend_Spirv* b, Code* expression) {
+    (void)cc;
+    (void)b;
     LL_Type* base_type = ll_get_base_type(expression->type);
     if (base_type->kind == LL_TYPE_POINTER) {
         if (spirv_storage_class_needs_explicit(((LL_Type_Pointer*)base_type)->spirv_storage_class)) {
@@ -804,7 +806,6 @@ SpvId spirv_generate_vector_constructor(Compiler_Context* cc, LL_Backend_Spirv* 
     oc_assert(inv->expr->has_const);
     LL_Type* dest_type = inv->expr->const_value.as_type;
 
-    uword arg_count = inv->arguments.count;
     uword components = dest_type->rows * dest_type->columns;
     SpvId args[components];
 
@@ -1224,32 +1225,52 @@ DO_BIN_OP_BOOLEAN:
         // } break;
 
 
+//         case LL_TOKEN_KIND_ASSIGN_PERCENT:
+//             spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMod : (expr->type->kind == LL_TYPE_INT) ? SpvOpSMod : SpvOpUMod;
+//             goto DO_BIN_OP_ASSIGN_OP;
+//         case LL_TOKEN_KIND_ASSIGN_DIVIDE:
+//             spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFDiv : (expr->type->kind == LL_TYPE_INT) ? SpvOpSDiv : SpvOpUDiv;
+//             goto DO_BIN_OP_ASSIGN_OP;
+//         case LL_TOKEN_KIND_ASSIGN_TIMES:
+//             spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMul : SpvOpIMul;
+//             goto DO_BIN_OP_ASSIGN_OP;
+//         case LL_TOKEN_KIND_ASSIGN_MINUS:
+//             spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFSub : SpvOpISub;
+//             goto DO_BIN_OP_ASSIGN_OP;
+//         case LL_TOKEN_KIND_ASSIGN_PLUS:
+//             spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFAdd : SpvOpIAdd;
+// DO_BIN_OP_ASSIGN_OP:
+//             r2 = spirv_generate_expression(cc, b, op->right, false);
+//             r2 = spirv_generate_cast_if_needed(cc, b, expr->type, r2, op->right->type);
+
+//             r1 = spirv_generate_expression(cc, b, op->left, false);
+//             r1 = spirv_generate_cast_if_needed(cc, b, expr->type, r1, op->left->type);
+
+//             r1 = emit_op_dst(spv_opcode, typeid, r1, r2);
+
+//             result = spirv_generate_expression(cc, b, op->left, true);
+//             emit_op(SpvOpStore, result, r1);
+//             return r1;
+
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
-            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMod : (expr->type->kind == LL_TYPE_INT) ? SpvOpSMod : SpvOpUMod;
-            goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_DIVIDE:
-            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFDiv : (expr->type->kind == LL_TYPE_INT) ? SpvOpSDiv : SpvOpUDiv;
-            goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_TIMES:
-            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMul : SpvOpIMul;
-            goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_MINUS:
-            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFSub : SpvOpISub;
-            goto DO_BIN_OP_ASSIGN_OP;
         case LL_TOKEN_KIND_ASSIGN_PLUS:
-            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFAdd : SpvOpIAdd;
-DO_BIN_OP_ASSIGN_OP:
-            r2 = spirv_generate_expression(cc, b, op->right, false);
-            r2 = spirv_generate_cast_if_needed(cc, b, expr->type, r2, op->right->type);
 
-            r1 = spirv_generate_expression(cc, b, op->left, false);
-            r1 = spirv_generate_cast_if_needed(cc, b, expr->type, r1, op->left->type);
+        case LL_TOKEN_KIND_ASSIGN_LEFT_SHIFT:
+        case LL_TOKEN_KIND_ASSIGN_RIGHT_SHIFT:
+        case LL_TOKEN_KIND_ASSIGN_BIT_AND:
+        case LL_TOKEN_KIND_ASSIGN_BIT_OR:
+        case LL_TOKEN_KIND_ASSIGN_BIT_XOR:
 
-            r1 = emit_op_dst(spv_opcode, typeid, r1, r2);
+        case LL_TOKEN_KIND_ASSIGN_AND:
+        case LL_TOKEN_KIND_ASSIGN_OR:
+        case LL_TOKEN_KIND_ASSIGN_XOR:
+            oc_assert(false && "This should have been desugared in the typer");
+            break;
 
-            result = spirv_generate_expression(cc, b, op->left, true);
-            emit_op(SpvOpStore, result, r1);
-            return r1;
+
         case '=':
             if (op->left->kind == CODE_KIND_SWIZZLE) {
                 Code_Swizzle* swizzle = CODE_AS(op->left, Code_Swizzle);

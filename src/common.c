@@ -452,7 +452,6 @@ void compiler_cycle_stage_typecheck(Compiler_Context* cc, uint32* number_of_dele
 
 void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, uint32* number_of_insertions) {
     LL_Stage* stage = &cc->stages[STAGE_IR];
-    LL_Typer* typer = cc->typer;
     
     cc->current_stage = STAGE_IR;
 
@@ -520,7 +519,6 @@ void compiler_cycle_stage_ir(Compiler_Context* cc, uint32* number_of_deletions, 
 
 void compiler_cycle_stage_eval(Compiler_Context* cc, uint32* number_of_deletions, uint32* number_of_insertions) {
     LL_Stage* stage = &cc->stages[STAGE_EVAL];
-    LL_Typer* typer = cc->typer;
     
     cc->current_stage = STAGE_EVAL;
 

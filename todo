@@ -4,7 +4,11 @@
 - implement arrays/structs        *
 - implement pointers              *
 - implement inputs                *
-- swizzle lvalues (at least assignmnet)
+- swizzle lvalues (at least assignmnet) *
+- add bit operations
+- add function constructor broadcast ith single scalar
+- add standard functions
+- add images
 - semantic variables
 - add back macros
 - implement dynamic vector indexing

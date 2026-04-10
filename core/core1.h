@@ -1098,7 +1098,7 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args, char* ansi_base, i
             int f_type = 0;
 
             int ansi_specific_count = 0;
-            char* ansi_specific = NULL;
+            const char* ansi_specific = NULL;
 
             for (; *fmt && *fmt != '}'; fmt++) {
                 if ((f & f_size) == 0 && *fmt >= '0' && *fmt <= '9') {
