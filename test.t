@@ -183,10 +183,18 @@ float4 main(Vertex* vertex_buffer, OtherData* data) {
 
     // position.ywz = float3(1, 2, 3);
     vertex_buffer.position.yzx = float3(1, 2, 3);
-    int a = 80;
-    int b = 08;
-    int c = a | b;
-    c |= a;
+
+    bool a = true;
+    bool b = false;
+    bool c = a && true;
+
+    bool d = a ^^ b;
+    bool e = true ^^ false;
+    if true ^^ d {
+    }
+
+    int8 k = 123;
+    int i = 1 + 2 + k + 4 + 5;
 
 
     // &position.x;

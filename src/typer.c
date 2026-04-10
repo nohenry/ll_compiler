@@ -294,7 +294,6 @@ void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     INSERT_BUILTIN_TYPE(ty_uint32, LL_KEYWORD_UINT32, .kind = LL_TYPE_UINT, .width = 32);
     INSERT_BUILTIN_TYPE(ty_uint64, LL_KEYWORD_UINT64, .kind = LL_TYPE_UINT, .width = 64);
     INSERT_TYPE_SCOPE(ty_uint32, LL_KEYWORD_UINT);
-    INSERT_ANY_TYPE(ty_anyint,.kind = LL_TYPE_ANYINT);
 
     INSERT_BUILTIN_TYPE(ty_float16, LL_KEYWORD_FLOAT16, .kind = LL_TYPE_FLOAT, .width = 16);
     INSERT_BUILTIN_TYPE(ty_float32, LL_KEYWORD_FLOAT32, .kind = LL_TYPE_FLOAT, .width = 32);
@@ -631,13 +630,11 @@ LL_Type* ll_typer_implicit_cast_leftright(Compiler_Context* cc, LL_Typer* typer,
         else if (rhs->kind == LL_TYPE_UINT) return rhs;
         else if (rhs->kind == LL_TYPE_FLOAT) return rhs;
         else if (rhs->kind == LL_TYPE_CHAR) return rhs;
-        else if (rhs->kind == LL_TYPE_ANYINT) return lhs;
     } else if (rhs == typer->ty_anyint) {
         if (lhs->kind == LL_TYPE_INT) return lhs;
         else if (lhs->kind == LL_TYPE_UINT) return lhs;
         else if (lhs->kind == LL_TYPE_FLOAT) return lhs;
         else if (lhs->kind == LL_TYPE_CHAR) return lhs;
-        else if (lhs->kind == LL_TYPE_ANYINT) return lhs;
     } else if (lhs->kind == LL_TYPE_INT) {
         if (rhs->kind == LL_TYPE_INT) return create_type(((LL_Type){ .kind = LL_TYPE_INT, .width = max(lhs->width, rhs->width) }));
         else if (rhs->kind == LL_TYPE_UINT) return create_type(((LL_Type){ .kind = LL_TYPE_INT, .width = max(lhs->width, rhs->width) }));
@@ -1163,9 +1160,25 @@ static LL_Eval_Value const_value_cast(LL_Eval_Value from, LL_Type* from_type, LL
     if (from_type == to_type) return from;
 
     switch (from_type->kind) {
-    case LL_TYPE_ANYINT:
+    case LL_TYPE_FLOAT:
+        switch (to_type->kind) {
+        case LL_TYPE_ANYBOOL:
+        case LL_TYPE_BOOL:
+            result.as_u64 = from.as_f64 == 0 ? 0 : 1;
+            break;
+        case LL_TYPE_FLOAT:
+            result.as_f64 = from.as_f64;
+            break;
+        default: ll_print_type(to_type); oc_todo("implement const cast"); break;
+        }
+        break;
+
     case LL_TYPE_INT:
         switch (to_type->kind) {
+        case LL_TYPE_ANYBOOL:
+        case LL_TYPE_BOOL:
+            result.as_u64 = from.as_i64 ? 1 : 0;
+            break;
         case LL_TYPE_INT:
             result.as_i64 = from.as_i64;
             break;
@@ -1178,17 +1191,35 @@ static LL_Eval_Value const_value_cast(LL_Eval_Value from, LL_Type* from_type, LL
         default: ll_print_type(to_type); oc_todo("implement const cast"); break;
         }
         break;
-    case LL_TYPE_UINT:
+    case LL_TYPE_BOOL:
+    case LL_TYPE_ANYBOOL:
         switch (to_type->kind) {
-        case LL_TYPE_UINT:
+        case LL_TYPE_ANYBOOL:
+        case LL_TYPE_BOOL:
             result.as_u64 = from.as_u64;
             break;
-        case LL_TYPE_ANYINT:
+        case LL_TYPE_UINT:
         case LL_TYPE_INT:
-            result.as_i64 = from.as_u64;
+            result.as_u64 = from.as_u64 ? 1 : 0;
             break;
         case LL_TYPE_FLOAT:
-            result.as_f64 = from.as_i64;
+            result.as_f64 = from.as_u64 ? 1.0f : 0.0f;
+            break;
+        default: oc_todo("implement const cast"); break;
+        }
+        break;
+    case LL_TYPE_UINT:
+        switch (to_type->kind) {
+        case LL_TYPE_ANYBOOL:
+        case LL_TYPE_BOOL:
+            result.as_u64 = from.as_u64 ? 1 : 0;
+            break;
+        case LL_TYPE_UINT:
+        case LL_TYPE_INT:
+            result.as_u64 = from.as_u64;
+            break;
+        case LL_TYPE_FLOAT:
+            result.as_f64 = from.as_u64;
             break;
         default: oc_todo("implement const cast"); break;
         }
@@ -1222,7 +1253,6 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         case LL_TYPE_CHAR:
         case LL_TYPE_INT:
         case LL_TYPE_UINT:
-        case LL_TYPE_ANYINT:
         case LL_TYPE_FLOAT:
             return true;
         default: break;
@@ -1233,7 +1263,6 @@ bool ll_typer_can_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type* src_type,
         case LL_TYPE_CHAR:
         case LL_TYPE_INT:
         case LL_TYPE_UINT:
-        case LL_TYPE_ANYINT:
         case LL_TYPE_FLOAT:
             return true;
         default: break;
@@ -1281,21 +1310,11 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
     if (src_type->rows != dst_type->rows || src_type->columns != dst_type->columns) return false;
 
     switch (src_type->kind) {
-    case LL_TYPE_ANYINT:
-        switch (dst_type->kind) {
-        case LL_TYPE_INT:
-        case LL_TYPE_UINT:
-            return true;
-        default: break;
-        }
-        break;
     case LL_TYPE_INT:
         switch (dst_type->kind) {
         case LL_TYPE_INT:
             if (dst_type->width >= src_type->width) return true;
             break;
-        case LL_TYPE_ANYINT:
-            return true;
         default: break;
         }
         break;
@@ -1307,8 +1326,6 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
         case LL_TYPE_UINT:
             if (dst_type->width >= src_type->width) return true;
             break;
-        case LL_TYPE_ANYINT:
-            return true;
         default: break;
         }
         break;
@@ -1352,7 +1369,6 @@ bool ll_typer_can_implicitly_cast_const_value(Compiler_Context* cc, LL_Typer* ty
     if (src_type->rows != dst_type->rows || src_type->columns != dst_type->columns) return false;
 
     switch (src_type->kind) {
-    case LL_TYPE_ANYINT:
     case LL_TYPE_INT:
         switch (dst_type->kind) {
         case LL_TYPE_INT: {
@@ -1418,7 +1434,8 @@ void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Code** ex
     };
 
     if ((*expr)->has_const) {
-        (*expr)->const_value = const_value_cast((*expr)->const_value, (*expr)->type, expected_type);
+        cast.base.has_const = 1;
+        cast.base.const_value = const_value_cast((*expr)->const_value, (*expr)->type, expected_type);
     }
 
     Code* new_node = oc_arena_dup(&cc->arena, &cast, sizeof(cast));
@@ -1494,6 +1511,13 @@ bool ll_typer_type_vector_constructor(Compiler_Context* cc, LL_Typer* typer, Cod
     return true;
 }
 
+
+/*
+    int i = 1 + 2 + 3 + 4;
+
+    int8 k = 8;
+    int j = 1 + k + 3 + 4;
+*/
 bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type, LL_Typer_Resolve_Result *resolve_result) {
     LL_Type* result = NULL;
     size_t i;
@@ -1536,11 +1560,26 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         }
     } break;
     case CODE_KIND_IDENT: {
-        if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr || CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
-            if (expected_type->kind == LL_TYPE_BOOL) {
+        if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_TRUE.ptr) {
+            (*expr)->has_const = 1;
+            (*expr)->const_value.as_u64 = 1;
+
+            if (expected_type && expected_type->kind == LL_TYPE_BOOL) {
                 result = expected_type;
                 break;
             }
+
+            result = typer->ty_anybool;
+            break;
+        } else if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_FALSE.ptr) {
+            (*expr)->has_const = 1;
+            (*expr)->const_value.as_u64 = 0;
+
+            if (expected_type && expected_type->kind == LL_TYPE_BOOL) {
+                result = expected_type;
+                break;
+            }
+
             result = typer->ty_anybool;
             break;
         } else if (CODE_AS((*expr), Code_Ident)->str.ptr == LL_KEYWORD_NULL.ptr) {
@@ -1637,17 +1676,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 resolve_result->decl = decl;
             }
 
-            if (expected_type) {
-                if (ll_typer_can_implicitly_cast(cc, typer, decl->ident->base.type, expected_type)) {
-                    (*expr)->type = decl->ident->base.type;
-                    ll_typer_add_implicit_cast(cc, typer, expr, expected_type);
-                    result = expected_type;
-                } else {
-                    result = decl->ident->base.type;
-                }
-            } else {
-                result = decl->ident->base.type;
-            }
+            result = decl->ident->base.type;
         } break;
         }
 
@@ -1713,15 +1742,15 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 if (!ll_type_is_vector(expected_type)) {
                     result = expected_type;
                 } else {
-                    result = typer->ty_anyint;
+                    result = typer->ty_int32;
                 }
                 break;
             default:
-                result = typer->ty_anyint;
+                result = typer->ty_int32;
                 break;
             }
         } else {
-            result = typer->ty_anyint;
+            result = typer->ty_int32;
         }
         break;
     case CODE_KIND_LITERAL_FLOAT:
@@ -1734,15 +1763,15 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 if (!ll_type_is_vector(expected_type)) {
                     result = expected_type;
                 } else {
-                    result = typer->ty_anyfloat;
+                    result = typer->ty_float32;
                 }
                 break;
             default:
-                result = typer->ty_anyfloat;
+                result = typer->ty_float32;
                 break;
             }
         } else {
-            result = typer->ty_anyfloat;
+            result = typer->ty_float32;
         }
         break;
     case CODE_KIND_LITERAL_STRING:
@@ -1817,8 +1846,8 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
         case '.': {
-            LL_Typer_Resolve_Result result = { 0 };	
-            can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &result);
+            LL_Typer_Resolve_Result resolve = { 0 };	
+            can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &resolve);
             if (!can_continue) return false;
 
             if (ll_type_is_vector(opr->left->type)) {
@@ -1934,7 +1963,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 base_type = ((LL_Type_Named*)base_type)->actual_type;
             }
 
-            // if (!result.decl) {
+            // if (!resolve.decl) {
 
             // }
 
@@ -1956,8 +1985,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     right_ident->base.type = typer->ty_uint64;
                 }
 
-                (*expr)->type = right_ident->base.type;
-                return true;
+                result = right_ident->base.type;
             } else if (base_type->kind == LL_TYPE_ARRAY) {
                 if (string_eql(right_ident->str, lit("length"))) {
                     (*expr)->has_const = true;
@@ -1975,8 +2003,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     }
                 }
 
-                (*expr)->type = right_ident->base.type;
-                return true;
+                result = right_ident->base.type;
             } else if (base_scope && base_type->kind == LL_TYPE_STRUCT) {
                 Code_Declaration** member_scope = hash_map_get(&cc->arena, &base_scope->declarations, right_ident->str);
                 if (!member_scope) {
@@ -1994,9 +2021,9 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 right_ident->resolved_decl = (*member_scope);
                 right_ident->base.type = (*member_scope)->ident->base.type;
 
-                if (result.decl && result.decl->base.kind == CODE_KIND_PARAMETER) {
+                if (resolve.decl && resolve.decl->base.kind == CODE_KIND_PARAMETER) {
                     // this will promote the parameter to a local variable so we can used OpAccessChain
-                    result.decl->usage.pointers_created++;
+                    resolve.decl->usage.pointers_created++;
                 }
 
                 if (opr->left->type->kind == LL_TYPE_POINTER) {
@@ -2008,12 +2035,11 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                     resolve_result->decl = (*member_scope);
                 }
 
-                (*expr)->type = right_ident->base.type;
-                return true;
+                result = right_ident->base.type;
             } else {
 TRY_MEMBER_FUNCTION_CALL:
                 // if we have `a.foo()` we lookup foo as it's own function
-                can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, &result);
+                can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, &resolve);
                 if (!can_continue) {
                     if (!current_queued()->yielded_on || current_queued()->yielded_on->kind == CODE_KIND_IDENT) {
                         current_queued()->yielded_on = (*expr); 
@@ -2021,24 +2047,24 @@ TRY_MEMBER_FUNCTION_CALL:
                     return false;
                 }
 
-                if (result.decl->base.kind == CODE_KIND_FUNCTION_DECLARATION) {
-                    LL_Type_Function* fn_type = (LL_Type_Function*)result.decl->ident->base.type;
-                    Code_Function_Declaration* fn = CODE_AS(result.decl, Code_Function_Declaration);
+                if (resolve.decl->base.kind == CODE_KIND_FUNCTION_DECLARATION) {
+                    LL_Type_Function* fn_type = (LL_Type_Function*)resolve.decl->ident->base.type;
+                    Code_Function_Declaration* fn = CODE_AS(resolve.decl, Code_Function_Declaration);
                     oc_assert(fn_type->base.kind == LL_TYPE_FUNCTION);
 
                     if (fn_type->parameter_count > 0) {
                         LL_Type* member_arg_parameter = fn_type->parameters[0];
                         if (!member_arg_parameter || fn->parameters.items[0].base.base.kind == CODE_KIND_GENERIC) {
-                            right_ident->resolved_decl = result.decl;
+                            right_ident->resolved_decl = resolve.decl;
                             right_ident->base.type = (LL_Type*)fn_type;
 
                             if (resolve_result) {
-                                resolve_result->decl = result.decl;
+                                resolve_result->decl = resolve.decl;
                                 resolve_result->this_arg = &opr->left;
                             }
 
-                            (*expr)->type = right_ident->base.type;
-                            return true;
+                            result = right_ident->base.type;
+                            break;
                         }
 
                         if (member_arg_parameter->kind == LL_TYPE_POINTER && opr->left->type->kind != LL_TYPE_POINTER) {
@@ -2047,16 +2073,16 @@ TRY_MEMBER_FUNCTION_CALL:
                         }
 
                         if (ll_typer_implicit_cast_tofrom(cc, typer, opr->left->type, member_arg_parameter)) {
-                            right_ident->resolved_decl = result.decl;
+                            right_ident->resolved_decl = resolve.decl;
                             right_ident->base.type = (LL_Type*)fn_type;
 
                             if (resolve_result) {
-                                resolve_result->decl = result.decl;
+                                resolve_result->decl = resolve.decl;
                                 resolve_result->this_arg = &opr->left;
                             }
 
-                            (*expr)->type = right_ident->base.type;
-                            return true;
+                            result = right_ident->base.type;
+                            break;
                         }
                     }
                 }
@@ -2065,215 +2091,8 @@ TRY_MEMBER_FUNCTION_CALL:
                 ll_typer_report_error_done(cc, typer);
                 return true;
             }
-        }
-        // case LL_TOKEN_KIND_ASSIGN_PERCENT:
-        // case LL_TOKEN_KIND_ASSIGN_DIVIDE:
-        // case LL_TOKEN_KIND_ASSIGN_TIMES:
-        // case LL_TOKEN_KIND_ASSIGN_MINUS:
-        // case LL_TOKEN_KIND_ASSIGN_PLUS: {
-        //     LL_Typer_Resolve_Result lhs_resolve = { 0 };
-        //     can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
-        //     if (!can_continue) return false;
-        //     can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
-        //     if (!can_continue) return false;
-
-        //     if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
-        //         can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, &lhs_resolve);
-        //         if (!can_continue) return false;
-        //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
-        //         if (!can_continue) return false;
-        //     } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
-        //         can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, &lhs_resolve);
-        //         if (!can_continue) return false;
-        //     } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
-        //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
-        //         if (!can_continue) return false;
-        //     }
-
-        //     // @Todo: add this back (but it's not crrect right now)
-        //     // if (!lhs_resolve.decl) {
-        //     //     ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign to rvalue.");
-        //     //     ll_typer_report_error_no_src("    This means you tried assigning to something that doesn't have a storage location, .e.g an integer literal.\n");
-        //     //     ll_typer_report_error_done(cc, typer);
-        //     //     break;
-        //     // }
-
-        //     if (lhs_resolve.decl) {
-        //         lhs_resolve.decl->usage.direct_stores++;
-        //     }
-
-            
-        //     LL_Type* lhs_type = opr->left->type;
-        //     LL_Type* rhs_type = opr->right->type;
-
-        //     result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
-
-        //     if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-        //         ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign {t} to {t}", result, opr->right->type);
-        //         ll_typer_report_error_no_src("    You can try explicitly casting the value with `cast({})`\n", lhs_type);
-        //         ll_typer_report_error_done(cc, typer);
-        //         break;
-        //     }
-
-        //     // @oc_todo: look at casting lhs
-        //     ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
-        //     (*expr)->type = result;
-        //     return true;
-        // } break;
-
-        // case LL_TOKEN_KIND_ASSIGN_LEFT_SHIFT:
-        // case LL_TOKEN_KIND_ASSIGN_RIGHT_SHIFT:
-        // case LL_TOKEN_KIND_ASSIGN_BIT_AND:
-        // case LL_TOKEN_KIND_ASSIGN_BIT_OR:
-        // case LL_TOKEN_KIND_ASSIGN_BIT_XOR: {
-        //     LL_Typer_Resolve_Result lhs_resolve = { 0 };
-        //     can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
-        //     if (!can_continue) return false;
-        //     can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
-        //     if (!can_continue) return false;
-
-        //     if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
-        //         can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, &lhs_resolve);
-        //         if (!can_continue) return false;
-        //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
-        //         if (!can_continue) return false;
-        //     } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
-        //         can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, &lhs_resolve);
-        //         if (!can_continue) return false;
-        //     } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
-        //         can_continue = ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
-        //         if (!can_continue) return false;
-        //     }
-
-        //     LL_Type* lhs_type = opr->left->type;
-        //     LL_Type* rhs_type = opr->right->type;
-
-        //     if (lhs_type->kind != LL_TYPE_UINT && lhs_type->kind != LL_TYPE_INT && lhs_type->kind != LL_TYPE_ANYINT) {
-        //         ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do bitwise operation on type {t}", lhs_type);
-        //         ll_typer_report_error_done(cc, typer);
-        //     }
-        //     if (rhs_type->kind != LL_TYPE_UINT && rhs_type->kind != LL_TYPE_INT && rhs_type->kind != LL_TYPE_ANYINT) {
-        //         ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do bitwise operation on type {t}", rhs_type);
-        //         ll_typer_report_error_done(cc, typer);
-        //     }
-
-        //     result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
-
-        //     if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-        //         ll_typer_report_error(((LL_Error){ .main_token = opr->op }), "Can't assign {t} to {t}", result, opr->right->type);
-        //         ll_typer_report_error_no_src("    You can try explicitly casting the value with `cast({})`\n", lhs_type);
-        //         ll_typer_report_error_done(cc, typer);
-        //         break;
-        //     }
-
-        //     ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
-        //     (*expr)->type = result;
-        //     return true;
-        // } break;
-        // case LL_TOKEN_KIND_ASSIGN_PERCENT:
-        // case LL_TOKEN_KIND_ASSIGN_DIVIDE:
-        // case LL_TOKEN_KIND_ASSIGN_TIMES:
-        // case LL_TOKEN_KIND_ASSIGN_MINUS:
-        // case LL_TOKEN_KIND_ASSIGN_PLUS:
-
-        // case LL_TOKEN_KIND_ASSIGN_LEFT_SHIFT:
-        // case LL_TOKEN_KIND_ASSIGN_RIGHT_SHIFT:
-        // case LL_TOKEN_KIND_ASSIGN_BIT_AND:
-        // case LL_TOKEN_KIND_ASSIGN_BIT_OR:
-        // case LL_TOKEN_KIND_ASSIGN_BIT_XOR:
-
-        // case LL_TOKEN_KIND_ASSIGN_AND:
-        // case LL_TOKEN_KIND_ASSIGN_OR:
-        // case LL_TOKEN_KIND_ASSIGN_XOR: {
-        //     LL_Token_Kind new_op = ll_get_regular_token_kind_from_assign_kind(opr->op.kind);
-        //     Code* new_rhs = CREATE_NODE(CODE_KIND_BINARY_OP, (Code_Operation) {
-        //         .base.token_info = opr->base.token_info,
-        //         .left = opr->left,
-        //         .op = { .kind = new_op, .position = opr->op.position },
-        //         .right = opr->right,
-        //     });
-        //     Code* new_assign = CREATE_NODE(CODE_KIND_BINARY_OP, (Code_Operation) {
-        //         .base.token_info = opr->base.token_info,
-        //         .left = opr->left,
-        //         .op = { .kind = '=', .position = opr->op.position },
-        //         .right = new_rhs,
-        //     });
-
-        //     if (!ll_typer_type_expression(cc, typer, &new_assign, expected_type, resolve_result)) {
-        //         *expr = new_assign;
-        //         return false;
-        //     }
-        //     *expr = new_assign;
-
-
-            // LL_Typer_Resolve_Result lhs_resolve = { 0 };
-            // can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, &lhs_resolve);
-            // if (!can_continue) return false;
-            // can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
-            // if (!can_continue) return false;
-
-            // if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
-            //     can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, &lhs_resolve);
-            //     if (!can_continue) return false;
-            //     can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
-            //     if (!can_continue) return false;
-            // } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
-            //     can_continue = ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, &lhs_resolve);
-            //     if (!can_continue) return false;
-            // } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
-            //     can_continue = ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
-            //     if (!can_continue) return false;
-            // }
-
-            // LL_Type* lhs_type = opr->left->type;
-            // LL_Type* rhs_type = opr->right->type;
-
-            // switch (lhs_type->kind) {
-            // case LL_TYPE_BOOL:
-            //     result = lhs_type;
-            //     break;
-            // case LL_TYPE_ANYBOOL:
-            // case LL_TYPE_POINTER:
-            // case LL_TYPE_ANYINT:
-            // case LL_TYPE_UINT:
-            // case LL_TYPE_INT:
-            //     result = typer->ty_anybool;
-            //     break;
-            // default:
-            //     ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do {} with type {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type);
-            //     ll_typer_report_error_done(cc, typer);
-            //     break;
-            // }
-
-            // switch (rhs_type->kind) {
-            // case LL_TYPE_BOOL:
-            //     if (result->width < rhs_type->width) {
-            //         result = rhs_type;
-            //     } else {
-            //         ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
-            //     }
-            //     ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
-            //     break;
-            // case LL_TYPE_ANYBOOL:
-            // case LL_TYPE_POINTER:
-            // case LL_TYPE_ANYINT:
-            // case LL_TYPE_UINT:
-            // case LL_TYPE_INT:
-            //     if (result->kind != LL_TYPE_BOOL) {
-            //         result = typer->ty_anybool;
-            //         ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
-            //     }
-            //     ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
-            //     break;
-            // default:
-            //     ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do {} with type {t}", ll_get_human_readable_operation(opr->op.kind), rhs_type);
-            //     ll_typer_report_error_done(cc, typer);
-            //     break;
-            // }
-
-            // (*expr)->type = result;
-        //     return true;
-        // }
+            goto EXIT_EXPRESSION;
+        } break;
 
         case LL_TOKEN_KIND_ASSIGN_PERCENT:
         case LL_TOKEN_KIND_ASSIGN_DIVIDE:
@@ -2372,28 +2191,17 @@ TRY_MEMBER_FUNCTION_CALL:
 
             // @oc_todo: look at casting lhs
             ll_typer_add_implicit_cast(cc, typer, &opr->right, lhs_type);
-            (*expr)->type = lhs_type;
-            return true;
+            result = lhs_type;
+            goto EXIT_EXPRESSION;
         } break;
         default: break;
 #pragma GCC diagnostic pop
         }
 
-
-        can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
+        can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
         if (!can_continue) return false;
-        // oc_assert(can_continue);
-        can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
+        can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
         if (!can_continue) return false;
-
-        if (opr->left->type->kind == LL_TYPE_ANYINT && opr->right->type->kind == LL_TYPE_ANYINT && expected_type) {
-            ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
-            ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
-        } else if (opr->left->type->kind == LL_TYPE_ANYINT || opr->left->type->kind == LL_TYPE_ANYFLOAT) {
-            ll_typer_type_expression(cc, typer, &opr->left, opr->right->type, NULL);
-        } else if (opr->right->type->kind == LL_TYPE_ANYINT || opr->right->type->kind == LL_TYPE_ANYFLOAT) {
-            ll_typer_type_expression(cc, typer, &opr->right, opr->left->type, NULL);
-        }
 
         LL_Type* lhs_type = opr->left->type;
         LL_Type* rhs_type = opr->right->type;
@@ -2490,14 +2298,12 @@ DO_NORMAL_ARITHMETIC_OP:
             if (result == NULL) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't compare {t} with {t}", lhs_type, rhs_type);
                 ll_typer_report_error_done(cc, typer);
-
                 break;
             }
 
             if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't compare {t} with {t}", lhs_type, rhs_type);
                 ll_typer_report_error_done(cc, typer);
-
                 break;
             }
 
@@ -2506,7 +2312,6 @@ DO_NORMAL_ARITHMETIC_OP:
                 ll_typer_report_error_done(cc, typer);
                 break;
             }
-
 
             ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
@@ -2518,11 +2323,11 @@ DO_NORMAL_ARITHMETIC_OP:
         case '&':
         case '|':
         case '^':
-            if (lhs_type->kind != LL_TYPE_UINT && lhs_type->kind != LL_TYPE_INT && lhs_type->kind != LL_TYPE_ANYINT) {
+            if (lhs_type->kind != LL_TYPE_UINT && lhs_type->kind != LL_TYPE_INT) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do bitwise operation on type {t}", lhs_type);
                 ll_typer_report_error_done(cc, typer);
             }
-            if (rhs_type->kind != LL_TYPE_UINT && rhs_type->kind != LL_TYPE_INT && rhs_type->kind != LL_TYPE_ANYINT) {
+            if (rhs_type->kind != LL_TYPE_UINT && rhs_type->kind != LL_TYPE_INT) {
                 ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do bitwise operation on type {t}", rhs_type);
                 ll_typer_report_error_done(cc, typer);
             }
@@ -2536,15 +2341,6 @@ DO_NORMAL_ARITHMETIC_OP:
 
             ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
             ll_typer_add_implicit_cast(cc, typer, &opr->right, result);
-
-            if (expected_type) {
-                if (ll_typer_can_implicitly_cast(cc, typer, result, expected_type)) {
-                    (*expr)->type = result;
-                    ll_typer_add_implicit_cast(cc, typer, expr, expected_type);
-                }
-                result = expected_type;
-            }
-
             break;
 #pragma GCC diagnostic pop
         case LL_TOKEN_KIND_AND:
@@ -2556,7 +2352,6 @@ DO_NORMAL_ARITHMETIC_OP:
                 break;
             case LL_TYPE_ANYBOOL:
             case LL_TYPE_POINTER:
-            case LL_TYPE_ANYINT:
             case LL_TYPE_UINT:
             case LL_TYPE_INT:
                 result = typer->ty_anybool;
@@ -2578,7 +2373,6 @@ DO_NORMAL_ARITHMETIC_OP:
                 break;
             case LL_TYPE_ANYBOOL:
             case LL_TYPE_POINTER:
-            case LL_TYPE_ANYINT:
             case LL_TYPE_UINT:
             case LL_TYPE_INT:
                 if (result->kind != LL_TYPE_BOOL) {
@@ -2608,7 +2402,6 @@ DO_NORMAL_ARITHMETIC_OP:
             // @const
             (*expr)->has_const = 1u;
             switch (result->kind) {
-            case LL_TYPE_ANYINT:
             case LL_TYPE_INT:
                 switch (opr->op.kind) {
 #pragma GCC diagnostic push
@@ -2662,7 +2455,8 @@ DO_NORMAL_ARITHMETIC_OP:
                 case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.as_u64 = opr->left->const_value.as_f64 != opr->right->const_value.as_f64; break;
                 default: oc_assert(false); break;
                 }
-            default: ll_print_type(result); oc_todo("implement bvinary op const fold types or error"); break;
+            // default: ll_print_type(result); oc_todo("implement bvinary op const fold types or error"); break;
+            default: break;
             }
         }
 
@@ -2670,7 +2464,6 @@ DO_NORMAL_ARITHMETIC_OP:
         break;
     }
     case CODE_KIND_PRE_OP: {
-        LL_Type* expr_type;
         result = NULL;
         switch (CODE_AS((*expr), Code_Operation)->op.kind) {
 #pragma GCC diagnostic push
@@ -2678,48 +2471,40 @@ DO_NORMAL_ARITHMETIC_OP:
         case '-': {
             can_continue = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, expected_type, NULL);
             if (!can_continue) return false;
-            expr_type = CODE_AS((*expr), Code_Operation)->right->type;
+            result = CODE_AS((*expr), Code_Operation)->right->type;
 
-            switch (expr_type->kind) {
+            switch (result->kind) {
             case LL_TYPE_FLOAT:
-            case LL_TYPE_ANYINT:
             case LL_TYPE_INT:
                 break;
             default:
-                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Can't negate type {t}", expr_type);
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Can't negate type {t}", result);
                 ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Operation)->right->token_info }), "");
                 ll_typer_report_error_no_src("    Negation only works for signed ints and floats.\n");
                 ll_typer_report_error_done(cc, typer);
-
                 break;
             }
 
-            if (expected_type) {
-                result = expected_type;
-            } else {
-                result = expr_type;
-            }
-
-            ll_typer_add_implicit_cast(cc, typer, &CODE_AS((*expr), Code_Operation)->right, result);
+            // ll_typer_add_implicit_cast(cc, typer, &CODE_AS((*expr), Code_Operation)->right, result);
         } break;
         case '*': {
 
             if (expected_type) {
-                expr_type = ll_typer_get_ptr_type(cc, typer, expected_type);
-                can_continue = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, expr_type, NULL);
+                result = ll_typer_get_ptr_type(cc, typer, expected_type);
+                can_continue = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, result, NULL);
             } else {
                 can_continue = ll_typer_type_expression(cc, typer, &CODE_AS((*expr), Code_Operation)->right, NULL, NULL);
             }
             if (!can_continue) return false;
-            expr_type = CODE_AS((*expr), Code_Operation)->right->type;
+            result = CODE_AS((*expr), Code_Operation)->right->type;
 
-            switch (expr_type->kind) {
+            switch (result->kind) {
             case LL_TYPE_POINTER:
-                result = ((LL_Type_Pointer*)expr_type)->element_type;
-                typer->result_sc = ((LL_Type_Pointer*)expr_type)->spirv_storage_class;
+                typer->result_sc = ((LL_Type_Pointer*)result)->spirv_storage_class;
+                result = ((LL_Type_Pointer*)result)->element_type;
                 break;
             default:
-                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Can't dereference type {t}", expr_type);
+                ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "Can't dereference type {t}", result);
                 ll_typer_report_error(((LL_Error){ .main_token = (*expr)->token_info }), "");
                 ll_typer_report_error(((LL_Error){ .main_token = CODE_AS((*expr), Code_Operation)->right->token_info }), "");
                 ll_typer_report_error_no_src("    Dereference only works with pointers.\n");
@@ -2729,12 +2514,9 @@ DO_NORMAL_ARITHMETIC_OP:
         } break;
         case '&': {
             Code_Operation* op = CODE_AS((*expr), Code_Operation);
-            if (expected_type && expected_type->kind == LL_TYPE_POINTER) {
-                LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)expected_type;
-                can_continue = ll_typer_type_expression(cc, typer, &op->right, ptr_type->element_type, NULL);
-            } else {
-                can_continue = ll_typer_type_expression(cc, typer, &op->right, NULL, NULL);
-            }
+
+            // @Note: Don't pass expected type here, since we don't want say a int8* coercing to an int16*
+            can_continue = ll_typer_type_expression(cc, typer, &op->right, NULL, NULL);
             if (!can_continue) return false;
 
 
@@ -2761,20 +2543,13 @@ DO_NORMAL_ARITHMETIC_OP:
                 }
             }
 
-            expr_type = op->right->type;
-            result = ll_typer_get_ptr_type_with_storage_class(cc, typer, expr_type, typer->result_sc);
+            result = ll_typer_get_ptr_type_with_storage_class(cc, typer, op->right->type, typer->result_sc);
         } break;
 #pragma GCC diagnostic pop
         default: break;
         }
 
-        if (!result) {
-            eprint("\x1b[31;1mTODO:\x1b[0m operator '");
-            lexer_print_token_info_raw_to_writer(&CODE_AS((*expr), Code_Operation)->op, &stderr_writer);
-            eprint("' cannot be applied to expression of type \n");
-            ll_typer_report_error_type(cc, typer, expr_type);
-            eprint("\n");
-        }
+        oc_assert(result);
     } break;
     case CODE_KIND_CAST: {
         Code_Cast* cast = CODE_AS((*expr), Code_Cast);
@@ -2788,7 +2563,9 @@ DO_NORMAL_ARITHMETIC_OP:
         if (!can_continue) return false;
         LL_Type* src_type = cast->expr->type;
         
-        if (!ll_typer_can_cast(cc, typer, src_type, specified_type)) {
+        if (src_type == specified_type) {
+            *expr = cast->expr; // May as well
+        } else if (!ll_typer_can_cast(cc, typer, src_type, specified_type)) {
             ll_typer_report_error(((LL_Error){ .highlight_start = (*expr)->token_info, .highlight_end = cast->p_close }), "Can't cast {t} to {t}", src_type, specified_type);
             ll_typer_report_error_done(cc, typer);
         }
@@ -3241,14 +3018,10 @@ DO_NORMAL_ARITHMETIC_OP:
         can_continue = ll_typer_type_expression(cc, typer, &cf->start, NULL, NULL);
         if (!can_continue) return false;
         LL_Type* index_type = cf->start->type;
-        if (!ll_typer_can_cast(cc, typer, index_type, typer->ty_anyint)) {
+        if (index_type->kind != LL_TYPE_INT && index_type->kind != LL_TYPE_UINT) {
             ll_typer_report_error(((LL_Error){ .main_token = cf->start->token_info }), "Can't index into array/pointer with type {t}", index_type);
             ll_typer_report_error_done(cc, typer);
         }
-        // if (index_type == typer->ty_anyint) {
-        //     index_type = ll_typer_type_expression(cc, typer, &cf->start, typer->ty_int64, NULL);
-        // }
-        // ll_typer_add_implicit_cast(cc, typer, &cf->start, typer->ty_int64);
 
         switch (result->kind) {
         case LL_TYPE_ARRAY:
@@ -3559,7 +3332,6 @@ CODE_BREAK_EXIT_SCOPE:
         case LL_TYPE_ANYBOOL:
         case LL_TYPE_BOOL:
         case LL_TYPE_POINTER:
-        case LL_TYPE_ANYINT:
         case LL_TYPE_UINT:
         case LL_TYPE_INT:
             break;
@@ -3592,7 +3364,6 @@ CODE_BREAK_EXIT_SCOPE:
             case LL_TYPE_BOOL:
             case LL_TYPE_ANYBOOL:
             case LL_TYPE_POINTER:
-            case LL_TYPE_ANYINT:
             case LL_TYPE_UINT:
             case LL_TYPE_INT: break;
             default:
@@ -3621,8 +3392,18 @@ CODE_BREAK_EXIT_SCOPE:
         result = NULL;
         break;
     }
+EXIT_EXPRESSION:
 
     (*expr)->type = result;
+
+    if (expected_type && result) {
+        if (ll_typer_can_implicitly_cast_expression(cc, typer, *expr, expected_type)) {
+            ll_typer_add_implicit_cast(cc, typer, expr, expected_type);
+        } else {
+            // We don't write an error message here. Instead the caller should report an error
+        }
+    }
+
     return true;
 }
 
@@ -3949,11 +3730,6 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     case LL_TYPE_VOID:     wprint(w, "void"); break;
     case LL_TYPE_INT:      wprint(w, "int{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
     case LL_TYPE_UINT:     wprint(w, "uint{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
-    #ifdef _DEBUG
-    case LL_TYPE_ANYINT:   wprint(w, "anyint"); break;
-    #else
-    case LL_TYPE_ANYINT:   wprint(w, "int"); break;
-    #endif
     case LL_TYPE_FLOAT:    wprint(w, "float{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
     #ifdef _DEBUG
     case LL_TYPE_ANYFLOAT: wprint(w, "anyfloat"); break;
@@ -3963,7 +3739,11 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
 
     case LL_TYPE_STRING:   wprint(w, "string"); break;
     case LL_TYPE_BOOL:     wprint(w, "bool{}", type->width); if (type->rows != 1) wprint(w, "x{}", type->rows); if (type->columns != 1) wprint(w, "x{}", type->columns); break;
+    #ifdef _DEBUG
+    case LL_TYPE_ANYBOOL:  wprint(w, "anybool"); break;
+    #else
     case LL_TYPE_ANYBOOL:  wprint(w, "bool"); break;
+    #endif
     case LL_TYPE_CHAR:     wprint(w, "char"); break;
     case LL_TYPE_POINTER: {
         LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;

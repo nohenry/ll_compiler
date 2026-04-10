@@ -767,6 +767,16 @@ SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type
             output.u64 = *input.u64;
         }
         break;
+    case LL_TYPE_ANYBOOL: {
+        SpvId result;
+        if (*input.u64) {
+            result = emit_type_op_dst_rev(SpvOpConstantTrue, typeid);
+        } else {
+            result = emit_type_op_dst_rev(SpvOpConstantFalse, typeid);
+        }
+        return result;
+    } break;
+    default: oc_assert(false);
     }
     SpvId result;
     if (width <= 32) {
@@ -872,49 +882,18 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
     SpvId r1, r2;
     typeof(*b->current_access_chain_tmp) chain_access = { 0 };
 
+    if (expr->has_const) {
+        result = spirv_generate_constant(cc, b, expr->type, &expr->const_value);
+        return result;
+    }
+
     switch (expr->kind) {
     // @Note: dxc generates constants in types section... why?
     case CODE_KIND_LITERAL_INT: {
-        Code_Literal* lit = CODE_AS(expr, Code_Literal);
-        if (expr->type->kind == LL_TYPE_FLOAT) {
-            if (expr->type->width <= 32) {
-                union {
-                    float f;
-                    uint32_t i;
-                } a = { .f = (float)lit->u64 };
-                result = emit_type_op_dst_rev(SpvOpConstant, typeid, a.i);
-            } else if (expr->type->width <= 64) {
-                union {
-                    double f;
-                    uint32_t i[2];
-                } a = { .f = (double)lit->u64 };
-                result = emit_type_op_dst_rev(SpvOpConstant, typeid, a.i[0], a.i[1]);
-            } else oc_todo("bigger types");
-        } else {
-            if (expr->type->width <= 32) {
-                result = emit_type_op_dst_rev(SpvOpConstant, typeid, (uint32_t)lit->u64);
-            } else {
-                result = emit_type_op_dst_rev(SpvOpConstant, typeid, (uint32_t)(lit->u64 & 0xFFFFFFFF), (uint32_t)(lit->u64 >> 32));
-            }
-        }
+        oc_assert(false && "should be handled in constant value above");
     } break;
     case CODE_KIND_LITERAL_FLOAT: {
-        Code_Literal* lit = CODE_AS(expr, Code_Literal);
-        if (expr->type->width <= 32) {
-            union {
-                float f;
-                uint32_t i;
-            } a = { .f = (float)lit->f64 };
-            result = emit_type_op_dst_rev(SpvOpConstant, typeid, a.i);
-        } else if (expr->type->width <= 64) {
-            union {
-                double f;
-                uint32_t i[2];
-            } a = { .f = lit->f64 };
-            result = emit_type_op_dst_rev(SpvOpConstant, typeid, a.i[0], a.i[1]);
-        } else {
-            oc_assert(false);
-        }
+        oc_assert(false && "should be handled in constant value above");
     } break;
 
     case CODE_KIND_BUILTIN: {
@@ -963,11 +942,17 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
         if (ident->str.ptr == LL_KEYWORD_TRUE.ptr) {
             oc_assert(!lvalue);
-            result = emit_type_op_dst_rev(SpvOpConstant, typeid, 1);
+            if (expr->type->kind == LL_TYPE_ANYBOOL)
+                result = emit_type_op_dst_rev(SpvOpConstantTrue, typeid);
+            else
+                result = emit_type_op_dst_rev(SpvOpConstant, typeid, 1);
             break;
         } else if (ident->str.ptr == LL_KEYWORD_FALSE.ptr) {
             oc_assert(!lvalue);
-            result = emit_type_op_dst_rev(SpvOpConstant, typeid, 0);
+            if (expr->type->kind == LL_TYPE_ANYBOOL)
+                result = emit_type_op_dst_rev(SpvOpConstantFalse, typeid);
+            else
+                result = emit_type_op_dst_rev(SpvOpConstant, typeid, 0);
             break;
         } else if (ident->str.ptr == LL_KEYWORD_NULL.ptr) {
             oc_assert(!lvalue);
@@ -1182,6 +1167,12 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
         case '/': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFDiv : (expr->type->kind == LL_TYPE_INT) ? SpvOpSDiv : SpvOpUDiv; break;
         case '%': spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFMod : (expr->type->kind == LL_TYPE_INT) ? SpvOpSMod : SpvOpUMod; break;
 
+        case '&': spv_opcode = SpvOpBitwiseAnd; break;
+        case '|': spv_opcode = SpvOpBitwiseOr; break;
+        case '^': spv_opcode = SpvOpBitwiseXor; break;
+        case LL_TOKEN_KIND_LEFT_SHIFT: spv_opcode = SpvOpShiftLeftLogical; break;
+        case LL_TOKEN_KIND_RIGHT_SHIFT: spv_opcode = (expr->type->kind == LL_TYPE_INT) ? SpvOpShiftRightArithmetic : SpvOpShiftRightLogical; break;
+
         case '<':
             spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdLessThan : (expr->type->kind == LL_TYPE_INT) ? SpvOpSLessThan : SpvOpULessThan;
             goto DO_BIN_OP_BOOLEAN;
@@ -1195,10 +1186,10 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
             spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdGreaterThanEqual : (expr->type->kind == LL_TYPE_INT) ? SpvOpSGreaterThanEqual : SpvOpUGreaterThanEqual;
             goto DO_BIN_OP_BOOLEAN;
         case LL_TOKEN_KIND_EQUALS:
-            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdEqual : SpvOpIEqual;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdEqual : (expr->type->kind == LL_TYPE_ANYBOOL) ? SpvOpLogicalEqual : SpvOpIEqual;
             goto DO_BIN_OP_BOOLEAN;
         case LL_TOKEN_KIND_NEQUALS:
-            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdNotEqual : SpvOpINotEqual;
+            spv_opcode = (expr->type->kind == LL_TYPE_FLOAT) ? SpvOpFOrdNotEqual : (expr->type->kind == LL_TYPE_ANYBOOL) ? SpvOpLogicalNotEqual : SpvOpINotEqual;
             goto DO_BIN_OP_BOOLEAN;
 DO_BIN_OP_BOOLEAN:
             r2 = spirv_generate_expression(cc, b, op->right, false);
@@ -1206,7 +1197,17 @@ DO_BIN_OP_BOOLEAN:
 
             result = emit_op_dst(spv_opcode, typeid, r1, r2);
             return result;
-        
+
+        case LL_TOKEN_KIND_AND: spv_opcode = (expr->type->kind == LL_TYPE_ANYBOOL) ? SpvOpLogicalAnd : SpvOpBitwiseAnd;     goto DO_BIN_OP_LOGICAL;
+        case LL_TOKEN_KIND_OR:  spv_opcode = (expr->type->kind == LL_TYPE_ANYBOOL) ? SpvOpLogicalOr : SpvOpBitwiseOr;       goto DO_BIN_OP_LOGICAL;
+        case LL_TOKEN_KIND_XOR: spv_opcode = (expr->type->kind == LL_TYPE_ANYBOOL) ? SpvOpLogicalNotEqual : SpvOpBitwiseXor; goto DO_BIN_OP_LOGICAL;
+DO_BIN_OP_LOGICAL:
+            r2 = spirv_generate_expression(cc, b, op->right, false);
+            r1 = spirv_generate_expression(cc, b, op->left, false);
+
+            result = emit_op_dst(spv_opcode, typeid, r1, r2);
+            return result;
+
         // case LL_TOKEN_KIND_OR: {
         //     r1 = spirv_generate_expression(cc, b, op->left, false);
         //     r1 = IR_APPEND_OP_DST(LL_IR_OPCODE_TEST, op->left->type, r1);
@@ -1314,14 +1315,13 @@ DO_BIN_OP_BOOLEAN:
 
             result = spirv_generate_expression(cc, b, op->left, true);
             r2 = spirv_generate_expression(cc, b, op->right, false);
-            r2 = spirv_generate_cast_if_needed(cc, b, expr->type, r2, op->right->type);
+
             if (spirv_storage_class_needs_explicit(b->result_sc)) {
                 emit_op(SpvOpStore, result, r2, SpvMemoryAccessAlignedMask, 16);
             } else {
                 emit_op(SpvOpStore, result, r2);
             }
             return r2;
-
 #pragma GCC diagnostic pop
         default:
             oc_assert(false);
@@ -1330,10 +1330,7 @@ DO_BIN_OP_BOOLEAN:
         }
 
         r1 = spirv_generate_expression(cc, b, op->left, false);
-        r1 = spirv_generate_cast_if_needed(cc, b, expr->type, r1, op->left->type);
-
         r2 = spirv_generate_expression(cc, b, op->right, false);
-        r2 = spirv_generate_cast_if_needed(cc, b, expr->type, r2, op->right->type);
 
         result = emit_op_dst(spv_opcode, typeid, r1, r2);
     } break;
@@ -1929,10 +1926,6 @@ SpvId spirv_generate_type_with_parameters(Compiler_Context* cc, LL_Backend_Spirv
         case LL_TYPE_INT:
             is_invariant = true;
             result = emit_type_op_dst(SpvOpTypeInt, type->width, 1);
-            break;
-        case LL_TYPE_ANYINT:
-            is_invariant = true;
-            result = spirv_generate_type_with_parameters(cc, b, cc->typer->ty_int32, parameters);
             break;
         case LL_TYPE_UINT:
             is_invariant = true;

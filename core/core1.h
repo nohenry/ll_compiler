@@ -1302,6 +1302,8 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args, char* ansi_base, i
 
             if (ansi_base) {
                 w->write(w, ansi_base, ansi_base_count);
+            } else {
+                w->write(w, "\x1b[0m", sizeof("\x1b[0m"));
             }
         } else {
             w->write(w, (uint8*)fmt, 1);
