@@ -181,7 +181,8 @@ float4 main(Vertex* vertex_buffer, OtherData* data) {
     // data.outvalue1 = &b;
     // float* fp = &vertex_buffer.position.x;
 
-    position.ywz = float3(1, 2, 3);
+    // position.ywz = float3(1, 2, 3);
+    vertex_buffer.position.yzx = float3(1, 2, 3);
 
     // &position.x;
 

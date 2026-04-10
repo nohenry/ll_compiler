@@ -1255,7 +1255,11 @@ DO_BIN_OP_ASSIGN_OP:
                 Code_Swizzle* swizzle = CODE_AS(op->left, Code_Swizzle);
                 result = spirv_generate_expression(cc, b, swizzle->vector, true);
                 SpvId vec_typeid = spirv_generate_type(cc, b, swizzle->vector->type);
-                r1 = emit_op_dst(SpvOpLoad, vec_typeid, result);
+                if (spirv_storage_class_needs_explicit(b->result_sc)) {
+                    r1 = emit_op_dst(SpvOpLoad, vec_typeid, result, SpvMemoryAccessAlignedMask, 16);
+                } else {
+                    r1 = emit_op_dst(SpvOpLoad, vec_typeid, result);
+                }
                 r2 = spirv_generate_expression(cc, b, op->right, false);
 
                 struct {
@@ -1279,7 +1283,11 @@ DO_BIN_OP_ASSIGN_OP:
                 }
 
                 r1 = emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, SpvOpVectorShuffle, vec_typeid, &operands.v1, 2 + swizzle->vector->type->columns);
-                emit_op(SpvOpStore, result, r1);
+                if (spirv_storage_class_needs_explicit(b->result_sc)) {
+                    emit_op(SpvOpStore, result, r1, SpvMemoryAccessAlignedMask, 16);
+                } else {
+                    emit_op(SpvOpStore, result, r1);
+                }
                 return result;
             }
 
