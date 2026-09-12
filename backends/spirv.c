@@ -367,10 +367,20 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
         Code_Variable_Declaration* var_decl = CODE_AS(stmt, Code_Variable_Declaration);
         // if (ll_symbol_not_used(var_decl->base.usage)) return;
         if (var_decl->storage_class & LL_STORAGE_CLASS_VARYING) {
-            LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_OUTPUT);
+            LL_Storage_Scope storage_scope = -1;
+            SpvStorageClass storage_class = -1;
+            if (cc->fragment) {
+                storage_scope = LL_STORAGE_SCOPE_INPUT;
+                storage_class = SpvStorageClassInput;
+            } else if (cc->vertex) {
+                storage_scope = LL_STORAGE_SCOPE_OUTPUT;
+                storage_class = SpvStorageClassOutput;
+            }
+
+            LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, storage_scope);
             SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
 
-            SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
+            SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, storage_class);
             emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, b->output_variable_ids.count);
 
             if (var_decl->storage_class & LL_STORAGE_CLASS_FLAT) {
@@ -381,7 +391,12 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
             }
 
             var_decl->ir_index = output_id;
-            oc_array_append(&cc->arena, &b->output_variable_ids, output_id);
+
+            if (cc->fragment) {
+                oc_array_append(&cc->arena, &b->input_variable_ids, output_id);
+            } else if (cc->vertex) {
+                oc_array_append(&cc->arena, &b->output_variable_ids, output_id);
+            }
 
             return;
         }
@@ -1086,11 +1101,7 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                 if (!lvalue) {
                     result = emit_op_dst(SpvOpLoad, b->frag_color_typeid, result);
                 }
-            } else if (string_eql(ident->str, lit("fragment_input"))) {
-                oc_assert(!lvalue);
-                result = b->index_index;
-                result = emit_op_dst(SpvOpLoad, typeid, result);
-            } else oc_assert(false);
+            } oc_assert(false);
         } else oc_assert(false);
     } break;
 

@@ -1114,7 +1114,15 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
             return_type = typer->ty_void;
         }
 
+        if (is_main) {
+            LL_Type* base = ll_get_base_type(return_type);
+            if (base != typer->ty_void) {
+                LL_Token_Info_Range ti_range = ast_compute_token_info_range(cc, cc->lexer, fn_decl->base.type);
 
+                ll_typer_report_error(((LL_Error){ .highlight_start = ti_range.start, .highlight_end = ti_range.end }), "Main function cannot have return type");
+                ll_typer_report_error_done(cc, typer);
+            }
+        }
 
         LL_Type* fn_type = ll_typer_get_fn_type(cc, typer, return_type, types, fn_decl->parameters.count, did_variadic);
         (*stmt)->type = fn_type;
