@@ -273,7 +273,7 @@ void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node) {
     // hash_map_put(&cc->arena, &typer->current_scope->declarations, keyword, (Code_Declaration*)scope);
 
     #define INSERT_BUILTIN_TYPE(ty, keyword, ...) do {                \
-        if (!typer->ty) typer->ty = create_type(((LL_Type) { .rows = 1, .columns = 1, __VA_ARGS__ }));                      \
+        if (!typer->ty) typer->ty = create_type(((LL_Type) { .rows = 1, .columns = 1, .valid_c_api = true, __VA_ARGS__ }));                      \
         Code* scope = CREATE_NODE(CODE_KIND_TYPENAME, ((Code_Declaration) { .ident = create_ident(cc, keyword), .declared_type = typer->ty })); \
         hash_map_put(&cc->arena, &typer->current_scope->declarations, keyword, (Code_Declaration*)scope); \
     } while (0)
@@ -282,7 +282,7 @@ void ll_typer_prerun(Compiler_Context* cc, LL_Typer* typer, Code* node) {
         hash_map_put(&cc->arena, &typer->current_scope->declarations, keyword, (Code_Declaration*)scope); \
     } while (0)
     #define INSERT_ANY_TYPE(ty, ...) do {                \
-        if (!typer->ty) typer->ty = create_type(((LL_Type) { .rows = 1, .columns = 1,  __VA_ARGS__ }));                      \
+        if (!typer->ty) typer->ty = create_type(((LL_Type) { .rows = 1, .columns = 1, .valid_c_api = true, __VA_ARGS__ }));                      \
     } while (0)
 
     INSERT_BUILTIN_TYPE(ty_void, LL_KEYWORD_VOID, .kind = LL_TYPE_VOID);
@@ -457,7 +457,7 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
     ptr_type.base.kind = LL_TYPE_POINTER;
     ptr_type.element_type = element_type;
     ptr_type.storage_scope = LL_STORAGE_SCOPE_FUNCTION;
-
+    ptr_type.base.valid_c_api = false;
 
     LL_Type* res;
     LL_Type** t = MAP_GET(typer->interned_types, (LL_Type*)&ptr_type, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
@@ -478,6 +478,7 @@ LL_Type* ll_typer_get_ptr_type_with_storage_class(Compiler_Context* cc, LL_Typer
     ptr_type.base.kind = LL_TYPE_POINTER;
     ptr_type.element_type = element_type;
     ptr_type.storage_scope = storage_scope;
+    ptr_type.base.valid_c_api = storage_scope == LL_STORAGE_SCOPE_EXTERNAL;
 
 
     LL_Type* res;
@@ -517,6 +518,7 @@ LL_Type* ll_typer_get_slice_type(Compiler_Context* cc, LL_Typer* typer, LL_Type*
     LL_Type_Slice slice_type = { 0 };
     slice_type.base.kind = LL_TYPE_SLICE;
     slice_type.element_type = element_type;
+    slice_type.base.valid_c_api = false; // TODO: is there a way we can make the c api valid?
 
     LL_Type* res;
     LL_Type** t = MAP_GET(typer->interned_types, (LL_Type*)&slice_type, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
@@ -538,6 +540,7 @@ LL_Type* ll_typer_get_fn_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* re
     fn_type.parameter_count = parameter_count;
     fn_type.parameters = parameter_types;
     fn_type.is_variadic = is_variadic;
+    fn_type.base.valid_c_api = false; // Can't pass function
 
     LL_Type* res;
     LL_Type** t = MAP_GET(typer->interned_types, (LL_Type*)&fn_type, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
@@ -571,6 +574,10 @@ LL_Type* ll_typer_get_struct_type(Compiler_Context* cc, LL_Typer* typer, LL_Type
 
         // struct_type.offsets = oc_arena_dup(&cc->arena, struct_type.offsets, sizeof(*struct_type.offsets) * struct_type.field_count);
         res = oc_arena_dup(&cc->arena, &struct_type, sizeof(struct_type));
+        res->valid_c_api = true;
+        for (size_t i = 0; i < field_count; ++i) {
+            if (!field_types[i]->valid_c_api) res->valid_c_api = false;
+        }
         MAP_PUT(typer->interned_types, res, res, &cc->arena, MAP_DEFAULT_HASH_FN, MAP_DEFAULT_EQL_FN, MAP_DEFAULT_SEED);
     }
 
@@ -581,6 +588,8 @@ LL_Type* ll_typer_get_vector_type(Compiler_Context* cc, LL_Typer* typer, LL_Type
     LL_Type new_type = *base_type;
     new_type.rows = rows;
     new_type.columns = columns;
+    new_type.valid_c_api = true;
+    assert(base_type->valid_c_api);
     if (ll_type_is_vector_or_matrix(&new_type)) {
         new_type.base_type = base_type;
     } else {
@@ -3589,15 +3598,24 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
         Code_Type_Pointer* ptr = CODE_AS(typename, Code_Type_Pointer);
         result = ll_typer_get_type_from_typename(cc, typer, ptr->element, can_continue);
         if (!result) return NULL;
+
+        if (ptr->storage_scope == LL_STORAGE_SCOPE_EXTERNAL) {
+            if (!result->valid_c_api) {
+                LL_Token_Info_Range ti_range = ast_compute_token_info_range(cc, cc->lexer, (Code*)ptr);
+                ll_typer_report_error(((LL_Error){ .highlight_start = ti_range.start, .highlight_end = ti_range.end }), "External pointer requires base type to be C API compatible");
+                LL_Type* base = ll_get_base_type(result);
+                if (base->kind == LL_TYPE_STRUCT) {
+                    ll_typer_report_error_no_src("Type {} is not C API compatible, it may have fields that are not C API compatible\n", result);
+                } else {
+                    ll_typer_report_error_no_src("Type {} is not C API compatible\n", result);
+                }
+                ll_typer_report_error_done(cc, typer);
+            }
+        }
         result = ll_typer_get_ptr_type_with_storage_class(cc, typer, result, ptr->storage_scope);
+
         break;
     }
-    // case CODE_KIND_TYPE_REFERENCE: {
-    //     result = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Type_Pointer)->element, can_continue);
-    //     if (!result) return NULL;
-    //     result = ll_typer_get_ptr_type_with_storage_class(cc, typer, result, SpvStorageClassFunction);
-    //     break;
-    // }
     case CODE_KIND_INDEX: {
         oc_assert(CODE_AS(typename, Code_Slice)->stop == NULL);
         LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Slice)->ptr, can_continue);

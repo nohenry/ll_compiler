@@ -92,6 +92,7 @@ typedef struct ll_type {
     struct ll_type* base_type;
     uint8_t rows, columns;
     uint32_t spirv_type, spirv_type_c_abi;
+    bool valid_c_api;
 } LL_Type;
 
 typedef struct {
