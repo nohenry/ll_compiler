@@ -49,6 +49,7 @@ typedef enum {
     CODE_KIND_INDEX,
     CODE_KIND_SLICE,
     CODE_KIND_CAST,
+    CODE_KIND_VARYING_BLOCK,
     CODE_KIND_GENERIC,
     CODE_KIND_TYPE_POINTER,
 
@@ -69,6 +70,10 @@ typedef enum {
     LL_STORAGE_CLASS_CONST  = (1 << 4),
     LL_STORAGE_CLASS_POLYMORPHIC = (1 << 5),
     LL_STORAGE_CLASS_VARIADIC = (1 << 6),
+
+    LL_STORAGE_CLASS_VARYING = (1 << 7),
+    LL_STORAGE_CLASS_FLAT = (1 << 8),
+    LL_STORAGE_CLASS_NOPERSPECTIVE = (1 << 9),
 } LL_Storage_Class;
 
 // typedef enum {
@@ -309,6 +314,11 @@ typedef struct {
 } Code_Cast;
 
 typedef struct {
+    Code_Declaration base;
+    Code_Scope* block;
+} Code_Varying_Block;
+
+typedef struct {
     Code base;
     Code_Ident* ident;
 } Code_Generic;
@@ -332,6 +342,8 @@ typedef struct {
 typedef struct {
     Code base;
     Code* vector;
+    Code_Operation* original_dot;
+    LL_Token_Info components_token;
     // if a value is positive, it's a component selector in vector.
     // if a value is negative, it is that value negated WITH 1's COMPLEMENT.
     // see macros below

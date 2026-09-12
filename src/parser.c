@@ -100,6 +100,7 @@ static inline void insert_into_block(Compiler_Context* cc, Code_Scope* block, Co
     case CODE_KIND_VARIABLE_DECLARATION:
     case CODE_KIND_FUNCTION_DECLARATION:
     case CODE_KIND_STRUCT:
+    case CODE_KIND_VARYING_BLOCK:
         break;
     default:
         oc_array_append(&cc->arena, &block->statements, stmt);
@@ -161,6 +162,10 @@ START_SWITCH:
                     storage_class |= LL_STORAGE_CLASS_EXTERN;
                 } else if (token.str.ptr == LL_KEYWORD_NATIVE.ptr) {
                     storage_class |= LL_STORAGE_CLASS_NATIVE;
+                } else if (token.str.ptr == LL_KEYWORD_FLAT.ptr) {
+                    storage_class |= LL_STORAGE_CLASS_FLAT;
+                } else if (token.str.ptr == LL_KEYWORD_NOPERSPECTIVE.ptr) {
+                    storage_class |= LL_STORAGE_CLASS_NOPERSPECTIVE;
                 } else if (token.str.ptr == LL_KEYWORD_CONST.ptr) {
                     LL_Token_Info kw = TOKEN_INFO(token);
                     CONSUME();
@@ -193,9 +198,14 @@ START_SWITCH:
         default:
 HANDLE_IDENT:
             PEEK(&token);
-            if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_STRUCT.ptr) {
-                result = parser_parse_struct(cc, parser);
-                return result;
+            if (token.kind == LL_TOKEN_KIND_IDENT) {
+                if (token.str.ptr == LL_KEYWORD_STRUCT.ptr) {
+                    result = parser_parse_struct(cc, parser);
+                    return result;
+                } else if (token.str.ptr == LL_KEYWORD_VARYING.ptr) {
+                    result = parser_parse_varying_block(cc, parser);
+                    return result;
+                }
             }
 
             result = parser_parse_expression(cc, parser, NULL, 0, true);
@@ -233,25 +243,45 @@ Code_Scope* parser_parse_block(Compiler_Context* cc, LL_Parser* parser, Code_Dec
         EXPECT('{', &token);
         block->c_open = TOKEN_INFO(token);
     } else {
-        CONSUME();
+        EXPECT('{', &token);
         block->c_open = TOKEN_INFO(token);
     }
-
-    PEEK(&token);
 
     block->parent_scope = parser->current_scope;
     parser->current_scope = block;
     uint32 last_ordering = parser->block_ordering;
     parser->block_ordering = 0;
-    while (token.kind != '}') {
+    while (PEEK(&token) && token.kind != '}') {
         Code* stmt = parser_parse_statement(cc, parser);
         insert_into_block(cc, block, stmt);
-        PEEK(&token);
     }
     parser->block_ordering = last_ordering;
     parser->current_scope = block->parent_scope;
 
-    CONSUME();
+    EXPECT('}', &token);
+    block->c_close = TOKEN_INFO(token);
+    return block;
+}
+
+Code_Scope* parser_parse_transient_block(Compiler_Context* cc, LL_Parser* parser, Code_Declaration* decl, uint32 block_flags) {
+    LL_Token token;
+	Code* block_result = CREATE_NODE(CODE_KIND_BLOCK, ((Code_Scope){ .base.kind = CODE_KIND_BLOCK, .decl = decl, .flags = block_flags }));
+    Code_Scope* block = (Code_Scope*)block_result;
+
+    EXPECT('{', &token);
+    block->c_open = TOKEN_INFO(token);
+
+    block->parent_scope = parser->current_scope;
+    Code_Scope* old_transient = parser->current_transient_scope;
+    parser->current_transient_scope = block;
+    while (PEEK(&token) && token.kind != '}') {
+        Code* stmt = parser_parse_statement(cc, parser);
+        insert_into_block(cc, parser->current_scope, stmt);
+        insert_into_block(cc, block, stmt);
+    }
+    parser->current_transient_scope = old_transient;
+
+    EXPECT('}', &token);
     block->c_close = TOKEN_INFO(token);
     return block;
 }
@@ -304,6 +334,19 @@ Code_Variable_Declaration parser_parse_parameter(Compiler_Context* cc, LL_Parser
         .initializer = init,
         .storage_class = flags,
     };
+}
+
+Code* parser_parse_varying_block(Compiler_Context* cc, LL_Parser* parser) {
+    LL_Token token;
+    PEEK(&token);
+    LL_Token_Info varying_kw = TOKEN_INFO(token);
+    CONSUME(); // struct kw
+
+    Code* result = CREATE_NODE(CODE_KIND_VARYING_BLOCK, ((Code_Varying_Block){ .base.base.token_info = varying_kw }));
+    Code_Scope* block = parser_parse_transient_block(cc, parser, CODE_AS(result, Code_Declaration), CODE_SCOPE_FLAG_DECLARATIVE);
+    CODE_AS(result, Code_Varying_Block)->block = block;
+
+    return result;
 }
 
 Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser) {
@@ -439,6 +482,9 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
             // actually_unqueue(cc, STAGE_TYPECHECK, body_or_init->queued);
         }
     } else {
+        if (parser->current_transient_scope != NULL && parser->current_transient_scope->decl->base.kind == CODE_KIND_VARYING_BLOCK) {
+            storage_class |= LL_STORAGE_CLASS_VARYING;
+        }
 		result = CREATE_NODE(CODE_KIND_VARIABLE_DECLARATION, ((Code_Variable_Declaration){
             .base.base.token_info = eql,
             .base.type = type,
@@ -455,17 +501,21 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
                 oc_array_append(&cc->arena, &parser->current_function->all_local_variables, (Code_Variable_Declaration*)result);
             }
 		} else {
-            oc_array_append(&cc->arena, &parser->current_scope->statements, result);
+            // oc_array_append(&cc->arena, &parser->current_scope->statements, result);
             LL_Queued* queued = create_queued(cc, parser->current_function, parser->current_scope, result);
             actually_queue(cc, STAGE_TYPECHECK, queued);
 
-            if (parser->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
-                CODE_AS(result, Code_Variable_Declaration)->ordered_index = parser->block_ordering++; // need to maintain ordering for later
+            if (parser->current_scope->decl) {
+                if (parser->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
+                    CODE_AS(result, Code_Variable_Declaration)->ordered_index = parser->block_ordering++; // need to maintain ordering for later
 
-                // struct depends on its fields
-                LL_Queued* struct_queued = parser->current_scope->decl->base.queued;
-                depend(struct_queued, queued, STAGE_FLAG_TYPECHECK);
-                depend(struct_queued, queued, STAGE_FLAG_IR);
+                    // struct depends on its fields
+                    LL_Queued* struct_queued = parser->current_scope->decl->base.queued;
+                    depend(struct_queued, queued, STAGE_FLAG_TYPECHECK);
+                    depend(struct_queued, queued, STAGE_FLAG_IR);
+                } else {
+                    oc_assert(false);
+                }
             }
         }
     }
@@ -631,6 +681,9 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                 return left;
             } else if (token.str.ptr == LL_KEYWORD_STRUCT.ptr) {
                 left = parser_parse_struct(cc, parser);
+                return left;
+            } else if (token.str.ptr == LL_KEYWORD_VARYING.ptr) {
+                left = parser_parse_varying_block(cc, parser);
                 return left;
             }
             // fallthrough
@@ -1238,6 +1291,7 @@ void print_node_value(Code* node, Oc_Writer* w) {
         case CODE_KIND_STRUCT:
             print_node_value(&CODE_AS(node, Code_Struct)->base.ident->base, w);
             break;
+        case CODE_KIND_VARYING_BLOCK: break;
         case CODE_KIND_TYPE_POINTER: break;
         case CODE_KIND_TYPENAME:
             wprint(w, "{} ", CODE_AS(node, Code_Declaration)->ident->str);
@@ -1377,6 +1431,10 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
 
         case CODE_KIND_STRUCT:
             print_node((Code*)CODE_AS(node, Code_Struct)->block, indent + 1, w);
+            break;
+
+        case CODE_KIND_VARYING_BLOCK:
+            print_node((Code*)CODE_AS(node, Code_Varying_Block)->block, indent + 1, w);
             break;
 
         case CODE_KIND_GENERIC:
@@ -1579,6 +1637,14 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
             .base.ident = (Code_Ident*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Struct)->base.ident, params),
             .base.within_scope = params.current_scope,
             .block = (Code_Scope*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Struct)->block, params),
+        }));
+    } break;
+
+    case CODE_KIND_VARYING_BLOCK: {
+        result = CREATE_NODE(node->kind, ((Code_Varying_Block){
+            .base.base.token_info = node->token_info,
+            .base.within_scope = params.current_scope,
+            .block = (Code_Scope*)ast_clone_node_deep(cc, (Code*)CODE_AS(node, Code_Varying_Block)->block, params),
         }));
     } break;
 
@@ -1849,6 +1915,11 @@ LL_Range ast_compute_range_impl(Compiler_Context* cc, LL_Lexer* lexer, Code* nod
             ast_compute_range_end((Code*)CODE_AS(node, Code_Struct)->block);
             break;
 
+        case CODE_KIND_VARYING_BLOCK:
+            result = ll_range_from_token_info_start_only(cc, lexer, node->token_info);
+            ast_compute_range_end((Code*)CODE_AS(node, Code_Varying_Block)->block);
+            break;
+
         case CODE_KIND_GENERIC:
             ast_compute_range_start((Code*)CODE_AS(node, Code_Generic)->ident);
             ast_compute_range_end((Code*)CODE_AS(node, Code_Generic)->ident);
@@ -2036,6 +2107,11 @@ LL_Token_Info_Range ast_compute_token_info_range_impl(Compiler_Context* cc, LL_L
             ast_compute_range_end((Code*)CODE_AS(node, Code_Struct)->block);
             break;
 
+        case CODE_KIND_VARYING_BLOCK:
+            result.start = node->token_info;
+            ast_compute_range_end((Code*)CODE_AS(node, Code_Varying_Block)->block);
+            break;
+
         case CODE_KIND_GENERIC:
             ast_compute_range_start((Code*)CODE_AS(node, Code_Generic)->ident);
             ast_compute_range_end((Code*)CODE_AS(node, Code_Generic)->ident);
@@ -2055,8 +2131,7 @@ LL_Token_Info_Range ast_compute_token_info_range_impl(Compiler_Context* cc, LL_L
             break;
 
         case CODE_KIND_SWIZZLE:
-            oc_assert(false && "need to get in token info some how");
-            // print_node(CODE_AS(node, Code_Swizzle)->vector, indent + 1, w);
+            return ast_compute_token_info_range_impl(cc, lexer, (Code*)CODE_AS(node, Code_Swizzle)->original_dot, 0);
             break;
         case COUNT_OF_CODE_KIND:
             oc_assert(false);

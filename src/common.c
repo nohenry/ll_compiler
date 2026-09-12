@@ -137,6 +137,9 @@ string LL_KEYWORD_STRING;
 string LL_KEYWORD_VOID;
 string LL_KEYWORD_CHAR;
 string LL_KEYWORD_INTERNAL;
+string LL_KEYWORD_VARYING;
+string LL_KEYWORD_FLAT;
+string LL_KEYWORD_NOPERSPECTIVE;
 
 Compiler_Context ll_compiler_context_create() {
     Compiler_Context result = { 0 };
@@ -185,6 +188,9 @@ Compiler_Context ll_compiler_context_create() {
     LL_KEYWORD_VOID = ll_intern_string(&result, lit("void"));
     LL_KEYWORD_CHAR = ll_intern_string(&result, lit("char"));
     LL_KEYWORD_INTERNAL = ll_intern_string(&result, lit("internal"));
+    LL_KEYWORD_VARYING = ll_intern_string(&result, lit("varying"));
+    LL_KEYWORD_FLAT = ll_intern_string(&result, lit("flat"));
+    LL_KEYWORD_NOPERSPECTIVE = ll_intern_string(&result, lit("noperspective"));
 
     return result;
 }

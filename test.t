@@ -151,7 +151,7 @@ struct StructWithPtr {
 
 struct Vertex {
     float3 position;
-    int* ptr;
+    // int* ptr;
 }
 
 struct OtherData {
@@ -169,12 +169,13 @@ float other_function(MyData data) {
     return *data.input;
 }
 
-// varying {
-//     flat 
-// }
+varying {
+    flat int varying_a;
+}
 
 float4 main(Vertex* vertex_buffer) {
     float4 position = vertex_buffer[#vertex_index].position.xyz1;
+    varying_a = 1230;
     // float a = position.x;
     // float b;
     // MyData data1;

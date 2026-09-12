@@ -31,7 +31,7 @@
                 },
                 {
                     "name": "storage.modifier.tlang",
-                    "match": "\\b(extern|native|const)\\b"
+                    "match": "\\b(extern|native|const|internal|flat|noperspective)\\b"
                 },
                 {
                     "name": "storage.type.built-in.primitive.tlang",
@@ -39,7 +39,7 @@
                 },
                 {
                     "name": "keyword.tlang",
-                    "match": "\\b(struct|union|enum|using|true|false|operator|null|inline|cast|macro|let|sizeof)\\b"
+                    "match": "\\b(struct|union|enum|using|true|false|operator|null|inline|cast|macro|let|sizeof|varying)\\b"
                 },
                 {
                     "name": "keyword.tlang",

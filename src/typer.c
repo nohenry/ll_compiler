@@ -833,8 +833,8 @@ bool ll_typer_handle_block(Compiler_Context* cc, LL_Typer* typer, LL_Type* expec
                 }
             }
 
-
-            ll_typer_report_error(((LL_Error){ .main_token = stmt->token_info }), "Invalid statement in declarative scope.");
+            LL_Token_Info_Range range = ast_compute_token_info_range(cc, cc->lexer, stmt);
+            ll_typer_report_error(((LL_Error){ .highlight_start = range.start, .highlight_end = range.end }), "Invalid statement in declarative scope.");
             ll_typer_report_error_done(cc, typer);
         }
     } else {
@@ -947,6 +947,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
             }
         }
 
+        bool is_global = false;
         if (typer->current_scope && typer->current_scope->decl) {
             if (typer->current_scope->decl->base.kind == CODE_KIND_STRUCT) {
                 Code_Struct* strct = CODE_AS(typer->current_scope->decl, Code_Struct);
@@ -969,6 +970,28 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
                 // } else {
                 //     // oc_array_append(&cc->tmp_arena, typer->current_record_values, ((LL_Typer_Record_Value){ .has_init = false }));
                 // }
+            }
+        } else {
+            // @TODO: global variable? the condition for this seems a bit messy
+            is_global = true;
+        }
+
+        if (var_decl->storage_class & LL_STORAGE_CLASS_VARYING) {
+            if (!is_global) {
+                LL_Token_Info_Range tir = ast_compute_token_info_range(cc, cc->lexer, (Code*)var_decl);
+                ll_typer_report_error(((LL_Error){ .highlight_start = tir.start, .highlight_end = tir.end }), "Varying variables must be in the global scope");
+                ll_typer_report_error_done(cc, typer);
+            }
+        } else {
+            if (var_decl->storage_class & LL_STORAGE_CLASS_FLAT) {
+                LL_Token_Info_Range tir = ast_compute_token_info_range(cc, cc->lexer, (Code*)var_decl);
+                ll_typer_report_error(((LL_Error){ .highlight_start = tir.start, .highlight_end = tir.end }), "flat qualifier is only allowed on varyings");
+                ll_typer_report_error_done(cc, typer);
+            }
+            if (var_decl->storage_class & LL_STORAGE_CLASS_NOPERSPECTIVE) {
+                LL_Token_Info_Range tir = ast_compute_token_info_range(cc, cc->lexer, (Code*)var_decl);
+                ll_typer_report_error(((LL_Error){ .highlight_start = tir.start, .highlight_end = tir.end }), "noperspective qualifier is only allowed on varyings");
+                ll_typer_report_error_done(cc, typer);
             }
         }
 
@@ -1141,6 +1164,7 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
         strct->base.declared_type = oc_arena_dup(&cc->arena, &named_type, sizeof(named_type));
 
         LL_Type* actual_class_type = ll_typer_get_struct_type(cc, typer, strct->member_types.items, strct->member_types.count);
+        strct->base.declared_type->valid_c_api = actual_class_type->valid_c_api;
         ((LL_Type_Named*)strct->base.declared_type)->actual_type = actual_class_type;
 
         break;
@@ -1901,7 +1925,8 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
                 // vector swizzle
 
                 Code_Swizzle* swizzle_result = (Code_Swizzle*)CREATE_NODE(CODE_KIND_SWIZZLE, (Code_Swizzle){ .vector = opr->left });
-                swizzle_result->base.token_info = opr->right->token_info;
+                swizzle_result->base.token_info = opr->op;
+                swizzle_result->original_dot = opr;
 
                 if (opr->right->kind != CODE_KIND_IDENT) {
                     ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "vector swizzle/access should have identifier");

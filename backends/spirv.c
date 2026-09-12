@@ -6,10 +6,23 @@
 #undef FUNCTION
 #define FUNCTION(...) (&b->functions.items[(b->current_function, ## __VA_ARGS__)])
 
+typedef enum {
+    SPIRV_RELOCATION_VALUE,
+    SPIRV_RELOCATION_TYPE,
+} Spirv_Relocation_Kind;
+
+typedef struct {
+    uint32 dst_offset;
+    Spirv_Relocation_Kind kind;
+    Code_Declaration* decl;
+} Spirv_Relocation;
+
 typedef struct {
     Array(size_t, uint32_t) code;
     SpvId spv_id;
     bool function_did_return;
+
+    Array(size_t, Spirv_Relocation) relocations;
 } Spirv_Function;
 
 typedef struct {
@@ -135,6 +148,17 @@ inline bool spirv_storage_class_needs_explicit(SpvStorageClass sc) {
 #define emit_op_dst(op, typeid, ...)      emit_rev(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, (op), (typeid), ((uint32_t[]) { __VA_ARGS__ }), get_size_by_array(__VA_ARGS__))
 #define emit_op_dst_noarg(op, ...)      emit(cc, b, (typeof(b->code_header)*)&FUNCTION()->code, (op), ((uint32_t[]) { __VA_ARGS__ }), get_size_by_array(__VA_ARGS__))
 
+#define emit_relocation(dst_offset, decl, kind) do { if ((decl)->ir_index == SPIRV_INVALID_VARIABLE) emit_relocation_(cc, b, (dst_offset), &(decl)->base, (kind)); } while (0)
+static inline void emit_relocation_(Compiler_Context* cc, LL_Backend_Spirv* b, uint32 dst_offset, Code_Declaration* decl, Spirv_Relocation_Kind kind) {
+    oc_array_append(&cc->arena, &FUNCTION()->relocations, (Spirv_Relocation) {
+        .dst_offset = dst_offset,
+        .decl = decl,
+        .kind = kind,
+    });
+}
+
+#define get_relocation_offset_for_next_op(arg_offset) (FUNCTION()->code.count + 1 + (arg_offset))
+
 #define reserve_id() (b->next_result_id++)
 
 LL_Backend_Layout spirv_get_layout(LL_Type* ty);
@@ -212,34 +236,34 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
         Code_Scope* frag_type_scope;
         LL_Type* frag_type = ll_get_base_type_and_scope(cc->typer->fragment_input, &frag_type_scope);
 
-        if (frag_type->kind == LL_TYPE_STRUCT) {
-            LL_Type_Struct* struct_type = (LL_Type_Struct*)frag_type;
-            Code_Struct* decl = (Code_Struct*)frag_type_scope->decl;
-            oc_assert(decl->base.base.kind == CODE_KIND_STRUCT);
+        // if (frag_type->kind == LL_TYPE_STRUCT) {
+        //     LL_Type_Struct* struct_type = (LL_Type_Struct*)frag_type;
+        //     Code_Struct* decl = (Code_Struct*)frag_type_scope->decl;
+        //     oc_assert(decl->base.base.kind == CODE_KIND_STRUCT);
 
-            oc_array_resize(&cc->arena, &b->input_variable_ids, struct_type->field_count);
-            memset(b->input_variable_ids.items, 0, struct_type->field_count * sizeof(*b->input_variable_ids.items));
+        //     oc_array_resize(&cc->arena, &b->input_variable_ids, struct_type->field_count);
+        //     memset(b->input_variable_ids.items, 0, struct_type->field_count * sizeof(*b->input_variable_ids.items));
 
-            for (uint32_t i = 0; i < decl->block->statements.count; ++i) {
-                Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)decl->block->statements.items[i];
-                if (var_decl->base.base.kind != CODE_KIND_VARIABLE_DECLARATION) continue;
+        //     for (uint32_t i = 0; i < decl->block->statements.count; ++i) {
+        //         Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)decl->block->statements.items[i];
+        //         if (var_decl->base.base.kind != CODE_KIND_VARIABLE_DECLARATION) continue;
 
-                LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_INPUT);
-                SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+        //         LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_INPUT);
+        //         SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
 
-                SpvId input_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, LL_STORAGE_SCOPE_INPUT);
-                emit_annotation_op(SpvOpDecorate, input_id, SpvDecorationLocation, var_decl->ordered_index);
-                var_decl->ir_index = input_id;
-                b->input_variable_ids.items[var_decl->ordered_index] = input_id;
-            }
-        } else {
-            LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, frag_type, LL_STORAGE_SCOPE_INPUT);
-            SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+        //         SpvId input_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, LL_STORAGE_SCOPE_INPUT);
+        //         emit_annotation_op(SpvOpDecorate, input_id, SpvDecorationLocation, var_decl->ordered_index);
+        //         var_decl->ir_index = input_id;
+        //         b->input_variable_ids.items[var_decl->ordered_index] = input_id;
+        //     }
+        // } else {
+        //     LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, frag_type, LL_STORAGE_SCOPE_INPUT);
+        //     SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
 
-            SpvId input_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, LL_STORAGE_SCOPE_INPUT);
-            emit_annotation_op(SpvOpDecorate, input_id, SpvDecorationLocation, 0);
-            oc_array_append(&cc->arena, &b->output_variable_ids, input_id);
-        }
+        //     SpvId input_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, LL_STORAGE_SCOPE_INPUT);
+        //     emit_annotation_op(SpvOpDecorate, input_id, SpvDecorationLocation, 0);
+        //     oc_array_append(&cc->arena, &b->output_variable_ids, input_id);
+        // }
 
 
 
@@ -250,6 +274,21 @@ void spirv_init(Compiler_Context* cc, LL_Backend_Spirv* b) {
         b->frag_color_typeid = color_typeid;
         b->frag_color_index = emit_type_op_dst_rev(SpvOpVariable, color_ptr_typeid, SpvStorageClassOutput);
         emit_annotation_op(SpvOpDecorate, b->frag_color_index, SpvDecorationLocation, 0);
+    }
+}
+
+void spirv_fix_relocations(Compiler_Context* cc, LL_Backend_Spirv* b, Spirv_Function* function) {
+    for (size_t i = 0; i < function->relocations.count; ++i) {
+        Spirv_Relocation reloca = function->relocations.items[i];
+        switch (reloca.decl->base.kind) {
+        case CODE_KIND_VARIABLE_DECLARATION: {
+            function->code.items[reloca.dst_offset] = CODE_AS(reloca.decl, Code_Variable_Declaration)->ir_index;
+        } break;
+        case CODE_KIND_FUNCTION_DECLARATION:
+            function->code.items[reloca.dst_offset] = CODE_AS(reloca.decl, Code_Function_Declaration)->ir_index;
+            break;
+        default: break;
+        }
     }
 }
 
@@ -289,6 +328,7 @@ bool spirv_write_to_file(Compiler_Context* cc, LL_Backend_Spirv* b, char* filepa
     // @Note: startat 1 bc 0 is nil value
     for (size_t i = 1; i < b->functions.count; ++i) {
         Spirv_Function* fn = &b->functions.items[i];
+        spirv_fix_relocations(cc, b, fn);
         s = s && fwrite(fn->code.items, 1, fn->code.count * 4, fptr) == fn->code.count * 4;
     }
     
@@ -307,10 +347,11 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
         for (size_t i = 0; i < blk->declarations.capacity; ++i) {
             if (blk->declarations.entries[i].filled) {
                 Code_Declaration* decl = blk->declarations.entries[i]._value;
-                if (decl->base.kind == CODE_KIND_VARIABLE_DECLARATION) {
-                } else {
-                    spirv_generate_statement(cc, b, (Code*)blk->declarations.entries[i]._value);
-                }
+                spirv_generate_statement(cc, b, (Code*)decl);
+                // if (decl->base.kind == CODE_KIND_VARIABLE_DECLARATION) {
+                // } else {
+                //     spirv_generate_statement(cc, b, (Code*)blk->declarations.entries[i]._value);
+                // }
             }
         }
 
@@ -325,6 +366,25 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
     case CODE_KIND_VARIABLE_DECLARATION: {
         Code_Variable_Declaration* var_decl = CODE_AS(stmt, Code_Variable_Declaration);
         // if (ll_symbol_not_used(var_decl->base.usage)) return;
+        if (var_decl->storage_class & LL_STORAGE_CLASS_VARYING) {
+            LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_OUTPUT);
+            SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+
+            SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
+            emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, b->output_variable_ids.count);
+
+            if (var_decl->storage_class & LL_STORAGE_CLASS_FLAT) {
+                emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationFlat);
+            }
+            if (var_decl->storage_class & LL_STORAGE_CLASS_NOPERSPECTIVE) {
+                emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationNoPerspective);
+            }
+
+            var_decl->ir_index = output_id;
+            oc_array_append(&cc->arena, &b->output_variable_ids, output_id);
+
+            return;
+        }
         if (var_decl->base.within_scope->flags & CODE_SCOPE_FLAG_DECLARATIVE) return;
 
         if (var_decl->storage_class & LL_STORAGE_CLASS_EXTERN) break;
@@ -338,6 +398,8 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
         // #if 0
         if (var_decl->initializer) {
             SpvId init_id = spirv_generate_expression(cc, b, var_decl->initializer, false);
+            assert(init_id);
+            
             emit_op(SpvOpStore, var_decl->ir_index, init_id);
         }
         // #endif
@@ -389,48 +451,48 @@ void spirv_generate_statement(Compiler_Context* cc, LL_Backend_Spirv* b, Code* s
             SpvId parameter_ids[fn_decl->parameters.count];
 
             if (is_main) {
-                LL_Type* return_type = fn_decl->base.type->type;
-                Code_Scope* return_type_scope = NULL;
-                return_type = ll_get_base_type_and_scope(return_type, &return_type_scope);
+                // LL_Type* return_type = fn_decl->base.type->type;
+                // Code_Scope* return_type_scope = NULL;
+                // return_type = ll_get_base_type_and_scope(return_type, &return_type_scope);
 
-                if (return_type->kind == LL_TYPE_STRUCT) {
-                    LL_Type_Struct* struct_type = (LL_Type_Struct*)return_type;
-                    Code_Struct* decl = (Code_Struct*)return_type_scope->decl;
-                    oc_assert(decl->base.base.kind == CODE_KIND_STRUCT);
+                // if (return_type->kind == LL_TYPE_STRUCT) {
+                //     LL_Type_Struct* struct_type = (LL_Type_Struct*)return_type;
+                //     Code_Struct* decl = (Code_Struct*)return_type_scope->decl;
+                //     oc_assert(decl->base.base.kind == CODE_KIND_STRUCT);
 
-                    oc_array_resize(&cc->arena, &b->output_variable_ids, struct_type->field_count);
-                    memset(b->output_variable_ids.items, 0, struct_type->field_count * sizeof(*b->output_variable_ids.items));
+                //     oc_array_resize(&cc->arena, &b->output_variable_ids, struct_type->field_count);
+                //     memset(b->output_variable_ids.items, 0, struct_type->field_count * sizeof(*b->output_variable_ids.items));
 
-                    for (uint32_t i = 0; i < decl->block->statements.count; ++i) {
-                        Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)decl->block->statements.items[i];
-                        if (var_decl->base.base.kind != CODE_KIND_VARIABLE_DECLARATION) continue;
+                //     for (uint32_t i = 0; i < decl->block->statements.count; ++i) {
+                //         Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)decl->block->statements.items[i];
+                //         if (var_decl->base.base.kind != CODE_KIND_VARIABLE_DECLARATION) continue;
 
 
-                        // SpvId field_type_id = spirv_get_pointer_type(cc, b, var_decl->base.ident->base.type, SpvStorageClassOutput);
+                //         // SpvId field_type_id = spirv_get_pointer_type(cc, b, var_decl->base.ident->base.type, SpvStorageClassOutput);
 
-                        LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_OUTPUT);
-                        SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+                //         LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_OUTPUT);
+                //         SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
 
-                        SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
-                        emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, var_decl->ordered_index);
-                        var_decl->ir_index = output_id;
-                        b->output_variable_ids.items[var_decl->ordered_index] = output_id;
-                    }
+                //         SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
+                //         emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, var_decl->ordered_index);
+                //         var_decl->ir_index = output_id;
+                //         b->output_variable_ids.items[var_decl->ordered_index] = output_id;
+                //     }
 
-                    // LL_Type_Struct* struct_type = (LL_Type_Struct*)return_type;
-                    // for (size_t i = 0; i < struct_type->field_count; ++i) {
-                    //     SpvId field_type_id = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, struct_type->fields[i], SpvStorageClassOutput);
-                    //     SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
-                    //     emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, (uint32_t)i);
-                    // }
-                } else if (return_type->kind != LL_TYPE_VOID) {
-                    LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, return_type, LL_STORAGE_SCOPE_OUTPUT);
-                    SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+                //     // LL_Type_Struct* struct_type = (LL_Type_Struct*)return_type;
+                //     // for (size_t i = 0; i < struct_type->field_count; ++i) {
+                //     //     SpvId field_type_id = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, struct_type->fields[i], SpvStorageClassOutput);
+                //     //     SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
+                //     //     emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, (uint32_t)i);
+                //     // }
+                // } else if (return_type->kind != LL_TYPE_VOID) {
+                //     LL_Type* field_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, return_type, LL_STORAGE_SCOPE_OUTPUT);
+                //     SpvId field_type_id = spirv_generate_type_with_parameters(cc, b, field_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
 
-                    SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
-                    emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, 0);
-                    oc_array_append(&cc->arena, &b->output_variable_ids, output_id);
-                }
+                //     SpvId output_id = emit_type_op_dst_rev(SpvOpVariable, field_type_id, SpvStorageClassOutput);
+                //     emit_annotation_op(SpvOpDecorate, output_id, SpvDecorationLocation, 0);
+                //     oc_array_append(&cc->arena, &b->output_variable_ids, output_id);
+                // }
             }
 
             // Generate SpvOpParameters (needs to be before first block)
@@ -1062,10 +1124,26 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
 
         Code* decl = (Code*)ident->resolved_decl;
         switch (decl->kind) {
-        case CODE_KIND_VARIABLE_DECLARATION:
-            result = CODE_AS(decl, Code_Variable_Declaration)->ir_index;
+        case CODE_KIND_VARIABLE_DECLARATION: {
+            Code_Variable_Declaration* var_decl = CODE_AS(decl, Code_Variable_Declaration);
+            result = var_decl->ir_index;
             expr->spv.is_explicit = decl->spv.is_explicit;
-            break;
+            if (result == SPIRV_INVALID_VARIABLE) {
+                SpvId var_type_id = 0;
+                if (var_decl->storage_class & LL_STORAGE_CLASS_VARYING) {
+                    LL_Type* var_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_OUTPUT);
+                    bool is_invariant;
+                    var_type_id = spirv_generate_type_with_parameters(cc, b, var_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+                } else {
+                    LL_Type* var_type = ll_typer_get_ptr_type_with_storage_class(cc, cc->typer, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_FUNCTION);
+                    bool is_invariant;
+                    var_type_id = spirv_generate_type_with_parameters(cc, b, var_type, (Spirv_Type_Parameters) { .is_invariant = &is_invariant });
+                }
+
+                emit_relocation(get_relocation_offset_for_next_op(2), var_decl, SPIRV_RELOCATION_VALUE);
+                result = emit_op_dst(SpvOpCopyObject, var_type_id, result);
+            }
+        } break;
         case CODE_KIND_FUNCTION_DECLARATION:
             if (CODE_AS(decl, Code_Function_Declaration)->ir_index == 0) {
                 spirv_generate_statement_restore_state(cc, b, decl);
@@ -1814,31 +1892,31 @@ DO_BIN_OP_LOGICAL:
 
             bool is_main = string_eql(fn->base.ident->str, cc->main_fn);
             if (is_main) {
-                Code_Scope* scope;
-                LL_Type* base_type = ll_get_base_type_and_scope(fn->base.type->type, &scope);
+                // Code_Scope* scope;
+                // LL_Type* base_type = ll_get_base_type_and_scope(fn->base.type->type, &scope);
 
-                if (base_type->kind == LL_TYPE_STRUCT) {
-                    result = spirv_generate_expression(cc, b, cf->expr, true);
+                // if (base_type->kind == LL_TYPE_STRUCT) {
+                //     result = spirv_generate_expression(cc, b, cf->expr, true);
 
-                    Code_Struct* struct_decl = (Code_Struct*)scope->decl;
-                    oc_assert(struct_decl->base.base.kind == CODE_KIND_STRUCT);
+                //     Code_Struct* struct_decl = (Code_Struct*)scope->decl;
+                //     oc_assert(struct_decl->base.base.kind == CODE_KIND_STRUCT);
 
-                    for (uint32_t i = 0; i < struct_decl->block->statements.count; ++i) {
-                        Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)struct_decl->block->statements.items[i];
-                        if (var_decl->base.base.kind != CODE_KIND_VARIABLE_DECLARATION) continue;
+                //     for (uint32_t i = 0; i < struct_decl->block->statements.count; ++i) {
+                //         Code_Variable_Declaration* var_decl = (Code_Variable_Declaration*)struct_decl->block->statements.items[i];
+                //         if (var_decl->base.base.kind != CODE_KIND_VARIABLE_DECLARATION) continue;
 
-                        SpvId field_ptr_type_id = spirv_get_pointer_type(cc, b, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_FUNCTION);
-                        SpvId field_type_id = spirv_generate_type(cc, b, var_decl->base.ident->base.type);
-                        SpvId field_index = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &var_decl->ordered_index);
-                        SpvId field_id = emit_op_dst(SpvOpAccessChain, field_ptr_type_id, result, field_index);
-                            field_id = emit_op_dst(SpvOpLoad, field_type_id, field_id); // @TODO: support other ptr storage classes
-                        emit_op(SpvOpStore, var_decl->ir_index, field_id);
-                    }
-                } else {
-                    result = spirv_generate_expression(cc, b, cf->expr, false);
-                    oc_assert(b->output_variable_ids.count > 0);
-                    emit_op(SpvOpStore, b->output_variable_ids.items[0], result);
-                }
+                //         SpvId field_ptr_type_id = spirv_get_pointer_type(cc, b, var_decl->base.ident->base.type, LL_STORAGE_SCOPE_FUNCTION);
+                //         SpvId field_type_id = spirv_generate_type(cc, b, var_decl->base.ident->base.type);
+                //         SpvId field_index = spirv_generate_constant(cc, b, cc->typer->ty_uint32, &var_decl->ordered_index);
+                //         SpvId field_id = emit_op_dst(SpvOpAccessChain, field_ptr_type_id, result, field_index);
+                //             field_id = emit_op_dst(SpvOpLoad, field_type_id, field_id); // @TODO: support other ptr storage classes
+                //         emit_op(SpvOpStore, var_decl->ir_index, field_id);
+                //     }
+                // } else {
+                //     result = spirv_generate_expression(cc, b, cf->expr, false);
+                //     oc_assert(b->output_variable_ids.count > 0);
+                //     emit_op(SpvOpStore, b->output_variable_ids.items[0], result);
+                // }
 
                 emit_op(SpvOpReturn);
             } else {

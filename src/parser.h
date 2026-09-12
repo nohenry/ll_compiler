@@ -10,6 +10,7 @@ typedef struct ll_parser {
     Array(uint32, Code*) ops[COUNT_OF_CODE_KIND];
 
     Code_Scope* current_scope;
+    Code_Scope* current_transient_scope;
     Code_Function_Declaration* current_function;
 
     uint32 block_ordering;
@@ -24,6 +25,7 @@ Code* parser_parse_declaration(Compiler_Context* cc, LL_Parser* parser, Code* ty
 Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* left, int last_precedence, bool from_statement);
 Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_statement);
 Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser);
+Code* parser_parse_varying_block(Compiler_Context* cc, LL_Parser* parser);
 
 void print_node(Code* node, uint32_t indent, Oc_Writer* w);
 LL_Token_Info_Range ast_compute_token_info_range_impl(Compiler_Context* cc, LL_Lexer* lexer, Code* node, int bias);

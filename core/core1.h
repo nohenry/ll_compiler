@@ -393,7 +393,7 @@ typedef struct {
 		(array)->count += (plus_count);                                                                 \
 	} while (0)
 
-#define oc_array_append(arena, array, value)                                                     \
+#define oc_array_append(arena, array, ...)                                                     \
     do {                                                                                         \
         if ((array)->count + 1 > (array)->capacity) {                                            \
             uword new_cap = (array)->capacity ? (array)->capacity * 2 : 16;                      \
@@ -401,7 +401,7 @@ typedef struct {
             (array)->items = new_ptr;                                                            \
             (array)->capacity = new_cap;                                                         \
         }                                                                                        \
-        (array)->items[(array)->count++] = value;                                                \
+        (array)->items[(array)->count++] = ( __VA_ARGS__ );                                                \
     } while (0)
 #define oc_array_append_many(arena, array, ptr, len)                                             \
     do {                                                                                         \
