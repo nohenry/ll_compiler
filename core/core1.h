@@ -512,6 +512,36 @@ void _oc_vprintw(void *writer, const char* fmt, va_list args, char* ansi_base, i
 _Noreturn void oc_exit(int status);
 void oc_hex_dump(void* data, int count, int indent, int mark_mod);
 
+static inline bool char_is_digit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+static inline bool char_is_alpha(char c) {
+    c |= 0x20;
+    return c >= 'a' && c <= 'z';
+}
+
+// counts visible number or characters. ansi escape codes are not visible for example
+static inline uword string_visible_char_count(string s) {
+    uword count = 0;
+    for (uword i = 0; i < s.len;) {
+        if (s.ptr[i] == '\x1b') {
+            i++;
+            if (s.ptr[i] == '[') {
+                i++;
+                while (!char_is_alpha(s.ptr[i++]));
+                i++;
+            } else {
+                while (!char_is_digit(s.ptr[i++]));
+            }
+        } else {
+            count++;
+            i++;
+        }
+    }
+    return count;
+}
+
 // start is clamped to zero if negative
 // end < 0 means to use the end of s
 static inline string string_slice(string s, sword start, sword end) {

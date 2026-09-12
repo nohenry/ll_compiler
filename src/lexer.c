@@ -599,3 +599,24 @@ int64_t lexer_get_token_length(Compiler_Context *cc, LL_Lexer* lexer, LL_Token_I
 
     return size;
 }
+
+LL_Token lexer_get_token_at_position(Compiler_Context *cc, LL_Lexer* lexer, uword position) {
+    size_t old_pos = lexer->pos;
+    lexer->pos = position;
+
+    lexer->has_peeked_token = false;
+    LL_Token otoken;
+    lexer_next_token(cc, lexer, &otoken);
+
+    lexer->pos = old_pos;
+
+    return otoken;
+}
+
+LL_Token_Info lexer_get_token_info_at_position(Compiler_Context *cc, LL_Lexer* lexer, uword position) {
+    LL_Token token = lexer_get_token_at_position(cc, lexer, position);
+    return (LL_Token_Info) {
+        .kind = token.kind,
+        .position = token.position,
+    };
+}

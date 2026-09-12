@@ -26,6 +26,11 @@ Code* parser_parse_primary(Compiler_Context* cc, LL_Parser* parser, bool from_st
 Code* parser_parse_struct(Compiler_Context* cc, LL_Parser* parser);
 
 void print_node(Code* node, uint32_t indent, Oc_Writer* w);
+LL_Token_Info_Range ast_compute_token_info_range_impl(Compiler_Context* cc, LL_Lexer* lexer, Code* node, int bias);
+static inline LL_Token_Info_Range ast_compute_token_info_range(Compiler_Context* cc, LL_Lexer* lexer, Code* node) {
+    return ast_compute_token_info_range_impl(cc, lexer, node, 0);
+}
+
 
 #define TC_ALIGNMENT (64)
 

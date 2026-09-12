@@ -83,6 +83,7 @@ int main(int argc, char** argv) {
     cc.typer = &typer;
     cc.eval_context = &eval_context;
     cc.bir = backend_ir.backend;
+    cc.main_fn = lit("main");
 
     LL_Parser parser = parser_create_from_file(&cc, filename);
     cc.lexer = &parser.lexer;

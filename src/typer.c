@@ -31,7 +31,7 @@ void ll_typer_print_error_line(Compiler_Context* cc, LL_Typer* typer, LL_Line_In
     Oc_String_Builder sb;
     oc_sb_init(&sb, &cc->arena);
     wprint(&sb.writer, " {} | ", line_info.line);
-    size_t line_offset = sb.count;
+    size_t line_offset = string_visible_char_count(oc_sb_to_string(&sb));
     eprint("{}", oc_sb_to_string(&sb));
 
     bool do_color = oc_fd_supports_color(OC_FD_ERROR);
@@ -106,11 +106,12 @@ void ll_typer_report_error_raw(Compiler_Context* cc, LL_Typer* typer, LL_Error e
     eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
+        int64_t end_token_length = lexer_get_token_length(cc, cc->lexer, error.highlight_end);
         if (line_info.line == end_line_info.line) {
-            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, true);
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + end_token_length }, false, true);
         } else {
             ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, line_info.end_pos }, true, true);
-            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, true);
+            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + end_token_length }, false, true);
         }
     } else if (error.main_token.kind) {
         int64_t token_length = lexer_get_token_length(cc, cc->lexer, error.main_token);
@@ -151,11 +152,12 @@ void ll_typer_report_error_note_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
     eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
+        int64_t end_token_length = lexer_get_token_length(cc, cc->lexer, error.highlight_end);
         if (line_info.line == end_line_info.line) {
-            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, true);
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + end_token_length }, false, true);
         } else {
             ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, line_info.end_pos }, true, true);
-            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, true);
+            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + end_token_length }, false, true);
         }
     } else if (error.main_token.kind) {
         int64_t token_length = lexer_get_token_length(cc, cc->lexer, error.main_token);
@@ -202,11 +204,12 @@ void ll_typer_report_error_info_raw(Compiler_Context* cc, LL_Typer* typer, LL_Er
     eprint("\n");
 
     if (error.highlight_start.kind || error.highlight_end.kind) {
+        int64_t end_token_length = lexer_get_token_length(cc, cc->lexer, error.highlight_end);
         if (line_info.line == end_line_info.line) {
-            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, false);
+            ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, error.highlight_end.position + end_token_length }, false, false);
         } else {
             ll_typer_print_error_line(cc, typer, line_info, error.highlight_start, (LL_Token_Info){ 1, line_info.end_pos }, true, false);
-            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + 1 }, false, false);
+            ll_typer_print_error_line(cc, typer, end_line_info, (LL_Token_Info){ 1, end_line_info.start_pos }, (LL_Token_Info){ 1, error.highlight_end.position + end_token_length }, false, false);
         }
     } else if (error.main_token.kind) {
         int64_t token_length = lexer_get_token_length(cc, cc->lexer, error.main_token);
@@ -351,11 +354,11 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
         LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
         struct {
             LL_Type_Kind kind;
-            uint32_t spirv_storage_class;
+            LL_Storage_Scope storage_scope;
             LL_Type* element;
         } type_hash = {
             .kind = type->kind,
-            .spirv_storage_class = ptr_type->spirv_storage_class,
+            .storage_scope = ptr_type->storage_scope,
             .element = ptr_type->element_type,
         };
         size_t hash = stbds_siphash_bytes(&type_hash, sizeof(type_hash), seed);
@@ -419,7 +422,7 @@ bool ll_type_eql(LL_Type* a, LL_Type* b) {
     case LL_TYPE_BOOL: return a->width == b->width && a->rows == b->rows && a->columns == b->columns && a->base_type == b->base_type;
     case LL_TYPE_POINTER: {
         LL_Type_Pointer *fa = (LL_Type_Pointer*)a, *fb = (LL_Type_Pointer*)b;
-        return fa->element_type == fb->element_type && fa->spirv_storage_class == fb->spirv_storage_class;
+        return fa->element_type == fb->element_type && fa->storage_scope == fb->storage_scope;
     }
     case LL_TYPE_FUNCTION: {
         LL_Type_Function *fa = (LL_Type_Function*)a, *fb = (LL_Type_Function*)b;
@@ -453,7 +456,7 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
     LL_Type_Pointer ptr_type = { 0 };
     ptr_type.base.kind = LL_TYPE_POINTER;
     ptr_type.element_type = element_type;
-    ptr_type.spirv_storage_class = 7 /* SpvStorageClassFunction */;
+    ptr_type.storage_scope = LL_STORAGE_SCOPE_FUNCTION;
 
 
     LL_Type* res;
@@ -469,11 +472,12 @@ LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* e
     return res;
 }
 
-LL_Type* ll_typer_get_ptr_type_with_storage_class(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type, uint32_t spirv_storage_class) {
+
+LL_Type* ll_typer_get_ptr_type_with_storage_class(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type, LL_Storage_Scope storage_scope) {
     LL_Type_Pointer ptr_type = { 0 };
     ptr_type.base.kind = LL_TYPE_POINTER;
     ptr_type.element_type = element_type;
-    ptr_type.spirv_storage_class = spirv_storage_class;
+    ptr_type.storage_scope = storage_scope;
 
 
     LL_Type* res;
@@ -972,6 +976,17 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
         bool did_variadic = false;
         bool did_default = false;
 
+        bool is_main = string_eql(fn_decl->base.ident->str, cc->main_fn);
+        if (is_main) {
+            if (fn_decl->parameters.count > 1) {
+                LL_Token_Info_Range ti_range_first = ast_compute_token_info_range(cc, cc->lexer, (Code*)&fn_decl->parameters.items[1]);
+                LL_Token_Info_Range ti_range_last = ast_compute_token_info_range(cc, cc->lexer, (Code*)&fn_decl->parameters.items[fn_decl->parameters.count - 1]);
+
+                ll_typer_report_error(((LL_Error){ .highlight_start = ti_range_first.start, .highlight_end = ti_range_last.end }), "Main function cannot have more than one parameter");
+                ll_typer_report_error_done(cc, typer);
+            }
+        }
+
         if (fn_decl->parameters.count) {
             types = alloca(sizeof(*types) * fn_decl->parameters.count);
             for (i = 0; i < fn_decl->parameters.count; ++i) {
@@ -1031,6 +1046,28 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
                     // LL_Scope_Simple* param_scope = create_scope_simple(LL_SCOPE_KIND_PARAMETER, parameter);
                     // param_scope->ident = parameter->ident;
                     // ll_typer_scope_put(cc, typer, (LL_Scope*)param_scope, false);
+                }
+            }
+
+            if (is_main) {
+                switch (types[0]->kind) {
+                case LL_TYPE_POINTER: {
+                    LL_Type_Pointer* ptr = (LL_Type_Pointer*)types[0];
+                    if (ptr->storage_scope != LL_STORAGE_SCOPE_EXTERNAL) {
+                        Code_Variable_Declaration* parameter = &fn_decl->parameters.items[0];
+                        LL_Token_Info_Range ti_range = ast_compute_token_info_range(cc, cc->lexer, (Code*)parameter);
+                        ll_typer_report_error(((LL_Error){ .highlight_start = ti_range.start, .highlight_end = ti_range.end }), "Pointer parameter must be external in main function");
+                        ll_typer_report_error_no_src("    parameter is declared with type {}", types[0]);
+                        ll_typer_report_error_done(cc, typer);
+                    }
+                } break;
+                default: {
+                    Code_Variable_Declaration* parameter = &fn_decl->parameters.items[0];
+                    LL_Token_Info_Range ti_range = ast_compute_token_info_range(cc, cc->lexer, (Code*)parameter);
+                    ll_typer_report_error(((LL_Error){ .highlight_start = ti_range.start, .highlight_end = ti_range.end }), "Main function parameter must be an external pointer type (for now)");
+                    ll_typer_report_error_no_src("    parameter is declared with type {}", types[0]);
+                    ll_typer_report_error_done(cc, typer);
+                } break;
                 }
             }
         } else types = NULL;
@@ -1700,35 +1737,36 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
         break;
     }
     case CODE_KIND_TYPE_POINTER: {
-        Code** element = &CODE_AS((*expr), Code_Type_Pointer)->element;
+        Code_Type_Pointer* ptr = CODE_AS((*expr), Code_Type_Pointer);
+        Code** element = &ptr->element;
         can_continue = ll_typer_type_expression(cc, typer, element, NULL, NULL);
         if (!can_continue) return can_continue;
         result = (*element)->type;
 
         if (!result) oc_todo("returned here before, not sure what to do");
         if ((*element)->has_const) {
-            result = ll_typer_get_ptr_type_with_storage_class(cc, typer, (*element)->const_value.as_type, SpvStorageClassPhysicalStorageBuffer);
+            result = ll_typer_get_ptr_type_with_storage_class(cc, typer, (*element)->const_value.as_type, ptr->storage_scope);
             (*expr)->has_const = 1;
             (*expr)->const_value.as_type = result;
 
             result = typer->ty_type;
         } else oc_todo("handle runtime");
     } break;
-    case CODE_KIND_TYPE_REFERENCE: {
-        Code** element = &CODE_AS((*expr), Code_Type_Pointer)->element;
-        can_continue = ll_typer_type_expression(cc, typer, element, NULL, NULL);
-        if (!can_continue) return can_continue;
-        result = (*element)->type;
+    // case CODE_KIND_TYPE_REFERENCE: {
+    //     Code** element = &CODE_AS((*expr), Code_Type_Pointer)->element;
+    //     can_continue = ll_typer_type_expression(cc, typer, element, NULL, NULL);
+    //     if (!can_continue) return can_continue;
+    //     result = (*element)->type;
 
-        if (!result) oc_todo("returned here before, not sure what to do");
-        if ((*element)->has_const) {
-            result = ll_typer_get_ptr_type_with_storage_class(cc, typer, (*element)->const_value.as_type, SpvStorageClassFunction);
-            (*expr)->has_const = 1;
-            (*expr)->const_value.as_type = result;
+    //     if (!result) oc_todo("returned here before, not sure what to do");
+    //     if ((*element)->has_const) {
+    //         result = ll_typer_get_ptr_type_with_storage_class(cc, typer, (*element)->const_value.as_type, SpvStorageClassFunction);
+    //         (*expr)->has_const = 1;
+    //         (*expr)->const_value.as_type = result;
 
-            result = typer->ty_type;
-        } else oc_todo("handle runtime");
-    } break;
+    //         result = typer->ty_type;
+    //     } else oc_todo("handle runtime");
+    // } break;
     case CODE_KIND_LITERAL_INT:
         (*expr)->has_const = 1u;
         (*expr)->const_value.as_i64 = (int64_t)CODE_AS((*expr), Code_Literal)->u64;
@@ -2028,7 +2066,7 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
 
                 if (opr->left->type->kind == LL_TYPE_POINTER) {
                     LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)opr->left->type;
-                    typer->result_sc = ptr_type->spirv_storage_class;
+                    typer->result_sc = ptr_type->storage_scope;
                 }
 
                 if (resolve_result) {
@@ -2410,6 +2448,11 @@ DO_NORMAL_ARITHMETIC_OP:
                 case '-':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 = opr->right->const_value.as_i64; break;
                 case '*':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 * opr->right->const_value.as_i64; break;
                 case '/':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 / opr->right->const_value.as_i64; break;
+                case '&':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 & opr->right->const_value.as_i64; break;
+                case '|':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 | opr->right->const_value.as_i64; break;
+                case '^':                   (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 ^ opr->right->const_value.as_i64; break;
+                case LL_TOKEN_KIND_LEFT_SHIFT:  (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 << opr->right->const_value.as_i64; break;
+                case LL_TOKEN_KIND_RIGHT_SHIFT: (*expr)->const_value.as_i64 = opr->left->const_value.as_i64 >> opr->right->const_value.as_i64; break;
                 case '>': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_i64 > opr->right->const_value.as_i64; break;
                 case '<': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_i64 < opr->right->const_value.as_i64; break;
 #pragma GCC diagnostic pop
@@ -2428,6 +2471,11 @@ DO_NORMAL_ARITHMETIC_OP:
                 case '-':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 = opr->right->const_value.as_u64; break;
                 case '*':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 * opr->right->const_value.as_u64; break;
                 case '/':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 / opr->right->const_value.as_u64; break;
+                case '&':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 & opr->right->const_value.as_u64; break;
+                case '|':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 | opr->right->const_value.as_u64; break;
+                case '^':                   (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 ^ opr->right->const_value.as_u64; break;
+                case LL_TOKEN_KIND_LEFT_SHIFT:  (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 << opr->right->const_value.as_u64; break;
+                case LL_TOKEN_KIND_RIGHT_SHIFT: (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 >> opr->right->const_value.as_u64; break;
                 case '>': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_u64 > opr->right->const_value.as_u64; break;
                 case '<': 					(*expr)->const_value.as_u64 = opr->left->const_value.as_u64 < opr->right->const_value.as_u64; break;
 #pragma GCC diagnostic pop
@@ -2455,8 +2503,21 @@ DO_NORMAL_ARITHMETIC_OP:
                 case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.as_u64 = opr->left->const_value.as_f64 != opr->right->const_value.as_f64; break;
                 default: oc_assert(false); break;
                 }
+            case LL_TYPE_ANYBOOL:
+            case LL_TYPE_BOOL:
+                switch (opr->op.kind) {
+                case LL_TOKEN_KIND_AND:     (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 & opr->right->const_value.as_u64;
+                case LL_TOKEN_KIND_OR:      (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 | opr->right->const_value.as_u64;
+                case LL_TOKEN_KIND_XOR:     (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 ^ opr->right->const_value.as_u64;
+                case LL_TOKEN_KIND_EQUALS:  (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 == opr->right->const_value.as_u64; break;
+                case LL_TOKEN_KIND_NEQUALS: (*expr)->const_value.as_u64 = opr->left->const_value.as_u64 != opr->right->const_value.as_u64; break;
+                default: oc_assert(false); break;
+                }
+                break;
             // default: ll_print_type(result); oc_todo("implement bvinary op const fold types or error"); break;
-            default: break;
+            default:
+                (*expr)->has_const = 0u;
+                break;
             }
         }
 
@@ -2500,7 +2561,7 @@ DO_NORMAL_ARITHMETIC_OP:
 
             switch (result->kind) {
             case LL_TYPE_POINTER:
-                typer->result_sc = ((LL_Type_Pointer*)result)->spirv_storage_class;
+                typer->result_sc = ((LL_Type_Pointer*)result)->storage_scope;
                 result = ((LL_Type_Pointer*)result)->element_type;
                 break;
             default:
@@ -3029,7 +3090,7 @@ DO_NORMAL_ARITHMETIC_OP:
             break;
         case LL_TYPE_POINTER:
             result = ((LL_Type_Pointer*)result)->element_type;
-            typer->result_sc = ((LL_Type_Pointer*)result)->spirv_storage_class;
+            typer->result_sc = ((LL_Type_Pointer*)result)->storage_scope;
             break;
         case LL_TYPE_SLICE:
             result = ((LL_Type_Slice*)result)->element_type;
@@ -3525,17 +3586,18 @@ LL_Type* ll_typer_get_type_from_typename(Compiler_Context* cc, LL_Typer* typer, 
 
         break;
     case CODE_KIND_TYPE_POINTER: {
-        result = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Type_Pointer)->element, can_continue);
+        Code_Type_Pointer* ptr = CODE_AS(typename, Code_Type_Pointer);
+        result = ll_typer_get_type_from_typename(cc, typer, ptr->element, can_continue);
         if (!result) return NULL;
-        result = ll_typer_get_ptr_type_with_storage_class(cc, typer, result, SpvStorageClassPhysicalStorageBuffer);
+        result = ll_typer_get_ptr_type_with_storage_class(cc, typer, result, ptr->storage_scope);
         break;
     }
-    case CODE_KIND_TYPE_REFERENCE: {
-        result = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Type_Pointer)->element, can_continue);
-        if (!result) return NULL;
-        result = ll_typer_get_ptr_type_with_storage_class(cc, typer, result, SpvStorageClassFunction);
-        break;
-    }
+    // case CODE_KIND_TYPE_REFERENCE: {
+    //     result = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Type_Pointer)->element, can_continue);
+    //     if (!result) return NULL;
+    //     result = ll_typer_get_ptr_type_with_storage_class(cc, typer, result, SpvStorageClassFunction);
+    //     break;
+    // }
     case CODE_KIND_INDEX: {
         oc_assert(CODE_AS(typename, Code_Slice)->stop == NULL);
         LL_Type* element_type = ll_typer_get_type_from_typename(cc, typer, CODE_AS(typename, Code_Slice)->ptr, can_continue);
@@ -3748,12 +3810,17 @@ void ll_print_type_raw(LL_Type* type, Oc_Writer* w) {
     case LL_TYPE_POINTER: {
         LL_Type_Pointer* ptr_type = (LL_Type_Pointer*)type;
         ll_print_type_raw(ptr_type->element_type, w);
-        if (ptr_type->spirv_storage_class != SpvStorageClassPhysicalStorageBuffer) {
+        switch (ptr_type->storage_scope) {
+        case LL_STORAGE_SCOPE_FUNCTION:
             wprint(w, "&");
-        } else if (ptr_type->spirv_storage_class != SpvStorageClassFunction) {
-            wprint(w, "*{} ", SpvStorageClassToString(ptr_type->spirv_storage_class));
-        } else {
+            break;
+        case LL_STORAGE_SCOPE_EXTERNAL:
             wprint(w, "*");
+            break;
+        case LL_STORAGE_SCOPE_INTERNAL:
+            wprint(w, "*internal ");
+            break;
+        default: assert(false); break;
         }
         break;
     }

@@ -8,6 +8,17 @@
 #define optional
 
 typedef enum {
+    LL_STORAGE_SCOPE_TBD,
+    LL_STORAGE_SCOPE_EXTERNAL,
+    LL_STORAGE_SCOPE_INTERNAL,
+    LL_STORAGE_SCOPE_FUNCTION,
+
+    // These are only used in spirv generation
+    LL_STORAGE_SCOPE_INPUT,
+    LL_STORAGE_SCOPE_OUTPUT,
+} LL_Storage_Scope;
+
+typedef enum {
     CODE_KIND_LITERAL_INT,
     CODE_KIND_LITERAL_FLOAT,
     CODE_KIND_LITERAL_STRING,
@@ -40,7 +51,6 @@ typedef enum {
     CODE_KIND_CAST,
     CODE_KIND_GENERIC,
     CODE_KIND_TYPE_POINTER,
-    CODE_KIND_TYPE_REFERENCE,
 
 
     // Generated
@@ -192,6 +202,7 @@ typedef struct {
     Code* ptr;
     Code* start;
     Code* stop;
+    LL_Token_Info b_close;
 } Code_Slice;
 
 typedef struct {
@@ -305,6 +316,7 @@ typedef struct {
 typedef struct {
     Code base;
     Code* element;
+    LL_Storage_Scope storage_scope;
 } Code_Type_Pointer;
 
 // This is the rhs of the siwizzle in vector.0xyz

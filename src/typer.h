@@ -91,7 +91,7 @@ typedef struct ll_type {
     };
     struct ll_type* base_type;
     uint8_t rows, columns;
-    uint32_t spirv_type, explicit_spirv_type;
+    uint32_t spirv_type, spirv_type_c_abi;
 } LL_Type;
 
 typedef struct {
@@ -101,9 +101,8 @@ typedef struct {
 typedef struct {
     LL_Type base;
     LL_Type* element_type;
-    uint32_t spirv_storage_class;
+    LL_Storage_Scope storage_scope;
 } LL_Type_Pointer;
-
 
 typedef struct {
     LL_Type base;
@@ -130,7 +129,7 @@ typedef struct {
     LL_Type** fields;
     uint32_t* offsets;
     bool has_offsets;
-    uint32_t explicit_spirv_type;
+    uint32_t spirv_type_c_abi;
 } LL_Type_Struct;
 
 typedef struct {
@@ -229,7 +228,7 @@ void ll_scope_print(LL_Scope* scope, int indent, Oc_Writer* w);
 
 void ll_typer_add_implicit_cast(Compiler_Context* cc, LL_Typer* typer, Code** expr, LL_Type* expected_type);
 LL_Type* ll_typer_get_ptr_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type);
-LL_Type* ll_typer_get_ptr_type_with_storage_class(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type, uint32_t spirv_storage_class);
+LL_Type* ll_typer_get_ptr_type_with_storage_class(Compiler_Context* cc, LL_Typer* typer, LL_Type* element_type, LL_Storage_Scope storage_scope);
 LL_Type* ll_typer_get_vector_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* base_type, uint8_t rows, uint8_t columns);
 
 LL_Function_Instantiation* ll_typer_function_instance_put(Compiler_Context* cc, LL_Typer* typer, Code_Function_Declaration* fn_decl, LL_Function_Instantiation inst);

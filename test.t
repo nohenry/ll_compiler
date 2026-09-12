@@ -168,7 +168,7 @@ float other_function(MyData data) {
     return *data.input;
 }
 
-float4 main(Vertex* vertex_buffer, OtherData* data) {
+float4 main(Vertex* vertex_buffer) {
     float4 position = vertex_buffer[#vertex_index].position.xyz1;
     // float a = position.x;
     // float b;
@@ -190,7 +190,7 @@ float4 main(Vertex* vertex_buffer, OtherData* data) {
 
     bool d = a ^^ b;
     bool e = true ^^ false;
-    if true ^^ d {
+    if 8 ^^ 9 ^^ d {
     }
 
     int8 k = 123;

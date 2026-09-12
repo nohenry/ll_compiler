@@ -662,8 +662,16 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
             case ';':
             case '.':
             case ',':
+            case LL_TOKEN_KIND_IDENT:
 #pragma GCC diagnostic pop
-                left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
+                if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr != LL_KEYWORD_INTERNAL.ptr) break;
+                LL_Storage_Scope scope = LL_STORAGE_SCOPE_EXTERNAL;
+                if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_INTERNAL.ptr) {
+                    CONSUME();
+                    scope = LL_STORAGE_SCOPE_INTERNAL;
+                }
+
+                left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left, .storage_scope = scope }));
                 left->token_info = TOKEN_INFO(op_tok);
                 continue;
             default: break;
@@ -682,7 +690,7 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
             case '.':
             case ',':
 #pragma GCC diagnostic pop
-                left = CREATE_NODE(CODE_KIND_TYPE_REFERENCE, ((Code_Type_Pointer){ .element = left }));
+                left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
                 left->token_info = TOKEN_INFO(op_tok);
                 continue;
             default: break;
@@ -775,8 +783,13 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                 case '*': {
                     if (!from_statement) return left;
                     CONSUME();
+
+                    LL_Storage_Scope scope = LL_STORAGE_SCOPE_EXTERNAL;
+                    if (token.kind == LL_TOKEN_KIND_IDENT && token.str.ptr == LL_KEYWORD_INTERNAL.ptr) {
+                        scope = LL_STORAGE_SCOPE_INTERNAL;
+                    }
                     
-                    left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left }));
+                    left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left, .storage_scope = scope }));
                     left->token_info = TOKEN_INFO(token);
 
                     break;
@@ -785,7 +798,7 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                     if (!from_statement) return left;
                     CONSUME();
                     
-                    left = CREATE_NODE(CODE_KIND_TYPE_REFERENCE, ((Code_Type_Pointer){ .element = left }));
+                    left = CREATE_NODE(CODE_KIND_TYPE_POINTER, ((Code_Type_Pointer){ .element = left, .storage_scope = LL_STORAGE_SCOPE_FUNCTION }));
                     left->token_info = TOKEN_INFO(token);
 
                     break;
@@ -828,7 +841,7 @@ Code* parser_parse_expression(Compiler_Context* cc, LL_Parser* parser, Code* lef
                     }
                     EXPECT(']', &token);
 
-                    left = CREATE_NODE(kind, ((Code_Slice){ .ptr = left, .start = start, .stop = stop }));
+                    left = CREATE_NODE(kind, ((Code_Slice){ .ptr = left, .start = start, .stop = stop, .b_close = TOKEN_INFO(token) }));
                     left->token_info = ti;
                     break;
                 }
@@ -1185,7 +1198,6 @@ const char* ast_get_node_kind(Code* node) {
         case CODE_KIND_STRUCT: return "Struct";
         case CODE_KIND_GENERIC: return "Generic";
         case CODE_KIND_TYPE_POINTER: return "Pointer";
-        case CODE_KIND_TYPE_REFERENCE: return "Reference";
         case CODE_KIND_TYPENAME: return "Typename";
         case CODE_KIND_SWIZZLE: return "Swizzle";
         default: oc_unreachable("");
@@ -1227,7 +1239,6 @@ void print_node_value(Code* node, Oc_Writer* w) {
             print_node_value(&CODE_AS(node, Code_Struct)->base.ident->base, w);
             break;
         case CODE_KIND_TYPE_POINTER: break;
-        case CODE_KIND_TYPE_REFERENCE: break;
         case CODE_KIND_TYPENAME:
             wprint(w, "{} ", CODE_AS(node, Code_Declaration)->ident->str);
             ll_print_type_raw(CODE_AS(node, Code_Declaration)->declared_type, w);
@@ -1372,7 +1383,6 @@ void print_node(Code* node, uint32_t indent, Oc_Writer* w) {
             print_node((Code*)CODE_AS(node, Code_Generic)->ident, indent + 1, w);
             break;
 
-        case CODE_KIND_TYPE_REFERENCE:
         case CODE_KIND_TYPE_POINTER:
             print_node(CODE_AS(node, Code_Type_Pointer)->element, indent + 1, w);
             break;
@@ -1579,7 +1589,6 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
         }));
         break;
 
-    case CODE_KIND_TYPE_REFERENCE:
     case CODE_KIND_TYPE_POINTER:
         result = CREATE_NODE(node->kind, ((Code_Type_Pointer){
             .base.token_info = node->token_info,
@@ -1656,5 +1665,408 @@ Code* ast_clone_node_deep(Compiler_Context* cc, Code* node, LL_Code_Clone_Params
     case COUNT_OF_CODE_KIND: oc_unreachable("invalid code kind"); break;
     // default: oc_unreachable(""); break;
     }
+    return result;
+}
+
+LL_Range ll_range_from_token_info(Compiler_Context* cc, LL_Lexer* lexer, LL_Token_Info info) {
+    return (LL_Range) {
+        .start = info.position,
+        .end = info.position + lexer_get_token_length(cc, lexer, info),
+    };
+}
+
+LL_Range ll_range_from_token_info_start_only(Compiler_Context* cc, LL_Lexer* lexer, LL_Token_Info info) {
+    (void)cc;
+    (void)lexer;
+    return (LL_Range) {
+        .start = info.position,
+        .end = -1LLU,
+    };
+}
+
+void ll_range_extend_end(LL_Range* range, LL_Range end) {
+    if (end.end > range->end) {
+        range->end = end.end;
+    }
+}
+
+LL_Token_Info_Range ll_range_to_token_range(Compiler_Context* cc, LL_Lexer* lexer, LL_Range range) {
+    LL_Token_Info_Range token_range = {
+        .start = lexer_get_token_info_at_position(cc, lexer, range.start),
+        .end = lexer_get_token_info_at_position(cc, lexer, range.end),
+    };
+    return token_range;
+}
+
+LL_Range ast_compute_range_impl(Compiler_Context* cc, LL_Lexer* lexer, Code* node, int bias) {
+    LL_Range result = {0};
+
+    #define ast_compute_range_start(value) \
+            do { if (bias <= 0) result.start = ast_compute_range_impl(cc, lexer, (value), -1).start; } while (0)
+    #define ast_compute_range_end(value) \
+            do { if (bias >= 0) result.end = ast_compute_range_impl(cc, lexer, (value), 1).end; } while (0)
+
+    switch (node->kind) {
+        case CODE_KIND_LITERAL_INT:    return ll_range_from_token_info(cc, lexer, node->token_info);
+        case CODE_KIND_LITERAL_FLOAT:  return ll_range_from_token_info(cc, lexer, node->token_info);
+        case CODE_KIND_LITERAL_STRING: return ll_range_from_token_info(cc, lexer, node->token_info);
+        case CODE_KIND_IDENT:          return ll_range_from_token_info(cc, lexer, node->token_info);
+        case CODE_KIND_BUILTIN:        return ll_range_from_token_info(cc, lexer, node->token_info);
+        case CODE_KIND_BINARY_OP:
+            ast_compute_range_start(CODE_AS(node, Code_Operation)->left);
+            ast_compute_range_end(CODE_AS(node, Code_Operation)->right);
+            break;
+        case CODE_KIND_PRE_OP: 
+            result = ll_range_from_token_info_start_only(cc, lexer, CODE_AS(node, Code_Operation)->op);
+            ast_compute_range_end(CODE_AS(node, Code_Operation)->right);
+            break;
+
+        case CODE_KIND_INVOKE: 
+            ast_compute_range_start(CODE_AS(node, Code_Invoke)->expr);
+            ll_range_extend_end(&result, ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Invoke)->p_close));
+            break;
+
+        case CODE_KIND_INITIALIZER: 
+        case CODE_KIND_ARRAY_INITIALIZER: 
+            result = ll_range_from_token_info_start_only(cc, lexer, CODE_AS(node, Code_Initializer)->base.token_info);
+            ll_range_extend_end(&result, ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Initializer)->c_close));
+            break;
+
+        case CODE_KIND_KEY_VALUE: 
+            ast_compute_range_start(CODE_AS(node, Code_Key_Value)->key);
+            ast_compute_range_end(CODE_AS(node, Code_Key_Value)->value);
+            break;
+
+        case CODE_KIND_CONST:
+            result = ll_range_from_token_info_start_only(cc, lexer, CODE_AS(node, Code_Initializer)->base.token_info);
+            ast_compute_range_end(CODE_AS(node, Code_Marker)->expr);
+            break;
+        case CODE_KIND_PARAMETER:
+        case CODE_KIND_VARIABLE_DECLARATION:
+            ast_compute_range_start(CODE_AS(node, Code_Variable_Declaration)->base.type);
+            if (CODE_AS(node, Code_Variable_Declaration)->initializer) {
+                ast_compute_range_end(CODE_AS(node, Code_Variable_Declaration)->initializer);
+                break;
+            }
+            if (CODE_AS(node, Code_Variable_Declaration)->base.ident) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Variable_Declaration)->base.ident);
+                break;
+            }
+            ast_compute_range_end(CODE_AS(node, Code_Variable_Declaration)->base.type);
+            break;
+
+        case CODE_KIND_FUNCTION_DECLARATION:
+            ast_compute_range_start(CODE_AS(node, Code_Function_Declaration)->base.type);
+            ast_compute_range_end((Code*)CODE_AS(node, Code_Function_Declaration)->base.ident);
+
+            if (CODE_AS(node, Code_Function_Declaration)->body) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Function_Declaration)->body);
+                break;
+            }
+            ll_range_extend_end(&result, ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Function_Declaration)->p_close));
+            break;
+
+        // case CODE_KIND_PARAMETER:
+        //     if (CODE_AS(node, Code_Variable_Declaration)->base.type)
+        //         print_node(CODE_AS(node, Code_Variable_Declaration)->base.type, indent + 1, w);
+        //     if (CODE_AS(node, Code_Variable_Declaration)->base.ident)
+        //         print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.ident, indent + 1, w);
+        //     break;
+        case CODE_KIND_RETURN:
+            result = ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Control_Flow)->base.token_info);
+            if (CODE_AS(node, Code_Control_Flow)->expr) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Control_Flow)->expr);
+            }
+            break;
+        case CODE_KIND_BREAK:
+            result = ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Control_Flow)->base.token_info);
+            if (CODE_AS(node, Code_Control_Flow)->expr) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Control_Flow)->expr);
+            }
+            break;
+        case CODE_KIND_CONTINUE:
+            result = ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Control_Flow)->base.token_info);
+            if (CODE_AS(node, Code_Control_Flow)->expr) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Control_Flow)->expr);
+            }
+            break;
+        case CODE_KIND_IF:
+            result = ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_If)->base.token_info);
+            if (CODE_AS(node, Code_If)->else_clause) {
+                ast_compute_range_end(CODE_AS(node, Code_If)->else_clause);
+                break;
+            }
+            if (CODE_AS(node, Code_If)->body) {
+                ast_compute_range_end(CODE_AS(node, Code_If)->body);
+                break;
+            }
+            if (CODE_AS(node, Code_If)->cond) {
+                ast_compute_range_end(CODE_AS(node, Code_If)->cond);
+                break;
+            }
+            break;
+        case CODE_KIND_WHILE:
+        case CODE_KIND_FOR:
+            result = ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Loop)->base.token_info);
+            if (CODE_AS(node, Code_Loop)->body) {
+                ast_compute_range_end(CODE_AS(node, Code_Loop)->body);
+                break;
+            }
+            if (CODE_AS(node, Code_Loop)->update) {
+                ast_compute_range_end(CODE_AS(node, Code_Loop)->update);
+                break;
+            }
+            if (CODE_AS(node, Code_Loop)->cond) {
+                ast_compute_range_end(CODE_AS(node, Code_Loop)->cond);
+                break;
+            }
+            if (CODE_AS(node, Code_Loop)->init) {
+                ast_compute_range_end(CODE_AS(node, Code_Loop)->init);
+                break;
+            }
+            break;
+
+        case CODE_KIND_INDEX:
+            ast_compute_range_start(CODE_AS(node, Code_Operation)->left);
+            if (CODE_AS(node, Code_Operation)->right) {
+                ast_compute_range_end(CODE_AS(node, Code_Operation)->right);
+            }
+            ast_compute_range_end(CODE_AS(node, Code_Operation)->left);
+            break;
+
+        case CODE_KIND_SLICE:
+            ast_compute_range_start(CODE_AS(node, Code_Slice)->ptr);
+            ll_range_extend_end(&result, ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Slice)->b_close));
+            break;
+
+        case CODE_KIND_CAST:
+            result = ll_range_from_token_info_start_only(cc, lexer, node->token_info);
+            ast_compute_range_end(CODE_AS(node, Code_Cast)->expr);
+            break;
+
+        case CODE_KIND_STRUCT:
+            result = ll_range_from_token_info_start_only(cc, lexer, node->token_info);
+            ast_compute_range_end((Code*)CODE_AS(node, Code_Struct)->block);
+            break;
+
+        case CODE_KIND_GENERIC:
+            ast_compute_range_start((Code*)CODE_AS(node, Code_Generic)->ident);
+            ast_compute_range_end((Code*)CODE_AS(node, Code_Generic)->ident);
+            break;
+
+        case CODE_KIND_TYPE_POINTER:
+            ast_compute_range_start(CODE_AS(node, Code_Type_Pointer)->element);
+            ll_range_extend_end(&result, ll_range_from_token_info(cc, lexer, node->token_info));
+            break;
+        case CODE_KIND_TYPENAME:
+            oc_assert(false && "need to get in token info some how");
+            break;
+
+        case CODE_KIND_BLOCK:
+            result = ll_range_from_token_info_start_only(cc, lexer, node->token_info);
+            ll_range_extend_end(&result, ll_range_from_token_info(cc, lexer, CODE_AS(node, Code_Scope)->c_close));
+            break;
+
+        case CODE_KIND_SWIZZLE:
+            oc_assert(false && "need to get in token info some how");
+            // print_node(CODE_AS(node, Code_Swizzle)->vector, indent + 1, w);
+            break;
+        case COUNT_OF_CODE_KIND:
+            oc_assert(false);
+            break;
+
+        // default: break;
+    }
+
+    #undef ast_compute_range_start
+    #undef ast_compute_range_end
+
+    return result;
+}
+
+
+LL_Token_Info_Range ast_compute_token_info_range_impl(Compiler_Context* cc, LL_Lexer* lexer, Code* node, int bias) {
+    LL_Token_Info_Range result = {0};
+
+    #define ast_compute_range_start(value) \
+            do { if (bias <= 0) result.start = ast_compute_token_info_range_impl(cc, lexer, (value), -1).start; } while (0)
+    #define ast_compute_range_end(value) \
+            do { if (bias >= 0) result.end = ast_compute_token_info_range_impl(cc, lexer, (value), 1).end; } while (0)
+
+    switch (node->kind) {
+        case CODE_KIND_LITERAL_INT:    return (LL_Token_Info_Range){node->token_info, node->token_info};
+        case CODE_KIND_LITERAL_FLOAT:  return (LL_Token_Info_Range){node->token_info, node->token_info};
+        case CODE_KIND_LITERAL_STRING: return (LL_Token_Info_Range){node->token_info, node->token_info};
+        case CODE_KIND_IDENT:          return (LL_Token_Info_Range){node->token_info, node->token_info};
+        case CODE_KIND_BUILTIN:        return (LL_Token_Info_Range){node->token_info, node->token_info};
+        case CODE_KIND_BINARY_OP:
+            ast_compute_range_start(CODE_AS(node, Code_Operation)->left);
+            ast_compute_range_end(CODE_AS(node, Code_Operation)->right);
+            break;
+        case CODE_KIND_PRE_OP: 
+            result.start = CODE_AS(node, Code_Operation)->op;
+            ast_compute_range_end(CODE_AS(node, Code_Operation)->right);
+            break;
+
+        case CODE_KIND_INVOKE: 
+            ast_compute_range_start(CODE_AS(node, Code_Invoke)->expr);
+            result.end = CODE_AS(node, Code_Invoke)->p_close;
+            break;
+
+        case CODE_KIND_INITIALIZER: 
+        case CODE_KIND_ARRAY_INITIALIZER: 
+            result.start = node->token_info;
+            result.end = CODE_AS(node, Code_Initializer)->c_close;
+            break;
+
+        case CODE_KIND_KEY_VALUE: 
+            ast_compute_range_start(CODE_AS(node, Code_Key_Value)->key);
+            ast_compute_range_end(CODE_AS(node, Code_Key_Value)->value);
+            break;
+
+        case CODE_KIND_CONST:
+            result.start = node->token_info;
+            ast_compute_range_end(CODE_AS(node, Code_Marker)->expr);
+            break;
+        case CODE_KIND_PARAMETER:
+        case CODE_KIND_VARIABLE_DECLARATION:
+            ast_compute_range_start(CODE_AS(node, Code_Variable_Declaration)->base.type);
+            if (CODE_AS(node, Code_Variable_Declaration)->initializer) {
+                ast_compute_range_end(CODE_AS(node, Code_Variable_Declaration)->initializer);
+                break;
+            }
+            if (CODE_AS(node, Code_Variable_Declaration)->base.ident) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Variable_Declaration)->base.ident);
+                break;
+            }
+            ast_compute_range_end(CODE_AS(node, Code_Variable_Declaration)->base.type);
+            break;
+
+        case CODE_KIND_FUNCTION_DECLARATION:
+            ast_compute_range_start(CODE_AS(node, Code_Function_Declaration)->base.type);
+            ast_compute_range_end((Code*)CODE_AS(node, Code_Function_Declaration)->base.ident);
+
+            if (CODE_AS(node, Code_Function_Declaration)->body) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Function_Declaration)->body);
+                break;
+            }
+            result.end = CODE_AS(node, Code_Function_Declaration)->p_close;
+            break;
+
+        // case CODE_KIND_PARAMETER:
+        //     if (CODE_AS(node, Code_Variable_Declaration)->base.type)
+        //         print_node(CODE_AS(node, Code_Variable_Declaration)->base.type, indent + 1, w);
+        //     if (CODE_AS(node, Code_Variable_Declaration)->base.ident)
+        //         print_node((Code*)CODE_AS(node, Code_Variable_Declaration)->base.ident, indent + 1, w);
+        //     break;
+        case CODE_KIND_RETURN:
+            result.start = node->token_info;
+            if (CODE_AS(node, Code_Control_Flow)->expr) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Control_Flow)->expr);
+            }
+            break;
+        case CODE_KIND_BREAK:
+            result.start = node->token_info;
+            if (CODE_AS(node, Code_Control_Flow)->expr) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Control_Flow)->expr);
+            }
+            break;
+        case CODE_KIND_CONTINUE:
+            result.start = node->token_info;
+            if (CODE_AS(node, Code_Control_Flow)->expr) {
+                ast_compute_range_end((Code*)CODE_AS(node, Code_Control_Flow)->expr);
+            }
+            break;
+        case CODE_KIND_IF:
+            result.start = node->token_info;
+            if (CODE_AS(node, Code_If)->else_clause) {
+                ast_compute_range_end(CODE_AS(node, Code_If)->else_clause);
+                break;
+            }
+            if (CODE_AS(node, Code_If)->body) {
+                ast_compute_range_end(CODE_AS(node, Code_If)->body);
+                break;
+            }
+            if (CODE_AS(node, Code_If)->cond) {
+                ast_compute_range_end(CODE_AS(node, Code_If)->cond);
+                break;
+            }
+            break;
+        case CODE_KIND_WHILE:
+        case CODE_KIND_FOR:
+            result.start = node->token_info;
+            if (CODE_AS(node, Code_Loop)->body) {
+                ast_compute_range_end(CODE_AS(node, Code_Loop)->body);
+                break;
+            }
+            if (CODE_AS(node, Code_Loop)->update) {
+                ast_compute_range_end(CODE_AS(node, Code_Loop)->update);
+                break;
+            }
+            if (CODE_AS(node, Code_Loop)->cond) {
+                ast_compute_range_end(CODE_AS(node, Code_Loop)->cond);
+                break;
+            }
+            if (CODE_AS(node, Code_Loop)->init) {
+                ast_compute_range_end(CODE_AS(node, Code_Loop)->init);
+                break;
+            }
+            break;
+
+        case CODE_KIND_INDEX:
+            ast_compute_range_start(CODE_AS(node, Code_Operation)->left);
+            if (CODE_AS(node, Code_Operation)->right) {
+                ast_compute_range_end(CODE_AS(node, Code_Operation)->right);
+            }
+            ast_compute_range_end(CODE_AS(node, Code_Operation)->left);
+            break;
+
+        case CODE_KIND_SLICE:
+            ast_compute_range_start(CODE_AS(node, Code_Slice)->ptr);
+            result.end = CODE_AS(node, Code_Slice)->b_close;
+            break;
+
+        case CODE_KIND_CAST:
+            result.start = node->token_info;
+            ast_compute_range_end(CODE_AS(node, Code_Cast)->expr);
+            break;
+
+        case CODE_KIND_STRUCT:
+            result.start = node->token_info;
+            ast_compute_range_end((Code*)CODE_AS(node, Code_Struct)->block);
+            break;
+
+        case CODE_KIND_GENERIC:
+            ast_compute_range_start((Code*)CODE_AS(node, Code_Generic)->ident);
+            ast_compute_range_end((Code*)CODE_AS(node, Code_Generic)->ident);
+            break;
+
+        case CODE_KIND_TYPE_POINTER:
+            ast_compute_range_start(CODE_AS(node, Code_Type_Pointer)->element);
+            result.end = node->token_info;
+            break;
+        case CODE_KIND_TYPENAME:
+            oc_assert(false && "need to get in token info some how");
+            break;
+
+        case CODE_KIND_BLOCK:
+            result.start = node->token_info;
+            result.end = CODE_AS(node, Code_Scope)->c_close;
+            break;
+
+        case CODE_KIND_SWIZZLE:
+            oc_assert(false && "need to get in token info some how");
+            // print_node(CODE_AS(node, Code_Swizzle)->vector, indent + 1, w);
+            break;
+        case COUNT_OF_CODE_KIND:
+            oc_assert(false);
+            break;
+
+        // default: break;
+    }
+
+    #undef ast_compute_range_start
+    #undef ast_compute_range_end
+
     return result;
 }

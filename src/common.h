@@ -168,7 +168,7 @@ typedef struct {
 	bool quiet;
     bool exit_0;
     bool vertex, fragment;
-
+    string main_fn;
 
     Array(uint32, LL_Queued*) queued_stack;
     LL_Stage stages[COUNT_OF_STAGES];
@@ -247,6 +247,7 @@ extern string LL_KEYWORD_FLOAT;
 extern string LL_KEYWORD_STRING;
 extern string LL_KEYWORD_VOID;
 extern string LL_KEYWORD_CHAR;
+extern string LL_KEYWORD_INTERNAL;
 
 #define MAP_GET(map, key, allocator, hash_fn, eql_fn, seed) ({                     \
         size_t hash = hash_fn((key), (seed)) % (sizeof(map) / sizeof((map)[0])); \
@@ -322,5 +323,7 @@ uint32_t log2_u32(uint32_t x);
 
 size_t hash_combine(size_t lhs, size_t rhs);
 
-
+typedef struct {
+    uword start, end;
+} LL_Range;
 

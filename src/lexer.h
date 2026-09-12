@@ -58,6 +58,10 @@ typedef struct {
     size_t position;
 } LL_Token_Info;
 
+typedef struct {
+    LL_Token_Info start, end;
+} LL_Token_Info_Range;
+
 typedef struct ll_lexer {
     string filename;
     string source;
@@ -86,3 +90,5 @@ void lexer_print_token(LL_Token* token);
 LL_Line_Info lexer_get_line_info(LL_Lexer* lexer, LL_Token_Info token_info);
 
 int64_t lexer_get_token_length(Compiler_Context *cc, LL_Lexer* lexer, LL_Token_Info token);
+LL_Token lexer_get_token_at_position(Compiler_Context *cc, LL_Lexer* lexer, uword position);
+LL_Token_Info lexer_get_token_info_at_position(Compiler_Context *cc, LL_Lexer* lexer, uword position);
