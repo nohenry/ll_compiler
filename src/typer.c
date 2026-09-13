@@ -1391,20 +1391,25 @@ bool ll_typer_can_implicitly_cast(Compiler_Context* cc, LL_Typer* typer, LL_Type
     switch (src_type->kind) {
     case LL_TYPE_INT:
         switch (dst_type->kind) {
-        case LL_TYPE_INT:
-            if (dst_type->width >= src_type->width) return true;
-            break;
+        case LL_TYPE_INT: return true;
+        case LL_TYPE_UINT: return true;
+        case LL_TYPE_FLOAT: return true;
         default: break;
         }
         break;
     case LL_TYPE_UINT:
         switch (dst_type->kind) {
-        case LL_TYPE_INT:
-            if (dst_type->width >  src_type->width) return true;
-            break;
-        case LL_TYPE_UINT:
-            if (dst_type->width >= src_type->width) return true;
-            break;
+        case LL_TYPE_INT: return true;
+        case LL_TYPE_UINT: return true;
+        case LL_TYPE_FLOAT: return true;
+        default: break;
+        }
+        break;
+    case LL_TYPE_FLOAT:
+        switch (dst_type->kind) {
+        case LL_TYPE_INT: return true;
+        case LL_TYPE_UINT: return true;
+        case LL_TYPE_FLOAT: return true;
         default: break;
         }
         break;
