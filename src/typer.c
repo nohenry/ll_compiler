@@ -1094,6 +1094,10 @@ bool ll_typer_type_statement(Compiler_Context* cc, LL_Typer* typer, Code** stmt)
                         ll_typer_report_error_done(cc, typer);
                     }
                 } break;
+                case LL_TYPE_INT:
+                case LL_TYPE_UINT:
+                case LL_TYPE_FLOAT:
+                    break;
                 default: {
                     Code_Variable_Declaration* parameter = &fn_decl->parameters.items[0];
                     LL_Token_Info_Range ti_range = ast_compute_token_info_range(cc, cc->lexer, (Code*)parameter);
