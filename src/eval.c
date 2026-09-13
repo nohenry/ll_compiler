@@ -1065,7 +1065,7 @@ static void ll_eval_block(Compiler_Context* cc, LL_Eval_Context* b, LL_Backend_I
 
                     #if defined(__x86_64__)
                         int64_t offset = do_native_fn_call(cc, b, bir, invokee, count, operands + invoke_offset);
-                    #elif defined(__arch64__)
+                    #elif defined(__aarch64__)
                         int64_t offset = do_native_fn_call_aarch64(cc, b, bir, invokee, count, operands + invoke_offset);
                     #else
                         #error "Invalid architecture"

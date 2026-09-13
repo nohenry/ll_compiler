@@ -280,7 +280,7 @@ void ll_typer_report_error_type(Compiler_Context* cc, LL_Typer* typer, LL_Type* 
 void ll_typer_report_error_type_no_fmt(Compiler_Context* cc, LL_Typer* typer, LL_Type* type);
 void _ll_typer_report_error_done(Compiler_Context* cc, LL_Typer* typer, const char* file, size_t line);
 
-inline
+static inline
 LL_Token_Kind ll_get_regular_token_kind_from_assign_kind(LL_Token_Kind op) {
     switch (op) {
     case LL_TOKEN_KIND_ASSIGN_PLUS:        return '+';
@@ -300,7 +300,7 @@ LL_Token_Kind ll_get_regular_token_kind_from_assign_kind(LL_Token_Kind op) {
     }
 }
 
-inline
+static inline
 const char* ll_get_human_readable_operation(LL_Token_Kind op) {
     switch (op) {
 #pragma GCC diagnostic push

@@ -1153,7 +1153,7 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
                 if (!lvalue) {
                     result = emit_op_dst(SpvOpLoad, b->frag_color_typeid, result);
                 }
-            } oc_assert(false);
+            } else oc_assert(false);
         } else oc_assert(false);
     } break;
 
