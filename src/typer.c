@@ -1816,8 +1816,15 @@ bool ll_typer_type_expression(Compiler_Context* cc, LL_Typer* typer, Code** expr
             switch (expected_type->kind) {
             case LL_TYPE_UINT:
             case LL_TYPE_INT:
-            case LL_TYPE_FLOAT:
             case LL_TYPE_CHAR:
+                if (!ll_type_is_vector(expected_type)) {
+                    result = expected_type;
+                } else {
+                    result = typer->ty_int32;
+                }
+                break;
+            case LL_TYPE_FLOAT:
+                (*expr)->const_value.as_f64 = (int64_t)CODE_AS((*expr), Code_Literal)->u64;
                 if (!ll_type_is_vector(expected_type)) {
                     result = expected_type;
                 } else {

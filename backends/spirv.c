@@ -164,7 +164,8 @@ static inline void emit_relocation_(Compiler_Context* cc, LL_Backend_Spirv* b, u
 LL_Backend_Layout spirv_get_layout(LL_Type* ty);
 void spirv_calculate_struct_offsets(LL_Type* type);
 SpvId spirv_get_pointer_type(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, LL_Storage_Scope storage_class);
-SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, void* value);
+SpvId spirv_generate_eval_value_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* result_type, LL_Eval_Value* value);
+SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* result_type, void* value);
 bool spirv_determine_if_explicit(Compiler_Context* cc, LL_Backend_Spirv* b, Code* expression);
 
 typedef struct {
@@ -904,10 +905,60 @@ SpvId spirv_generate_cast_if_needed(Compiler_Context* cc, LL_Backend_Spirv* b, L
     return result;
 }
 
-SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* type, void* value) {
-    SpvId typeid = spirv_generate_type(cc, b, type);
-    LL_Type_Kind kind = type->kind;
-    size_t width = type->width;
+SpvId spirv_generate_eval_value_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* result_type, LL_Eval_Value* value) {
+    SpvId typeid = spirv_generate_type(cc, b, result_type);
+    LL_Type_Kind kind = result_type->kind;
+    assert(kind == result_type->kind);
+    size_t width = result_type->width;
+    union {
+        float f;
+        double d;
+        uint32_t u32;
+        uint64_t u64;
+        uint32_t encoded_value[2];
+    } output;
+    switch (kind) {
+    case LL_TYPE_FLOAT:
+        if (width <= 32) {
+            output.f = value->as_f64;
+        } else {
+            output.d = value->as_f64;
+        }
+        break;
+    case LL_TYPE_UINT:
+    case LL_TYPE_INT:
+    case LL_TYPE_BOOL:
+        if (width <= 32) {
+            output.u32 = value->as_u64;
+        } else {
+            output.u64 = value->as_u64;
+        }
+        break;
+    case LL_TYPE_ANYBOOL: {
+        SpvId result;
+        if (value->as_u64) {
+            result = emit_type_op_dst_rev(SpvOpConstantTrue, typeid);
+        } else {
+            result = emit_type_op_dst_rev(SpvOpConstantFalse, typeid);
+        }
+        return result;
+    } break;
+    default: oc_assert(false);
+    }
+    SpvId result;
+    if (width <= 32) {
+        result = emit_type_op_dst_rev(SpvOpConstant, typeid, output.encoded_value[0]);
+    } else {
+        result = emit_type_op_dst_rev(SpvOpConstant, typeid, output.encoded_value[0], output.encoded_value[1]);
+    }
+    return result;
+}
+
+SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type* result_type, void* value) {
+    SpvId typeid = spirv_generate_type(cc, b, result_type);
+    LL_Type_Kind kind = result_type->kind;
+    assert(kind == result_type->kind);
+    size_t width = result_type->width;
     union {
         void* ptr;
         float* f;
@@ -924,6 +975,7 @@ SpvId spirv_generate_constant(Compiler_Context* cc, LL_Backend_Spirv* b, LL_Type
     } output;
     switch (kind) {
     case LL_TYPE_FLOAT:
+        printf("emit float %f\n", *input.d);
         if (width <= 32) {
             output.f = *input.f;
         } else {
@@ -1055,7 +1107,7 @@ SpvId spirv_generate_expression(Compiler_Context* cc, LL_Backend_Spirv* b, Code*
     typeof(*b->current_access_chain_tmp) chain_access = { 0 };
 
     if (expr->has_const) {
-        result = spirv_generate_constant(cc, b, expr->type, &expr->const_value);
+        result = spirv_generate_eval_value_constant(cc, b, expr->type, &expr->const_value);
         return result;
     }
 
