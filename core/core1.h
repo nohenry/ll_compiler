@@ -466,7 +466,7 @@ static inline uword oc_align_forward(uword value, uword alignment_in_bytes) {
 // size_t strlen(const char *s);
 // __declspec(dllimport) _Noreturn void exit(int status);
 // typedef void FILE;
-// int fopen_s(FILE**, const char*, const char*);
+int fopen_s(FILE**, const char*, const char*);
 // int fseek(FILE*, int, int);
 // size_t ftell(FILE*);
 // unsigned long long fwrite(const void *, unsigned long long a, unsigned long long b, FILE *);

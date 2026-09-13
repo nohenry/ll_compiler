@@ -394,7 +394,7 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
         size_t hash = stbds_siphash_bytes(&type_hash, sizeof(type_hash), seed);
         return hash;
     }
-    default:
+    default: {
         struct {
             LL_Type_Kind kind;
             size_t width;
@@ -408,6 +408,7 @@ size_t ll_type_hash(LL_Type* type, size_t seed) {
             .columns = type->columns,
         };
         return stbds_siphash_bytes(&type_hash, sizeof(type_hash), seed);
+	}
     }
 }
 
