@@ -495,6 +495,9 @@ void lexer_print_token_kind(LL_Token_Kind kind, Oc_Writer* w) {
     case LL_TOKEN_KIND_GTE: wprint(w, ">="); break;
 
     case LL_TOKEN_KIND_RANGE: wprint(w, ".."); break;
+
+    case LL_TOKEN_KIND_LEFT_SHIFT: wprint(w, "<<"); break;
+    case LL_TOKEN_KIND_RIGHT_SHIFT: wprint(w, ">>"); break;
     
     default:
         wprint(w, "{}", (char)kind);
@@ -518,6 +521,9 @@ void lexer_print_token_info_raw_to_writer(LL_Token_Info* token, Oc_Writer* w) {
     case LL_TOKEN_KIND_RANGE: wprint(w, ".."); break;
     case LL_TOKEN_KIND_AND: wprint(w, "&&"); break;
     case LL_TOKEN_KIND_OR: wprint(w, "||"); break;
+
+    case LL_TOKEN_KIND_LEFT_SHIFT: wprint(w, "<<"); break;
+    case LL_TOKEN_KIND_RIGHT_SHIFT: wprint(w, ">>"); break;
     
     default:
         wprint(w, "{}", (char)token->kind);

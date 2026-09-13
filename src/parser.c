@@ -566,6 +566,9 @@ int get_binary_precedence(LL_Token token, bool from_statement) {
         case LL_TOKEN_KIND_LTE:
         case LL_TOKEN_KIND_GTE:
             return from_statement ? 0 : 100;
+        case LL_TOKEN_KIND_LEFT_SHIFT:
+        case LL_TOKEN_KIND_RIGHT_SHIFT:
+            return 110;
         case '+':
         case '-':
             return from_statement ? 0 : 120;

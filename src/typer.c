@@ -2278,9 +2278,9 @@ TRY_MEMBER_FUNCTION_CALL:
 #pragma GCC diagnostic pop
         }
 
-        can_continue = ll_typer_type_expression(cc, typer, &opr->left, expected_type, NULL);
+        can_continue = ll_typer_type_expression(cc, typer, &opr->left, NULL, NULL);
         if (!can_continue) return false;
-        can_continue = ll_typer_type_expression(cc, typer, &opr->right, expected_type, NULL);
+        can_continue = ll_typer_type_expression(cc, typer, &opr->right, NULL, NULL);
         if (!can_continue) return false;
 
         LL_Type* lhs_type = opr->left->type;
@@ -2337,30 +2337,11 @@ TRY_MEMBER_FUNCTION_CALL:
         case '/':
         case '%':
 DO_NORMAL_ARITHMETIC_OP:
-            if (expected_type) {
-                result = expected_type;
-
-                if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->left, result)) {
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't {} {t} and {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type, rhs_type);
-                    ll_typer_report_error_no_src("    expecting type {t}\n", result);
-                    ll_typer_report_error_done(cc, typer);
-                    break;
-                }
-
-                if (!ll_typer_can_implicitly_cast_expression(cc, typer, opr->right, result)) {
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't {} {t} and {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type, rhs_type);
-                    ll_typer_report_error_no_src("    expecting type {t}\n", result);
-                    ll_typer_report_error_done(cc, typer);
-                    break;
-                }
-
-            } else {
-                result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
-                if (result == NULL) {
-                    ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't {} {t} and {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type, rhs_type);
-                    ll_typer_report_error_done(cc, typer);
-                    break;
-                }
+            result = ll_typer_implicit_cast_leftright(cc, typer, lhs_type, rhs_type);
+            if (result == NULL) {
+                ll_typer_report_error(((LL_Error){ .main_token = opr->base.token_info }), "Can't {} {t} and {t}", ll_get_human_readable_operation(opr->op.kind), lhs_type, rhs_type);
+                ll_typer_report_error_done(cc, typer);
+                break;
             }
 
             ll_typer_add_implicit_cast(cc, typer, &opr->left, result);
@@ -2404,11 +2385,11 @@ DO_NORMAL_ARITHMETIC_OP:
         case '|':
         case '^':
             if (lhs_type->kind != LL_TYPE_UINT && lhs_type->kind != LL_TYPE_INT) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do bitwise operation on type {t}", lhs_type);
+                ll_typer_report_error(((LL_Error){ .main_token = opr->left->token_info }), "Can't do bitwise operation on type {t} (left-hand type)", lhs_type);
                 ll_typer_report_error_done(cc, typer);
             }
             if (rhs_type->kind != LL_TYPE_UINT && rhs_type->kind != LL_TYPE_INT) {
-                ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do bitwise operation on type {t}", rhs_type);
+                ll_typer_report_error(((LL_Error){ .main_token = opr->right->token_info }), "Can't do bitwise operation on type {t} (righ-hand type)", rhs_type);
                 ll_typer_report_error_done(cc, typer);
             }
 
